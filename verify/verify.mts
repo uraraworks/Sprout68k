@@ -8,6 +8,7 @@
  *
  * 使い方: npx tsx verify/verify.mts
  */
+import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { dirname, resolve } from 'node:path';
@@ -121,6 +122,72 @@ function summarize(r: BootResult): string {
   return `${r.label}: nonEmptyCells=${r.nonEmptyCells} fddReadFrames=${r.fddReadFrames} pixelChecksum=${r.pixelChecksum} textLines=${JSON.stringify(r.textLines)}`;
 }
 
+interface DominantColor {
+  rgb: string; // "r,g,b"
+  count: number;
+  total: number;
+  coverage: number;
+  top5: Array<[string, number, string]>;
+}
+
+/*
+ * フレームバッファの支配色(出現頻度最上位)を求める。
+ * 旧判定はここまでしか見ておらず、それが空振りの原因だった
+ * (未描画=単色でも通ってしまう。下の checkUniformFillColor で条件を補う)。
+ */
+function dominantColor(image: NonNullable<BootResult['lastImage']>): DominantColor {
+  const { width, height, data } = image;
+  const counts = new Map<string, number>();
+  for (let i = 0; i < data.length; i += 4) {
+    const key = `${data[i]},${data[i + 1]},${data[i + 2]}`;
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
+  const total = width * height;
+  const sorted = [...counts.entries()].sort((a, b) => b[1] - a[1]);
+  const [rgb, count] = sorted[0] ?? ['n/a', 0];
+  return {
+    rgb,
+    count,
+    total,
+    coverage: total ? count / total : 0,
+    top5: sorted.slice(0, 5).map(([k, c]) => [k, c, (c / total).toFixed(3)]),
+  };
+}
+
+interface UniformFillCheck {
+  ok: boolean;
+  coverage: number;
+  dominantRgb: string;
+  failedConditions: string[];
+}
+
+/*
+ * Stage B(単色塗り)の判定。旧実装は「支配色が全体の95%超か」だけを見ており、
+ * これは「未描画(真っ黒)画面」が最も強く満たしてしまう条件だった
+ * (故障注入で実測済み: Stage A の画面を渡すと dominant_rgb=0,0,0 coverage=1.000 で通ってしまう)。
+ *
+ * 3条件すべてを満たさないと ok=true にならない:
+ *   1. coverage が実質100%であること(閾値0.999。0.95は緩すぎた)
+ *   2. 支配色が「未描画状態(陰性対照として渡す negativeDominantRgb)」と異なること
+ *   3. (呼び出し側で)異なる fill_color を指定した2枚の支配色が互いに異なること
+ * この関数は 1・2 を見る。3 は checkColorTracks() で見る。
+ */
+function checkUniformFillColor(dom: DominantColor, negativeDominantRgb: string): UniformFillCheck {
+  const failedConditions: string[] = [];
+  if (!(dom.coverage >= 0.999)) failedConditions.push(`coverage(${dom.coverage.toFixed(4)}) < 0.999`);
+  if (dom.rgb === negativeDominantRgb) failedConditions.push(`dominant_rgb(${dom.rgb}) が未描画状態の支配色と同一`);
+  return { ok: failedConditions.length === 0, coverage: dom.coverage, dominantRgb: dom.rgb, failedConditions };
+}
+
+/* build_stage_b.py に fill_color を渡してイメージを生成する */
+function buildStageBImage(outPath: string, fillColor: number): void {
+  execFileSync('python3', [
+    resolve(DEV_ROOT, 'tools/build_stage_b.py'),
+    outPath,
+    `0x${fillColor.toString(16).toUpperCase().padStart(4, '0')}`,
+  ]);
+}
+
 async function main(): Promise<void> {
   console.log(`WEBX68K_DIR=${WEBX68K_DIR}`);
   console.log(`POSITIVE_CONTROL_IMG=${POSITIVE_CONTROL_IMG}`);
@@ -150,26 +217,88 @@ async function main(): Promise<void> {
   const gotMessage = stageA.textLines.some((l) => l.includes('BOOT OK'));
   console.log(`RESULT: STAGE_A_BOOT_OK=${gotMessage}`);
 
+  if (!stageA.lastImage) {
+    console.log('RESULT: STAGE_B_UNIFORM_FILL=false (Stage A のフレームバッファ未取得のため陰性対照色を決定できない)');
+    process.exitCode = 1;
+    return;
+  }
+  const stageADominant = dominantColor(stageA.lastImage);
+  console.log(`stage_a: 出現頻度上位色(RGB,count,比率)=${JSON.stringify(stageADominant.top5)}`);
+
   // --- 手順4: Stage B(画面を1色で塗る) ---
   const STAGE_B_IMG = process.env.STAGE_B_IMG ?? resolve(DEV_ROOT, 'build/stage_b.xdf');
   const stageB = await bootRaw('stage_b', new Uint8Array(readFileSync(STAGE_B_IMG)), FRAMES);
   console.log(summarize(stageB));
+
+  let stageBOk = false;
   if (stageB.lastImage) {
-    const { width, height, data } = stageB.lastImage;
-    const counts = new Map<string, number>();
-    for (let i = 0; i < data.length; i += 4) {
-      const key = `${data[i]},${data[i + 1]},${data[i + 2]}`;
-      counts.set(key, (counts.get(key) ?? 0) + 1);
-    }
-    const total = width * height;
-    const sorted = [...counts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5);
-    console.log(`stage_b: framebuffer=${width}x${height} total_px=${total}`);
-    console.log(`stage_b: 出現頻度上位色(RGB,count,比率)=${JSON.stringify(sorted.map(([k, c]) => [k, c, (c / total).toFixed(3)]))}`);
-    const dominant = sorted[0];
-    const uniform = dominant && dominant[1] / total > 0.95;
-    console.log(`RESULT: STAGE_B_UNIFORM_FILL=${uniform} dominant_rgb=${dominant?.[0]} coverage=${dominant ? (dominant[1] / total).toFixed(3) : 'n/a'}`);
+    const { width, height } = stageB.lastImage;
+    const dom = dominantColor(stageB.lastImage);
+    console.log(`stage_b: framebuffer=${width}x${height} total_px=${dom.total}`);
+    console.log(`stage_b: 出現頻度上位色(RGB,count,比率)=${JSON.stringify(dom.top5)}`);
+    const check = checkUniformFillColor(dom, stageADominant.rgb);
+    stageBOk = check.ok;
+    console.log(
+      `RESULT: STAGE_B_UNIFORM_FILL=${check.ok} dominant_rgb=${check.dominantRgb} coverage=${check.coverage.toFixed(3)}` +
+        (check.ok ? '' : ` failed=${JSON.stringify(check.failedConditions)}`),
+    );
   } else {
     console.log('RESULT: STAGE_B_UNIFORM_FILL=false (フレームバッファ未取得)');
+  }
+
+  // --- 手順5: 条件3(指定色への追従) — fill_color を変えた2枚を生成して両方起動し、支配色が食い違うことを要求する ---
+  const COLOR_TRACK_1 = Number(process.env.STAGE_B_COLOR_1 ?? 0xffff);
+  const COLOR_TRACK_2 = Number(process.env.STAGE_B_COLOR_2 ?? 0x001f);
+  const colorImg1 = resolve(DEV_ROOT, 'build/stage_b_color1.xdf');
+  const colorImg2 = resolve(DEV_ROOT, 'build/stage_b_color2.xdf');
+  buildStageBImage(colorImg1, COLOR_TRACK_1);
+  buildStageBImage(colorImg2, COLOR_TRACK_2);
+  const colorTrack1 = await bootRaw('stage_b_color1', new Uint8Array(readFileSync(colorImg1)), FRAMES);
+  const colorTrack2 = await bootRaw('stage_b_color2', new Uint8Array(readFileSync(colorImg2)), FRAMES);
+
+  let colorTrackOk = false;
+  let dom1: DominantColor | null = null;
+  let dom2: DominantColor | null = null;
+  const colorTrackFailReasons: string[] = [];
+  if (colorTrack1.lastImage && colorTrack2.lastImage) {
+    dom1 = dominantColor(colorTrack1.lastImage);
+    dom2 = dominantColor(colorTrack2.lastImage);
+    const check1 = checkUniformFillColor(dom1, stageADominant.rgb);
+    const check2 = checkUniformFillColor(dom2, stageADominant.rgb);
+    if (!check1.ok) colorTrackFailReasons.push(`fill_color=0x${COLOR_TRACK_1.toString(16)}: ${check1.failedConditions.join(',')}`);
+    if (!check2.ok) colorTrackFailReasons.push(`fill_color=0x${COLOR_TRACK_2.toString(16)}: ${check2.failedConditions.join(',')}`);
+    if (dom1.rgb === dom2.rgb) colorTrackFailReasons.push(`2色の支配色が同一(${dom1.rgb})`);
+    colorTrackOk = check1.ok && check2.ok && dom1.rgb !== dom2.rgb;
+  } else {
+    colorTrackFailReasons.push('フレームバッファ未取得');
+  }
+  console.log(
+    `RESULT: STAGE_B_COLOR_TRACKS_DIFFER=${colorTrackOk} ` +
+      `color1(0x${COLOR_TRACK_1.toString(16)})=${dom1?.rgb ?? 'n/a'} ` +
+      `color2(0x${COLOR_TRACK_2.toString(16)})=${dom2?.rgb ?? 'n/a'}` +
+      (colorTrackOk ? '' : ` failed=${JSON.stringify(colorTrackFailReasons)}`),
+  );
+
+  const stageBFinal = stageBOk && colorTrackOk;
+  console.log(`RESULT: STAGE_B_PASS=${stageBFinal}`);
+
+  // --- 手順6: 検査自身の自己故障注入 — Stage A(塗り処理を持たない画面)を Stage B 判定に通し、false になることを確認する ---
+  // これは陽性対照ではない。「常に成功/失敗する検出器」で過去に空振りした実績があるため、
+  // 検査が実際に失敗を検出できることをここで確認する。
+  const selfInjectionCheck = checkUniformFillColor(stageADominant, stageADominant.rgb);
+  const selfInjectionDetected = !selfInjectionCheck.ok;
+  console.log(
+    `RESULT: SELF_FAULT_INJECTION_DETECTED=${selfInjectionDetected} ` +
+      `(Stage A の画面をStage B判定に通した結果: ok=${selfInjectionCheck.ok} failed=${JSON.stringify(selfInjectionCheck.failedConditions)})`,
+  );
+  if (!selfInjectionDetected) {
+    console.log('RESULT: CHECKER_BROKEN — 自己故障注入で false にならなかった。検査が壊れている疑いがあるためここで異常終了する。');
+    process.exitCode = 1;
+    return;
+  }
+
+  if (!stageBFinal) {
+    process.exitCode = 1;
   }
 }
 
