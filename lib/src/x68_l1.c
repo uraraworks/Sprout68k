@@ -201,6 +201,15 @@ static void fill_rectlist(const X68RectList *l, unsigned short c) {
  * ============================================================ */
 
 void x68_screen_open(void) {
+    /* キーのmake/breakはMFP割り込み経由でIOCS内部状態(BITSNS)へ反映される。
+     * 起動直後の割り込みマスクは不明(boot.S/crt0.Sのどちらも変更していない)
+     * ため、ここで明示的に解除しておく(Stage E-4実測で必須と判明した手順。
+     * docs/StageE-4_実測_20260819.md、stage_e/src/main_e4.cと同じ)。これが
+     * 無いとx68_key_down()が常に偽を返す。x68_screen_open()は入門者が最初に
+     * 必ず呼ぶ関数なので、ここに置けばサンプルコード側でアセンブラを書かずに
+     * 済む(ブロック崩し作例実装中に発見。docs/作例breakout_20260819.md参照)。 */
+    __asm__ volatile ("move.w #0x2000,%%sr" ::: "cc");
+
     x68_gvram_mode_65536_1page();
     for (unsigned long i = 0; i < (unsigned long)X68_SCREEN_W * X68_SCREEN_H; i++) {
         x68_backbuffer[i] = 0;
@@ -369,6 +378,13 @@ int x68_rgb(int r, int g, int b) {
     /* G5 R5 B5 I1(docs/lib実装_20260819.md decode16to24コメント参照)。
      * Iビットは常に1(最大輝度)。 */
     return (int)((g5 << 11) | (r5 << 6) | (b5 << 1) | 1U);
+}
+
+/* docs/API設計_20260819.md「文字」節の公開名。x68_iocs_locate(L0、実測済み。
+ * lib実装_20260819.mdで実装済み)の薄いラッパ。範囲外座標はハードウェア側が
+ * 無視するため追加のクリップはしない(Stage E-6実測)。 */
+void x68_locate(int col, int row) {
+    x68_iocs_locate(col, row);
 }
 
 void x68_screen_flip(void) {

@@ -38,6 +38,11 @@ void x68_iocs_print(const char *msg);
  * 範囲外座標はハードウェア側が無視する(実測済み。追加のクリップ不要)。 */
 void x68_iocs_locate(int col, int row);
 
+/* L1: x68_iocs_locate の薄いラッパ(lib/src/x68_l1.c)。docs/API設計_20260819.md
+ * 「文字」節の公開名。範囲外座標はハードウェア側が無視するため追加のクリップは
+ * 不要(Stage E-6で実測確定済み)。 */
+void x68_locate(int col, int row);
+
 /* IOCS $04(BITSNS)。D1.W=キーコードグループ(0〜$f)、戻り値(D0.B)=そのグループ
  * 8キー分の押下ビットパターン(1=押されている)。Stage E-4 で実測確定
  * (docs/StageE-4_実測_20260819.md)。 */
@@ -141,6 +146,23 @@ void x68_circle(int x, int y, int r, int color);
 int x68_rgb(int r, int g, int b);
 
 /* ============================================================
+ * L1(入力の学習層): x68_key_down(lib/src/x68_input.c)。
+ * L0のx68_iocs_bitsns(実装済み)の上の薄いラッパ。docs/StageE-4_実測_20260819.md
+ * で実測確定したレジスタ規約・スキャンコードを使う。
+ * ============================================================ */
+
+/* 押されている間ずっと真。範囲外のキー番号を渡しても落ちない(設計原則1)。 */
+int x68_key_down(int key);
+
+/* キー定数(スキャンコード。docs/StageE-4_実測_20260819.mdで実測確定)。
+ * X68000固有のため X68_ 接頭辞。 */
+#define X68_KEY_LEFT  0x3b
+#define X68_KEY_UP    0x3c
+#define X68_KEY_RIGHT 0x3d
+#define X68_KEY_DOWN  0x3e
+#define X68_KEY_SPACE 0x35
+
+/* ============================================================
  * 標準名の層: C 標準に同じ意味のものがあるものは、標準の名前と
  * シグネチャに合わせる(docs/API設計_20260819.md「命名規則」節)。
  * -nostdlib のフリースタンディング環境のため実装はすべて自前
@@ -156,6 +178,10 @@ int abs(int n);
 #define X68_RAND_MAX 0x7fff
 void srand(unsigned int seed);
 int rand(void);
+
+/* 0〜n-1を返す。n<=0なら0を返す(ゼロ除算で落とさない)。範囲付きの安全な
+ * 乱数は標準に無いため x68_ を付ける(docs/API設計_20260819.md「乱数」節)。 */
+int x68_rand_int(int n);
 
 /* puts: 標準と同じく、s の内容を出力した後に必ず改行を1つ追加する
  * (s 自身が改行で終わっていなくても追加する。標準Cのputsと同じ挙動)。

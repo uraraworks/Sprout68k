@@ -62,6 +62,13 @@ int rand(void) {
     return (int)((x68_rand_state >> 16) & (unsigned long)X68_RAND_MAX);
 }
 
+/* X68kDev L1(乱数の学習層): 0〜n-1を返す。n<=0ならゼロ除算(rand()%n)で
+ * 落とさず0を返す(設計原則1)。rand()の上に載せるだけの薄い実装。 */
+int x68_rand_int(int n) {
+    if (n <= 0) return 0;
+    return rand() % n;
+}
+
 /* --- puts/printf 共通: 改行を IOCS $21 が理解する CR+LF に変換して出力する ---
  * IOCS $21 のコンソールが \n 単体で行送りする保証は無いため(MS-DOS/CP/M系
  * コンソールの慣例に合わせ)、出力直前に '\n' の手前へ '\r' を補うことで
