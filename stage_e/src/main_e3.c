@@ -1,26 +1,35 @@
-/* Stage E-3 テストプログラム(C)。
+/* Stage E-3 テストプログラム(C、再測定版)。
  *
  * 目的: メインメモリ上の領域から GVRAM へ K バイト転送する間に経過した垂直同期の
  * 回数を実測し、1フレームあたりの転送スループット(バイト/フレーム)を求める。
  *
- * 垂直同期の検出方法は Stage E-2 で実測確定した MFP GPIP($00E88001) bit4 の
- * 立下りエッジ検出をそのまま使う(候補の出所は main_e2.c と同じ)。転送ループの
- * 中でエッジ検出を一緒に行うことで、転送中に何回帰線期間へ入ったかを数える
- * (転送とポーリングを同時に行える単一CPUでの素直なやり方。ポーリングの
- * オーバーヘッド自体が測定対象に含まれる点は「結果の読み方」に明記する)。
+ * 【旧版からの変更】旧main_e3.cは1ワードコピーするごとに毎回MFP GPIPを読んでいた
+ * ため、低速なI/Oバス読み出しが支配的になり「転送速度」ではなく「転送+ワード毎
+ * ポーリング」の速度を測っていた(詳細はstage_e/src/e3_copy.Sの先頭コメント、
+ * docs/StageE-2-3_実測_20260819.mdの訂正箇所を参照)。今回はポーリングを内側
+ * ループから出し(poll_interval個のコピー単位ごとに1回)、かつ転送方式を
+ * word/long/movemの3通りで比較できるようにした。実体は stage_e/src/e3_copy.S。
  *
- * 転送語数(TRANSFER_WORDS = K バイト / 2)はビルド時に -D で指定する
- * (build_stage_e3.sh が K=64/128/256/512 KB それぞれでビルドする)。
+ * 垂直同期の検出方法(MFP GPIP $E88001 bit4 の立下りエッジ)は Stage E-2 で
+ * 実測確定した内容をそのまま使う。
  *
- * 転送元(SRC)は $00020000 から最大 512KB($000A0000 まで)の固定アドレス。
- * ロードアドレス($3000 付近、本体は7セクタ以内)ともスタック($F0000, RAM_SIZE
- * =1MBの既定値)とも重ならない未使用RAM領域として選んだ(コンパイラの.bss
- * 配置に依存しないよう、通常の配列ではなく固定アドレスへの volatile ポインタで
- * 直接アクセスする)。転送元の中身(初期値)はスループット測定には無関係
- * (ワード単位のコピーは値に依存しない)なので初期化しない。
+ * ビルド時に -D で指定するマクロ:
+ *   TRANSFER_WORDS   転送する総ワード数(Kバイト/2)
+ *   TRANSFER_METHOD  0=word版、1=long版、2=movem版
+ *   POLL_INTERVAL    何コピー単位ごとに1回 MFP を読むか(単位は方式依存。
+ *                     word版=ワード数、long版=ロング数、movem版=バッチ数)
+ *   N_REPEATS        同じK バイトの転送を何回繰り返すか(1フレーム未満で終わる
+ *                     ほど速い方式・小さいKでは、垂直同期を1回数えるだけの粒度
+ *                     では量子化誤差が支配的になる(実測: movem版はK=512KBでも
+ *                     1回の転送がguestVsyncEvents=0か1にしかならず、Nを振っても
+ *                     「収束」を確認できなかった)。同じ転送をN_REPEATS回繰り返し、
+ *                     累積した垂直同期回数で割ることで量子化誤差を薄める。
+ *                     host側は total_bytes = TRANSFER_WORDS*2*N_REPEATS を
+ *                     guestVsyncEvents(累積)で割ってスループットを求める。
  *
- * 完了は DONE_FLAG(1バイト)で通知し、経過した垂直同期回数は VSYNC_COUNT
- * (32bit、host側は peekWord を2回読んで合成する)に書く。
+ * 転送元(SRC)・完了通知(DONE_FLAG)・カウンタ(VSYNC_COUNT)のアドレスは
+ * 旧main_e3.cと同じ固定アドレスを使う(build_stage_e3.shの安全域チェックも
+ * 同じ考え方を踏襲)。
  *
  * newlib は使わない。ヒープも使わない。フリースタンディング。
  */
@@ -32,7 +41,6 @@ typedef volatile unsigned long vu32;
 #define VC_R0    (*(vu8 *)0x00E82401)
 #define VC_R2    (*(vu8 *)0x00E82601)
 #define GVRAM    ((vu16 *)0x00C00000)
-#define MFP_GPIP (*(vu8 *)0x00E88001)
 
 #define SRC ((vu16 *)0x00020000)
 
@@ -42,12 +50,23 @@ typedef volatile unsigned long vu32;
 #ifndef TRANSFER_WORDS
 #error "TRANSFER_WORDS must be defined by the build script (K bytes / 2)"
 #endif
+#ifndef TRANSFER_METHOD
+#error "TRANSFER_METHOD must be defined by the build script (0=word,1=long,2=movem)"
+#endif
+#ifndef POLL_INTERVAL
+#error "POLL_INTERVAL must be defined by the build script"
+#endif
+#ifndef N_REPEATS
+#error "N_REPEATS must be defined by the build script"
+#endif
+
+extern unsigned long e3_copy_word(vu16 *dst, vu16 *src, unsigned long count_words, unsigned long poll_interval);
+extern unsigned long e3_copy_long(vu16 *dst, vu16 *src, unsigned long count_longs, unsigned long poll_interval);
+extern unsigned long e3_copy_movem(vu16 *dst, vu16 *src, unsigned long count_batches, unsigned long poll_interval);
 
 void main(void) {
-    unsigned long i;
-    unsigned long vsync_events = 0;
-    unsigned char prev;
-    unsigned char g;
+    unsigned long total_vsync_events = 0;
+    unsigned long r;
 
     /* Stage B/C/E-1 と同じレジスタ設定(実測済み): 65536色1ページモード */
     CRTC_R20 = 0x08;
@@ -57,17 +76,22 @@ void main(void) {
     DONE_FLAG = 0;
     VSYNC_COUNT = 0;
 
-    prev = (unsigned char)(MFP_GPIP & 0x10);
-    for (i = 0; i < TRANSFER_WORDS; i++) {
-        GVRAM[i] = SRC[i];
-        g = (unsigned char)(MFP_GPIP & 0x10);
-        if (prev && !g) {
-            vsync_events++;
-        }
-        prev = g;
+    /* GVRAM/SRC のポインタは毎回関数呼び出しで新規に渡す(呼び出しごとに先頭へ
+     * 巻き戻る)。GVRAM の最終的な表示内容はこの測定の関心事ではない
+     * (スループットだけを見る)ので、同じ範囲へ繰り返し書いて構わない。 */
+    for (r = 0; r < N_REPEATS; r++) {
+#if TRANSFER_METHOD == 0
+        total_vsync_events += e3_copy_word(GVRAM, SRC, TRANSFER_WORDS, POLL_INTERVAL);
+#elif TRANSFER_METHOD == 1
+        total_vsync_events += e3_copy_long(GVRAM, SRC, TRANSFER_WORDS / 2, POLL_INTERVAL);
+#elif TRANSFER_METHOD == 2
+        total_vsync_events += e3_copy_movem(GVRAM, SRC, TRANSFER_WORDS / 16, POLL_INTERVAL);
+#else
+#error "TRANSFER_METHOD must be 0, 1, or 2"
+#endif
     }
 
-    VSYNC_COUNT = vsync_events;
+    VSYNC_COUNT = total_vsync_events;
     DONE_FLAG = 1;
 
     for (;;) { }

@@ -1,25 +1,59 @@
 #!/usr/bin/env bash
-# Stage E-3(裏バッファ→GVRAM 転送速度の実測)用ビルド。crt0/IOCS スタブ・
+# Stage E-3(裏バッファ→GVRAM 転送速度の実測、再測定版)用ビルド。crt0/IOCS スタブ・
 # リンカスクリプト・ブートセクタは Stage C のものをそのまま流用する。
 #
-# 使い方: tools/build_stage_e3.sh <K_bytes> <output.xdf>
-#   K_bytes  転送するバイト数(2の倍数。例: 65536, 131072, 262144, 524288)
+# 使い方: tools/build_stage_e3.sh <K_bytes> <method:0|1|2> <poll_interval> <n_repeats> <output.xdf>
+#   K_bytes        転送するバイト数
+#   method         0=word版(MOVE.W単位) 1=long版(MOVE.L単位) 2=movem版(8ロング=32バイト単位)
+#   poll_interval  何コピー単位ごとに1回 MFP GPIP を読むか(単位は方式依存)
+#   n_repeats      同じK_bytesの転送を何回繰り返すか(垂直同期回数を積算して
+#                   量子化誤差を薄めるため。詳細はstage_e/src/main_e3.cのコメント参照)
+#
+# K_bytes は方式に応じた単位の倍数であること: word=2の倍数、long=4の倍数、
+# movem=32の倍数(8ロング分)。
 #
 # 前提: m68k-elf-gcc / m68k-elf-ld / m68k-elf-objcopy が PATH にあること。
 set -euo pipefail
 
 K_BYTES="${1:?K_bytes(転送バイト数)が必要}"
-OUT_XDF="${2:?output.xdf が必要}"
+METHOD="${2:?method(0|1|2)が必要}"
+POLL_INTERVAL="${3:?poll_intervalが必要}"
+N_REPEATS="${4:?n_repeatsが必要}"
+OUT_XDF="${5:?output.xdf が必要}"
 
+case "$METHOD" in
+  0|1|2) ;;
+  *) echo "ERROR: method は 0(word)/1(long)/2(movem) のいずれかであること(渡された値=${METHOD})" >&2; exit 1 ;;
+esac
+
+case "$METHOD" in
+  0) UNIT=2 ;;   # word: 2バイト/コピー単位
+  1) UNIT=4 ;;   # long: 4バイト/コピー単位
+  2) UNIT=32 ;;  # movem: 8ロング=32バイト/コピー単位(バッチ)
+esac
+
+if [ "$((K_BYTES % UNIT))" -ne 0 ]; then
+  echo "ERROR: K_bytes(${K_BYTES}) は method=${METHOD} のコピー単位(${UNIT}バイト)の倍数であること" >&2
+  exit 1
+fi
 if [ "$((K_BYTES % 2))" -ne 0 ]; then
   echo "ERROR: K_bytes は2の倍数であること(渡された値=${K_BYTES})" >&2
   exit 1
 fi
 TRANSFER_WORDS=$((K_BYTES / 2))
 
+if [ "$POLL_INTERVAL" -lt 1 ]; then
+  echo "ERROR: poll_interval は1以上であること" >&2
+  exit 1
+fi
+if [ "$N_REPEATS" -lt 1 ]; then
+  echo "ERROR: n_repeats は1以上であること" >&2
+  exit 1
+fi
+
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "$HERE/.." && pwd)"
-OBJDIR="$ROOT/build/stage_e3_obj_k${K_BYTES}"
+OBJDIR="$ROOT/build/stage_e3_obj_k${K_BYTES}_m${METHOD}_p${POLL_INTERVAL}_r${N_REPEATS}"
 mkdir -p "$OBJDIR"
 
 SECTOR_SIZE=1024
@@ -31,7 +65,7 @@ RAM_SIZE="${RAM_SIZE:-0x100000}"
 RAM_SIZE_DEC=$((RAM_SIZE))
 STACK_MARGIN=$((4096))
 
-# main_e3.c 内の固定アドレス(SRC/HOSTVAR)。ビルドスクリプト側でも整合を検査する。
+# main_e3.c / e3_copy.S 内の固定アドレス(SRC/HOSTVAR)。ビルドスクリプト側でも整合を検査する。
 SRC_ADDR=$((0x20000))
 HOSTVAR_DONE_ADDR=$((0xE0010))
 HOSTVAR_VSYNC_ADDR=$((0xE0014))
@@ -62,14 +96,16 @@ if [ "$SRC_END" -gt "$RAM_SIZE_DEC" ]; then
   exit 1
 fi
 
-CFLAGS=(-m68000 -Os -ffreestanding -nostdlib -fomit-frame-pointer -fno-builtin -Wall -DTRANSFER_WORDS="${TRANSFER_WORDS}")
+CFLAGS=(-m68000 -Os -ffreestanding -nostdlib -fomit-frame-pointer -fno-builtin -Wall \
+  -DTRANSFER_WORDS="${TRANSFER_WORDS}" -DTRANSFER_METHOD="${METHOD}" -DPOLL_INTERVAL="${POLL_INTERVAL}" -DN_REPEATS="${N_REPEATS}")
 
-echo "== Stage E-3 本体(C, K_BYTES=${K_BYTES}, TRANSFER_WORDS=${TRANSFER_WORDS})のビルド =="
+echo "== Stage E-3 本体(C+ASM, K_BYTES=${K_BYTES}, METHOD=${METHOD}, POLL_INTERVAL=${POLL_INTERVAL}, N_REPEATS=${N_REPEATS}, TRANSFER_WORDS=${TRANSFER_WORDS})のビルド =="
 m68k-elf-gcc "${CFLAGS[@]}" -c "$ROOT/stage_e/src/main_e3.c" -o "$OBJDIR/main.o"
+m68k-elf-gcc -x assembler-with-cpp -m68000 -c "$ROOT/stage_e/src/e3_copy.S" -o "$OBJDIR/e3_copy.o"
 m68k-elf-gcc -x assembler-with-cpp -m68000 -DSTACK_ADDR="${STACK_ADDR}" -c "$ROOT/stage_c/crt0/crt0.S" -o "$OBJDIR/crt0.o"
 m68k-elf-gcc -x assembler-with-cpp -m68000 -c "$ROOT/stage_c/crt0/iocs.S" -o "$OBJDIR/iocs.o"
 m68k-elf-ld -T "$ROOT/stage_c/crt0/linker.ld" -o "$OBJDIR/stage_e3.elf" \
-  "$OBJDIR/crt0.o" "$OBJDIR/iocs.o" "$OBJDIR/main.o"
+  "$OBJDIR/crt0.o" "$OBJDIR/iocs.o" "$OBJDIR/main.o" "$OBJDIR/e3_copy.o"
 m68k-elf-objcopy -O binary "$OBJDIR/stage_e3.elf" "$OBJDIR/stage_e3.bin"
 
 BODY_SIZE=$(wc -c < "$OBJDIR/stage_e3.bin" | tr -d ' ')
