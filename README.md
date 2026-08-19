@@ -262,3 +262,8 @@ $B000に到達し、下方向に伸びるスタックと衝突する)だった�
   gcc/binutilsのバージョンとconfigureオプションの調査結果
 - `verify/verify.mts` — Node から px68k コアを直接回し、陽性/陰性対照とStage A/B/C/Dを実測する
 - `build/` — 生成物置き場(gitignore対象。スクリプトで再生成できる)
+
+## 次の段階: 学習用 API
+
+学習用 API の第一版設計と、その前に必要な実測項目(Stage E)は
+[`docs/API設計_20260819.md`](docs/API設計_20260819.md) を参照。
