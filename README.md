@@ -267,3 +267,9 @@ $B000に到達し、下方向に伸びるスタックと衝突する)だった�
 
 学習用 API の第一版設計と、その前に必要な実測項目(Stage E)は
 [`docs/API設計_20260819.md`](docs/API設計_20260819.md) を参照。
+**Stage E は全項目(E-1〜E-6)の実測が完了した。** 各実測資料:
+[`docs/StageE-1_実測_20260819.md`](docs/StageE-1_実測_20260819.md)、
+[`docs/StageE-2-3_実測_20260819.md`](docs/StageE-2-3_実測_20260819.md)、
+[`docs/StageE-4_実測_20260819.md`](docs/StageE-4_実測_20260819.md)、
+[`docs/StageE-5_実測_20260819.md`](docs/StageE-5_実測_20260819.md)、
+[`docs/StageE-6_実測_20260819.md`](docs/StageE-6_実測_20260819.md)。
