@@ -19,12 +19,21 @@ mkdir -p "$OBJDIR"
 
 SECTOR_SIZE=1024
 TOTAL_SECTORS=1232
+LOAD_ADDR=$((0x3000))
+# スタックは本体ロードアドレス($3000)から十分離れた固定アドレス。
+# 検証ハーネス(verify/verify.mts)が px68k に設定する px68k_ramsize=2MB(=0x200000バイト)の
+# 範囲内に収める(2026-08-19: 旧 $B000 は本体が32KB以上になるとロード先と衝突していた不具合の修正。
+# 環境変数 STACK_ADDR で上書き可能。切り分け実験用)。
+STACK_ADDR="${STACK_ADDR:-0x1F0000}"
+STACK_ADDR_DEC=$((STACK_ADDR)) # bash 3.2(macOS既定)の `[` は0x接頭辞を認識しないため10進化しておく
+RAM_SIZE=$((0x200000))
+STACK_MARGIN=$((4096)) # ロード末尾とスタックの間に最低限空ける余白
 
 CFLAGS=(-m68000 -Os -ffreestanding -nostdlib -fomit-frame-pointer -fno-builtin -Wall)
 
 echo "== Stage C 本体(C)のビルド(fill_color=${FILL_COLOR}) =="
 m68k-elf-gcc "${CFLAGS[@]}" -DFILL_COLOR="${FILL_COLOR}" -c "$ROOT/stage_c/src/main.c" -o "$OBJDIR/main.o"
-m68k-elf-gcc -x assembler-with-cpp -m68000 -c "$ROOT/stage_c/crt0/crt0.S" -o "$OBJDIR/crt0.o"
+m68k-elf-gcc -x assembler-with-cpp -m68000 -DSTACK_ADDR="${STACK_ADDR}" -c "$ROOT/stage_c/crt0/crt0.S" -o "$OBJDIR/crt0.o"
 m68k-elf-gcc -x assembler-with-cpp -m68000 -c "$ROOT/stage_c/crt0/iocs.S" -o "$OBJDIR/iocs.o"
 m68k-elf-ld -T "$ROOT/stage_c/crt0/linker.ld" -o "$OBJDIR/stage_c.elf" "$OBJDIR/crt0.o" "$OBJDIR/iocs.o" "$OBJDIR/main.o"
 m68k-elf-objcopy -O binary "$OBJDIR/stage_c.elf" "$OBJDIR/stage_c.bin"
@@ -41,8 +50,19 @@ if [ "$SECTOR_COUNT" -gt 7 ]; then
   exit 1
 fi
 
-echo "== ブートセクタのビルド(SECTOR_COUNT=${SECTOR_COUNT}) =="
-m68k-elf-gcc -x assembler-with-cpp -m68000 -DSECTOR_COUNT="${SECTOR_COUNT}" -c "$ROOT/stage_c/boot/boot.S" -o "$OBJDIR/boot.o"
+# 本体末尾($3000+BODY_SIZE)とスタック(STACK_ADDR)が衝突しないことをビルド時に検査する。
+BODY_END=$((LOAD_ADDR + BODY_SIZE))
+if [ "$((BODY_END + STACK_MARGIN))" -gt "$STACK_ADDR_DEC" ]; then
+  printf 'ERROR: 本体末尾(0x%X)がスタック(STACK_ADDR=0x%X, margin=%dバイト)と衝突する\n' "$BODY_END" "$STACK_ADDR_DEC" "$STACK_MARGIN" >&2
+  exit 1
+fi
+if [ "$STACK_ADDR_DEC" -ge "$RAM_SIZE" ]; then
+  printf 'ERROR: STACK_ADDR(0x%X)が設定RAMサイズ(0x%X)を超えている\n' "$STACK_ADDR" "$RAM_SIZE" >&2
+  exit 1
+fi
+
+echo "== ブートセクタのビルド(SECTOR_COUNT=${SECTOR_COUNT}, STACK_ADDR=${STACK_ADDR}) =="
+m68k-elf-gcc -x assembler-with-cpp -m68000 -DSECTOR_COUNT="${SECTOR_COUNT}" -DSTACK_ADDR="${STACK_ADDR}" -c "$ROOT/stage_c/boot/boot.S" -o "$OBJDIR/boot.o"
 cat > "$OBJDIR/boot_link.ld" <<'EOF'
 SECTIONS { . = 0x0; .text : { *(.text) *(.rodata) *(.data) } }
 EOF

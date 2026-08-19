@@ -20,14 +20,22 @@
  * このブートセクタは、ボディ本体のセクタ数(SECTOR_COUNT)をビルド時にアセンブラの
  * -D で埋め込み、track0/side0/sector2 から連続 SECTOR_COUNT セクタぶんを $3000 へ
  * 読み込んでから JMP する。エラー時は文字列を表示して停止する。
+ *
+ * スタックは STACK_ADDR(ビルドスクリプトが -D で埋め込む固定アドレス)に置く。
+ * 2026-08-19: 旧 $B000 は本体サイズが32KB以上になると読み込み先($3000〜)と衝突し
+ * 起動が壊れる不具合があった(詳細は tools/build_stage_c.sh のチェックと
+ * docs/toolchain調査.md を参照)。
  */
+#ifndef STACK_ADDR
+#error "STACK_ADDR must be defined by the build script (-DSTACK_ADDR=...)"
+#endif
     .globl  _start
     .text
 _start:
     bra.s   1f
     .ascii  "X68DEVC0"
 1:
-    lea     0xB000,%a7
+    lea     STACK_ADDR,%a7
 
     move.l  #0x00009070,%d1        /* PDA=$90(FDD0), mode=$70(MFM+retry+seek) */
     move.l  #0x03000002,%d2        /* セクタ長コード3, track0,side0,sector2 */

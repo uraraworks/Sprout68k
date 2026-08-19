@@ -30,12 +30,18 @@ if (!POSITIVE_CONTROL_IMG) {
 const STAGE_A_IMG = process.env.STAGE_A_IMG ?? resolve(DEV_ROOT, 'build/stage_a.xdf');
 const ZERO_IMG = process.env.ZERO_IMG ?? resolve(DEV_ROOT, 'build/zero.xdf');
 
-/* 自前タイムアウト: JS側のフレームループが長時間ハングしたら例外で止める */
-const DEADLINE_MS = 45_000;
-function makeDeadline(label: string): () => void {
+/* 自前タイムアウト: JS側のフレームループが長時間ハングしたら例外で止める。
+ * Stage D の大サイズ本体(977/1231セクタ)は1セクタずつのループで数万フレーム
+ * かかる(実測: 1フレームあたり約10ms)。frameCount に応じて予算を伸ばし、
+ * それでも実行時間に対して十分小さい下限(45秒)は確保する(=真にハングした場合は
+ * 検出できる)。 */
+const DEADLINE_BASE_MS = 45_000;
+const DEADLINE_MS_PER_FRAME = 20; // 実測(10ms/frame)の2倍を安全マージンとして確保
+function makeDeadline(label: string, frameCount: number): () => void {
   const start = Date.now();
+  const deadlineMs = Math.max(DEADLINE_BASE_MS, frameCount * DEADLINE_MS_PER_FRAME);
   return () => {
-    if (Date.now() - start > DEADLINE_MS) throw new Error(`${label}: ${DEADLINE_MS}ms タイムアウト`);
+    if (Date.now() - start > deadlineMs) throw new Error(`${label}: ${deadlineMs}ms タイムアウト(frameCount=${frameCount})`);
   };
 }
 
@@ -93,7 +99,7 @@ async function bootRaw(label: string, diskBytes: Uint8Array, frameCount: number)
   if (!host.loadGame('/game/boot.cmd')) throw new Error(`${label}: loadGame失敗`);
   host.fetchAvInfo();
 
-  const checkDeadline = makeDeadline(label);
+  const checkDeadline = makeDeadline(label, frameCount);
   let fddReadFrames = 0;
   for (let i = 0; i < frameCount; i++) {
     host.runFrame();
@@ -414,25 +420,38 @@ async function main(): Promise<void> {
   }
 
   const STAGE_D_FRAMES = Number(process.env.STAGE_D_FRAMES ?? FRAMES);
+  // 977セクタ(約1MB)・1231セクタ(ディスク全体、本体が取り得る最大)は1セクタずつ
+  // ループで読むため大量のTRAP呼び出しが必要になり、既定のSTAGE_D_FRAMESでは
+  // ロード完了前にフレーム数が尽きる。実測(2026-08-19)で977セクタ=約30000フレーム、
+  // 1231セクタ=約38000フレームで完了することを確認した上でこの既定値にしている。
+  const STAGE_D_LARGE_FRAMES = Number(process.env.STAGE_D_LARGE_FRAMES ?? 40000);
+  // 256KB(257セクタ)は既定のSTAGE_D_FRAMES(=FRAMESの既定3000)では足りない
+  // (実測: 8000フレームで完了)。977/1231セクタほどではないので中間の予算を用意する。
+  const STAGE_D_MEDIUM_FRAMES = Number(process.env.STAGE_D_MEDIUM_FRAMES ?? 12000);
 
-  // 4サイズでの実測(要件どおり)。track2以降へ読み進める32KB/256KB構成は、
-  // 本ローダの既知の未解決バグ(boot.S冒頭コメント参照)により失敗する見込み。
-  // 判定条件は緩めない: LOAD OK が実際に出力された場合のみ ok=true とする。
+  // 2026-08-19: 「32KB/256KB以上で失敗する」は交絡だったと判明(詳細は
+  // stage_d/boot/boot.S 冒頭コメントの訂正、および docs/toolchain調査.md 参照)。
+  // 真因は本体ロードアドレス($3000)と旧スタックアドレス($B000)の衝突で、
+  // 本体が使える領域(32,768バイト)をちょうど使い切るサイズで壊れていた。
+  // スタックを STACK_ADDR($1F0000)へ移すことで解消したため、ここではディスク全体
+  // (1231セクタ)まで含めて実測する。判定条件は緩めない: LOAD OK が実際に
+  // 出力された場合のみ ok=true とする。
   const dSmall = await runStageDCase('small_7168', 6000, 0, STAGE_D_FRAMES); // 7168バイト以下(退行チェック)
   const dSide = await runStageDCase('side_cross', 10000, 0, STAGE_D_FRAMES); // 8192バイト超(side境界またぎ)
-  const d32k = await runStageDCase('32k', 32000, 0, STAGE_D_FRAMES); // 約32KB(track2到達。既知バグで失敗見込み)
-  const d256k = await runStageDCase('256k', 262144, 0, STAGE_D_FRAMES); // 256KB以上(既知バグで失敗見込み)
+  const d32k = await runStageDCase('32k', 32000, 0, STAGE_D_FRAMES); // 約32KB(旧スタック衝突点。修正の直接確認)
+  const d256k = await runStageDCase('256k', 262144, 0, STAGE_D_MEDIUM_FRAMES); // 256KB以上
+  const d1mb = await runStageDCase('near_1mb', 1000000, 0, STAGE_D_LARGE_FRAMES); // 約1MB(977セクタ)
+  const dMax = await runStageDCase('disk_max', 1260000, 0, STAGE_D_LARGE_FRAMES); // 1231セクタ = 本体が取り得る最大(ディスク全体)
 
-  // 要件は4サイズすべてのPASSを求めている。32k/256kは既知の未解決バグでFAILする見込みだが、
-  // ここで基準を緩めて「2サイズ通ればOK」とはしない(判定条件を緩めてPASSにする行為は禁止)。
   const stageDAllSizesOk = dSmall.matched && dSmall.ok && dSide.matched && dSide.ok
-    && d32k.matched && d32k.ok && d256k.matched && d256k.ok;
+    && d32k.matched && d32k.ok && d256k.matched && d256k.ok
+    && d1mb.matched && d1mb.ok && dMax.matched && dMax.ok;
   console.log(
     `RESULT: STAGE_D_SIZES_SUMMARY small=${dSmall.matched && dSmall.ok} side_cross=${dSide.matched && dSide.ok} ` +
-      `32k=${d32k.matched && d32k.ok} 256k=${d256k.matched && d256k.ok}`,
+      `32k=${d32k.matched && d32k.ok} 256k=${d256k.matched && d256k.ok} near_1mb=${d1mb.matched && d1mb.ok} disk_max=${dMax.matched && dMax.ok}`,
   );
 
-  // --- 自己故障注入: track境界をまたがない安全な範囲(20000バイトパターン=25セクタ)で、
+  // --- 自己故障注入(中規模): track境界をまたがない安全な範囲(20000バイトパターン=25セクタ)で、
   // ローダに読ませるセクタ数を実際より1つ少なく指定し、チェックサム判定がNGになることを確認する ---
   const dFaultInjection = await runStageDCase('fault_injection', 20000, 1, STAGE_D_FRAMES);
   const faultInjectionDetected = dFaultInjection.matched && !dFaultInjection.ok;
@@ -450,14 +469,27 @@ async function main(): Promise<void> {
   const dFaultControl = await runStageDCase('fault_control', 20000, 0, STAGE_D_FRAMES);
   console.log(`RESULT: STAGE_D_FAULT_CONTROL_OK=${dFaultControl.matched && dFaultControl.ok}`);
 
+  // --- 自己故障注入(新しい最大サイズ付近): 小サイズだけで検出できても大サイズで検査が
+  // 効いている証明にはならないため、1231セクタ(ディスク全体)付近でも同じ検査をする ---
+  const dFaultInjectionMax = await runStageDCase('fault_injection_max', 1260000, 1, STAGE_D_LARGE_FRAMES);
+  const faultInjectionMaxDetected = dFaultInjectionMax.matched && !dFaultInjectionMax.ok;
+  console.log(
+    `RESULT: STAGE_D_SELF_FAULT_INJECTION_MAX_DETECTED=${faultInjectionMaxDetected} ` +
+      `(最大サイズ付近で1セクタ少なく読ませた結果: matched=${dFaultInjectionMax.matched} ok=${dFaultInjectionMax.ok})`,
+  );
+  if (!faultInjectionMaxDetected) {
+    console.log('RESULT: STAGE_D_CHECKER_BROKEN_AT_MAX — 最大サイズ付近で1セクタ少なく読ませてもNGにならなかった(またはクラッシュした)。検査が壊れている疑いがあるためここで異常終了する。');
+    process.exitCode = 1;
+    return;
+  }
+
   // メカニズム自体(小サイズ読み込み・side境界またぎ・故障注入検出)が機能しているかと、
-  // 4サイズ要件を満たしたかは別々に報告する。STAGE_D_PASSは4サイズ要件を含む全体判定であり、
-  // 32k/256kがFAILである限りfalseになる(既知の未解決バグのため、現状は必ずfalseになる)。
+  // 6サイズ要件を満たしたかは別々に報告する。
   const stageDMechanismOk = dSmall.matched && dSmall.ok && dSide.matched && dSide.ok
-    && faultInjectionDetected && dFaultControl.matched && dFaultControl.ok;
-  console.log(`RESULT: STAGE_D_MECHANISM_OK=${stageDMechanismOk} (小サイズ読み込み・side境界またぎ・故障注入検出のみの判定。32k/256kは含まない)`);
-  const stageDPass = stageDAllSizesOk && faultInjectionDetected && dFaultControl.matched && dFaultControl.ok;
-  console.log(`RESULT: STAGE_D_PASS=${stageDPass} (4サイズ要件すべてを含む全体判定。32k/256kは既知の未解決バグにより現状FAILする)`);
+    && faultInjectionDetected && dFaultControl.matched && dFaultControl.ok && faultInjectionMaxDetected;
+  console.log(`RESULT: STAGE_D_MECHANISM_OK=${stageDMechanismOk} (小サイズ読み込み・side境界またぎ・故障注入検出(中規模+最大サイズ付近)のみの判定)`);
+  const stageDPass = stageDAllSizesOk && faultInjectionDetected && dFaultControl.matched && dFaultControl.ok && faultInjectionMaxDetected;
+  console.log(`RESULT: STAGE_D_PASS=${stageDPass} (6サイズ要件+最大サイズ付近の故障注入検出を含む全体判定)`);
 
   if (!stageBFinal || !stageCFinal || !stageDPass) {
     process.exitCode = 1;
