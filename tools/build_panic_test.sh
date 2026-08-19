@@ -10,6 +10,9 @@
 #                 no_install     ハンドラを差し替えない(パニック画面が出ない)
 #                 same_message   3種すべて同じメッセージを出す(弁別できない)
 #                 pc_zero        PCの値を常に0で表示する
+#                 no_mode_restore 65536色グラフィックモードを解除しない
+#                                 (テキストがフレームバッファに出ない。
+#                                 docs/パニック画面_20260820.md参照)
 #   mode:       省略時0。0=例外を起こす(陽性)。1=起こさない(陰性対照)
 #   exc_type:   省略時4(不正命令)。mode=0のときだけ意味を持つ。
 #               2=バスエラー 3=アドレスエラー 4=不正命令 5=ゼロ除算
@@ -52,6 +55,7 @@ case "$FAULT" in
   no_install) FAULT_DEFINE=(-DX68_FAULT_PANIC_NO_INSTALL) ;;
   same_message) FAULT_DEFINE=(-DX68_FAULT_PANIC_SAME_MESSAGE) ;;
   pc_zero) FAULT_DEFINE=(-DX68_FAULT_PANIC_PC_ZERO) ;;
+  no_mode_restore) FAULT_DEFINE=(-DX68_FAULT_PANIC_NO_MODE_RESTORE) ;;
   *) echo "ERROR: 未知のfault指定: ${FAULT}" >&2; exit 1 ;;
 esac
 if [ -n "$FAULT" ]; then

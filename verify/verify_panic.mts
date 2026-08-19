@@ -95,11 +95,58 @@ const CORE_OPTIONS_USED = {
   px68k_no_wait_mode: 'enabled',
 };
 
+/* --- フレームバッファ上での可視性判定 ---
+ * 【重要な罠(2026-08-20、並行実測 docs/重なり実測_20260820.md により発覚)】
+ * 65536色グラフィックモードが有効な間、その512ドット幅の範囲(x=0〜511)では
+ * テキストがText VRAMには正しく書き込まれてもフレームバッファには一切
+ * 現れない(モードレベルの排他。ピクセル単位の合成ではない)。
+ * host.readTextScreen()はText VRAMを直接読む経路であり、この排他を
+ * 経由しないため、**readTextScreen()だけでは「実際に画面に見えているか」を
+ * 検証できない**(グラフィックモードを解除し忘れても検査が空振りでPASS
+ * してしまう)。このため本検証では、実際にレンダリングされたcanvas
+ * (putImageDataで捕まえる、verify_l1.mts/verify_breakout.mts/
+ * verify_overlay.mtsと同じ経路)上で「背景色から実際に変化した画素が
+ * 一定数以上あるか」を主要な合格条件にする。 */
+interface Image { width: number; height: number; data: Uint8ClampedArray; }
+
+/* メッセージが表示される左上矩形(x:0-260,y:0-48。3行ぶん、96桁x32行の
+ * テキスト座標系で桁0〜32・行0〜2相当)を、遠く離れた基準画素(x=450,y=350。
+ * どのメッセージも到達しない領域)と比較する。RGB距離が閾値を超える画素の
+ * 個数を返す(verify_l1.mts等のPIXEL_DIST_THRESHOLD=90より緩い40を使う。
+ * 文字の輪郭は背景と完全な二値ではなくアンチエイリアシング相当のにじみを
+ * 持ちうるため、実測(diffCount=1151 vs 0)を踏まえて検出感度を優先した)。 */
+const TEXT_REGION = { x0: 0, y0: 0, x1: 260, y1: 48 };
+const TEXT_REF_POINT = { x: 450, y: 350 };
+const TEXT_VISIBLE_DIST_THRESHOLD = 40;
+const TEXT_VISIBLE_MIN_DIFF_PIXELS = 50; // 実測(no_mode_restoreで0、通常で1000超)を踏まえた閾値
+
+function samplePixel(img: Image, x: number, y: number): [number, number, number] {
+  const idx = (y * img.width + x) * 4;
+  return [img.data[idx], img.data[idx + 1], img.data[idx + 2]];
+}
+
+function textVisibleInFramebuffer(img: Image | null): { visible: boolean; diffCount: number } {
+  if (!img || img.width <= TEXT_REF_POINT.x || img.height <= TEXT_REF_POINT.y) {
+    return { visible: false, diffCount: 0 };
+  }
+  const ref = samplePixel(img, TEXT_REF_POINT.x, TEXT_REF_POINT.y);
+  let diffCount = 0;
+  for (let y = TEXT_REGION.y0; y < TEXT_REGION.y1 && y < img.height; y++) {
+    for (let x = TEXT_REGION.x0; x < TEXT_REGION.x1 && x < img.width; x++) {
+      const [r, g, b] = samplePixel(img, x, y);
+      const dr = r - ref[0], dg = g - ref[1], db = b - ref[2];
+      if (Math.sqrt(dr * dr + dg * dg + db * db) > TEXT_VISIBLE_DIST_THRESHOLD) diffCount++;
+    }
+  }
+  return { visible: diffCount >= TEXT_VISIBLE_MIN_DIFF_PIXELS, diffCount };
+}
+
 interface Session {
   runFrame(): void;
   peekByteAt(addr: number): number;
   peekU32(addr: number): number;
   readTextLines(): string[];
+  lastImage(): Image | null;
   dispose(): void;
 }
 
@@ -107,13 +154,16 @@ async function bootSession(label: string, diskBytes: Uint8Array): Promise<Sessio
   const { LibretroHost } = await import(pathToFileURL(resolve(WEBX68K_DIR, 'src/libretro-host.ts')).href);
 
   (globalThis as any).window = { PX68K: loadFactory() };
+  let lastImg: Image | null = null;
   const context = {
     createImageData(width: number, height: number) {
       const w = Math.max(0, width | 0);
       const h = Math.max(0, height | 0);
       return { width: w, height: h, data: new Uint8ClampedArray(w * h * 4) };
     },
-    putImageData() {},
+    putImageData(img: any) {
+      if (img && img.width > 0 && img.height > 0) lastImg = img;
+    },
   };
   const canvas = { width: 0, height: 0, getContext: () => context } as any;
 
@@ -125,6 +175,7 @@ async function bootSession(label: string, diskBytes: Uint8Array): Promise<Sessio
   const diskPath = host.writeDiskImage(`fdd0_${label}.xdf`, diskBytes);
   host.writeFile('/game/boot.cmd', new TextEncoder().encode(`px68k "${diskPath}" ""\n`));
   if (!host.loadGame('/game/boot.cmd')) throw new Error(`${label}: loadGame失敗`);
+  host.fetchAvInfo();
 
   return {
     runFrame() { host.runFrame(); },
@@ -138,6 +189,7 @@ async function bootSession(label: string, diskBytes: Uint8Array): Promise<Sessio
       const dump = host.readTextScreen();
       return (dump.lines as string[]).filter((l: string) => l.trim());
     },
+    lastImage() { return lastImg; },
     dispose() { host.dispose(); },
   };
 }
@@ -156,6 +208,8 @@ interface RunResult {
   framesRun: number;
   timedOut: boolean;
   textLines: string[];
+  fbVisible: boolean;
+  fbDiffCount: number;
 }
 
 /* HV4_ALIVEが立つのを待ち、その後 EXTRA_FRAMES_AFTER_ALIVE フレームだけ
@@ -187,8 +241,9 @@ async function runAndMeasure(label: string, diskBytes: Uint8Array): Promise<RunR
   const doneSeen = session.peekU32(HV4_DONE) === HV4_DONE_MAGIC;
   const returnedSeen = session.peekByteAt(HV4_RETURNED) === 1;
   const textLines = session.readTextLines();
+  const { visible: fbVisible, diffCount: fbDiffCount } = textVisibleInFramebuffer(session.lastImage());
   session.dispose();
-  return { aliveSeen, doneSeen, returnedSeen, framesRun, timedOut, textLines };
+  return { aliveSeen, doneSeen, returnedSeen, framesRun, timedOut, textLines, fbVisible, fbDiffCount };
 }
 
 async function runBuild(label: string, fault: string, mode: 0 | 1, excType: number, pad: number): Promise<RunResult> {
@@ -245,8 +300,12 @@ async function main(): Promise<void> {
     const expectOk = found.length === 1 && found[0] === t;
     positivePc[t] = pc;
     positiveTextsFound[t] = found;
-    const ok = r.aliveSeen && !r.timedOut && !r.returnedSeen && !r.doneSeen && expectOk && pc !== undefined && stopOk;
-    console.log(`RESULT: PANIC_POSITIVE type=${EXC_NAMES[t]} aliveSeen=${r.aliveSeen} timedOut=${r.timedOut} returnedSeen=${r.returnedSeen} doneSeen=${r.doneSeen} foundTypes=${JSON.stringify(found)} pc=${pc !== undefined ? '0x' + pc.toString(16) : 'undefined'} stopOk=${stopOk} ok=${ok}`);
+    // 【重要】readTextScreen()(Text VRAM直読み)だけでなく、実際に
+    // レンダリングされたcanvas上で文字が見えているか(r.fbVisible)も
+    // 合格条件に含める。65536色グラフィックモードがテキストを隠す罠
+    // (docs/重なり実測_20260820.md)を検査自体が踏んでいないことの担保。
+    const ok = r.aliveSeen && !r.timedOut && !r.returnedSeen && !r.doneSeen && expectOk && pc !== undefined && stopOk && r.fbVisible;
+    console.log(`RESULT: PANIC_POSITIVE type=${EXC_NAMES[t]} aliveSeen=${r.aliveSeen} timedOut=${r.timedOut} returnedSeen=${r.returnedSeen} doneSeen=${r.doneSeen} foundTypes=${JSON.stringify(found)} pc=${pc !== undefined ? '0x' + pc.toString(16) : 'undefined'} stopOk=${stopOk} fbVisible=${r.fbVisible}(diffCount=${r.fbDiffCount}) ok=${ok}`);
     console.log(`RESULT: PANIC_POSITIVE_TEXTLINES type=${EXC_NAMES[t]} textLines=${JSON.stringify(r.textLines)}`);
     if (!ok) fail(`陽性テスト(${EXC_NAMES[t]})が不合格`);
   }
@@ -284,8 +343,8 @@ async function main(): Promise<void> {
   console.log(`RESULT: PANIC_NEGATIVE_CONTROL_ALL_OK=${negControlOk}`);
   if (!negControlOk) fail('陰性対照(例外を起こさない実行)でパニック画面相当の兆候が出た、または正常終了に到達しなかった');
 
-  /* ---- 手順5: 故障注入(3件、それぞれ実際にFAILすることを確認) ---- */
-  console.log('--- 手順5: 故障注入(3件、それぞれ検査が実際にFAILすることを確認) ---');
+  /* ---- 手順5: 故障注入(4件、それぞれ実際にFAILすることを確認) ---- */
+  console.log('--- 手順5: 故障注入(4件、それぞれ検査が実際にFAILすることを確認) ---');
   let faultInjectionOk = true;
 
   // 故障1: no_install(ハンドラを差し替えない) → パニック画面が出ずFAILするはず
@@ -325,6 +384,24 @@ async function main(): Promise<void> {
     faultInjectionOk = faultInjectionOk && detectionFailedAsExpected;
     console.log(`RESULT: PANIC_FAULT_PC_ZERO pc=${pc !== undefined ? '0x' + pc.toString(16) : 'undefined'} detectionFailedAsExpected=${detectionFailedAsExpected}`);
     if (!detectionFailedAsExpected) fail('故障注入pc_zeroで、壊れているのにPCが非ゼロのまま表示された(検査が空振り)');
+  }
+
+  // 故障4(2026-08-20追加): no_mode_restore(65536色グラフィックモードを
+  // 解除しない) → readTextScreen()にはメッセージが出るが、実際に
+  // レンダリングされたフレームバッファには出ないため、
+  // 「フレームバッファ上で見えること」検査(手順1に組み込んだr.fbVisible)が
+  // FAILするはず。これがまさに並行実測(docs/重なり実測_20260820.md)で
+  // 見つかった落とし穴そのものであり、readTextScreen()だけの検査では
+  // この故障を検出できない(空振りする)ことを確かめるのが目的。
+  {
+    const r = await runBuild('fault_no_mode_restore', 'no_mode_restore', 0, 4, 0);
+    const found = hasAnyExpectedText(r.textLines);
+    const textVramStillHasMessage = found.length === 1 && found[0] === 4; // Text VRAM経路(readTextScreen)には出ている
+    const detectionFailedAsExpected = !r.fbVisible; // フレームバッファには出ていない(=検査がFAILする状況を検出)
+    faultInjectionOk = faultInjectionOk && detectionFailedAsExpected;
+    console.log(`RESULT: PANIC_FAULT_NO_MODE_RESTORE textVramStillHasMessage=${textVramStillHasMessage} fbVisible=${r.fbVisible}(diffCount=${r.fbDiffCount}) detectionFailedAsExpected=${detectionFailedAsExpected}`);
+    if (!textVramStillHasMessage) fail('故障注入no_mode_restoreで、前提(Text VRAMにはメッセージが書かれているはず)が崩れた');
+    if (!detectionFailedAsExpected) fail('故障注入no_mode_restoreで、グラフィックモードを解除していないのにフレームバッファ上で文字が見えてしまった(検査が空振り)');
   }
 
   console.log(`RESULT: PANIC_FAULT_INJECTION_ALL_DETECTED=${faultInjectionOk}`);
