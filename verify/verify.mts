@@ -365,7 +365,101 @@ async function main(): Promise<void> {
     return;
   }
 
-  if (!stageBFinal || !stageCFinal) {
+  // === Stage D: track/sideをまたぐ複数セクタ読み込み(既知パターン配列のチェックサム+番兵検査) ===
+  // ビルド定義: stage_d/boot/boot.S, stage_d/crt0/linker.ld(stage_c/crt0/{crt0.S,iocs.S}を共用),
+  // stage_d/src/{main.c,pattern_data.S}, tools/gen_pattern.py, tools/build_stage_d.sh
+  console.log('--- Stage D ---');
+
+  function buildStageDImage(outPath: string, patternBytes: number, deficit = 0): void {
+    execFileSync('bash', [
+      resolve(DEV_ROOT, 'tools/build_stage_d.sh'),
+      String(patternBytes),
+      outPath,
+      String(deficit),
+    ], { cwd: DEV_ROOT });
+  }
+
+  interface LoadResult {
+    matched: boolean;
+    ok: boolean;
+    checksum: string;
+    sentinel: string;
+  }
+
+  function parseLoadResult(textLines: string[]): LoadResult {
+    for (const line of textLines) {
+      const m = line.match(/LOAD (OK|NG) ([0-9A-Fa-f]{8}) ([0-9A-Fa-f]{8})/);
+      if (m) {
+        return { matched: true, ok: m[1] === 'OK', checksum: m[2], sentinel: m[3] };
+      }
+    }
+    return { matched: false, ok: false, checksum: 'n/a', sentinel: 'n/a' };
+  }
+
+  async function runStageDCase(
+    label: string,
+    patternBytes: number,
+    deficit: number,
+    frames: number,
+  ): Promise<LoadResult & { label: string }> {
+    const img = resolve(DEV_ROOT, `build/stage_d_${label}.xdf`);
+    buildStageDImage(img, patternBytes, deficit);
+    const result = await bootRaw(`stage_d_${label}`, new Uint8Array(readFileSync(img)), frames);
+    const parsed = parseLoadResult(result.textLines);
+    console.log(
+      `RESULT: STAGE_D_${label.toUpperCase()}=${parsed.matched ? (parsed.ok ? 'OK' : 'NG') : 'CRASH_OR_NO_OUTPUT'} ` +
+        `checksum=${parsed.checksum} sentinel=${parsed.sentinel} textLines=${JSON.stringify(result.textLines)}`,
+    );
+    return { ...parsed, label };
+  }
+
+  const STAGE_D_FRAMES = Number(process.env.STAGE_D_FRAMES ?? FRAMES);
+
+  // 4サイズでの実測(要件どおり)。track2以降へ読み進める32KB/256KB構成は、
+  // 本ローダの既知の未解決バグ(boot.S冒頭コメント参照)により失敗する見込み。
+  // 判定条件は緩めない: LOAD OK が実際に出力された場合のみ ok=true とする。
+  const dSmall = await runStageDCase('small_7168', 6000, 0, STAGE_D_FRAMES); // 7168バイト以下(退行チェック)
+  const dSide = await runStageDCase('side_cross', 10000, 0, STAGE_D_FRAMES); // 8192バイト超(side境界またぎ)
+  const d32k = await runStageDCase('32k', 32000, 0, STAGE_D_FRAMES); // 約32KB(track2到達。既知バグで失敗見込み)
+  const d256k = await runStageDCase('256k', 262144, 0, STAGE_D_FRAMES); // 256KB以上(既知バグで失敗見込み)
+
+  // 要件は4サイズすべてのPASSを求めている。32k/256kは既知の未解決バグでFAILする見込みだが、
+  // ここで基準を緩めて「2サイズ通ればOK」とはしない(判定条件を緩めてPASSにする行為は禁止)。
+  const stageDAllSizesOk = dSmall.matched && dSmall.ok && dSide.matched && dSide.ok
+    && d32k.matched && d32k.ok && d256k.matched && d256k.ok;
+  console.log(
+    `RESULT: STAGE_D_SIZES_SUMMARY small=${dSmall.matched && dSmall.ok} side_cross=${dSide.matched && dSide.ok} ` +
+      `32k=${d32k.matched && d32k.ok} 256k=${d256k.matched && d256k.ok}`,
+  );
+
+  // --- 自己故障注入: track境界をまたがない安全な範囲(20000バイトパターン=25セクタ)で、
+  // ローダに読ませるセクタ数を実際より1つ少なく指定し、チェックサム判定がNGになることを確認する ---
+  const dFaultInjection = await runStageDCase('fault_injection', 20000, 1, STAGE_D_FRAMES);
+  const faultInjectionDetected = dFaultInjection.matched && !dFaultInjection.ok;
+  console.log(
+    `RESULT: STAGE_D_SELF_FAULT_INJECTION_DETECTED=${faultInjectionDetected} ` +
+      `(1セクタ少なく読ませた結果: matched=${dFaultInjection.matched} ok=${dFaultInjection.ok})`,
+  );
+  if (!faultInjectionDetected) {
+    console.log('RESULT: STAGE_D_CHECKER_BROKEN — 1セクタ少なく読ませてもNGにならなかった(またはクラッシュした)。検査が壊れている疑いがあるためここで異常終了する。');
+    process.exitCode = 1;
+    return;
+  }
+
+  // 25セクタ(20000バイトパターン)自体が正しいSECTOR_COUNTなら通ることも確認しておく(陽性対照)
+  const dFaultControl = await runStageDCase('fault_control', 20000, 0, STAGE_D_FRAMES);
+  console.log(`RESULT: STAGE_D_FAULT_CONTROL_OK=${dFaultControl.matched && dFaultControl.ok}`);
+
+  // メカニズム自体(小サイズ読み込み・side境界またぎ・故障注入検出)が機能しているかと、
+  // 4サイズ要件を満たしたかは別々に報告する。STAGE_D_PASSは4サイズ要件を含む全体判定であり、
+  // 32k/256kがFAILである限りfalseになる(既知の未解決バグのため、現状は必ずfalseになる)。
+  const stageDMechanismOk = dSmall.matched && dSmall.ok && dSide.matched && dSide.ok
+    && faultInjectionDetected && dFaultControl.matched && dFaultControl.ok;
+  console.log(`RESULT: STAGE_D_MECHANISM_OK=${stageDMechanismOk} (小サイズ読み込み・side境界またぎ・故障注入検出のみの判定。32k/256kは含まない)`);
+  const stageDPass = stageDAllSizesOk && faultInjectionDetected && dFaultControl.matched && dFaultControl.ok;
+  console.log(`RESULT: STAGE_D_PASS=${stageDPass} (4サイズ要件すべてを含む全体判定。32k/256kは既知の未解決バグにより現状FAILする)`);
+
+  if (!stageBFinal || !stageCFinal || !stageDPass) {
     process.exitCode = 1;
   }
 }

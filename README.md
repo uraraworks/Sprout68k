@@ -162,6 +162,42 @@ POSITIVE_CONTROL_IMG=/path/to/known-bootable.xdf npx --no-install tsx verify/ver
 **自己故障注入**を行い、`false` になることを確認してから正常終了する
 (`false` にならない場合は検査自体が壊れているとみなし異常終了する)。
 
+## Stage D(track/sideをまたぐ複数セクタ読み込み)
+
+**目標未達。track0→track1の1回のtrack境界またぎまでは成功するが、track2に
+到達する構成(32KB程度・256KB以上)は原因未特定のバグで失敗する。**
+
+- IOCS $46 のレジスタ規約は Stage C から変わらないが、境界またぎの実測実験で
+  以下を確認した:
+  - 1回の $46 呼び出しは track/side の境界をまたいで読める(実測: side0→side1
+    をまたぐ12000バイトの読み込みが1回のTRAPで成功、チェックサム一致で確認)
+  - 読み進め順序は「トラック内はside0→side1、トラックは番号順」。セクタ番号は
+    1起点
+  - D0(戻り値)は0/$FFFFFFFF以外の値(2、0x04000000等)を返すことがあるが、
+    その場合もデータ自体は正しく転送されていることを実測で確認済み
+- **未解決のバグ**: track0→track1→track2 と2回trackをまたぐと、read_error には
+  ならないが読み込んだコードが壊れて起動が破綻する(px68kがIPLの汎用エラー
+  画面を表示)。track0→track1(1回のまたぎ)までは確実に成功する(実測の安全な
+  上限: 31セクタ=31,744バイト)。多数の切り分け実験(D2/D3/A1を即値にするか
+  レジスタ演算にするか、1セクタずつ読むか1サイドまとめて読むか、最初の呼び出し
+  をsector1起点にするワークアラウンド等)を行ったが、いずれも単独の再現実験
+  では成功してしまい、本番のブートセクタに組み込んだ状態でのみ再現するため、
+  原因を確定できなかった。詳細は `stage_d/boot/boot.S` 冒頭のコメント参照
+- **チェックサム+番兵による判定の仕組みは正しく機能している**ことは実測で
+  確認済み: 7168バイト以下(退行なし)・8192バイト超(side境界またぎ)は
+  `LOAD OK <checksum> <sentinel>` で成功、32KB・256KB構成は起動が壊れて
+  `LOAD OK/NG` すら出力されない(クラッシュ)。読み込むセクタ数を意図的に
+  1つ少なく指定する自己故障注入では、安全な範囲(track境界を1回までしか
+  またがない20000バイト構成)で `LOAD NG` になることを確認済み(検査は
+  空振りしていない)
+- 構成: `stage_d/boot/boot.S`(ローダ本体)、`stage_d/crt0/linker.ld`
+  (`.pattern`セクションを本体の最後尾に強制配置。crt0/IOCSスタブはStage Cと共用)、
+  `stage_d/src/main.c`(チェックサム+番兵の検査とIOCS $21での結果表示)、
+  `stage_d/src/pattern_data.S`(`.incbin`でパターンを取り込む)、
+  `tools/gen_pattern.py`(既知パターン+番兵の生成、期待チェックサムの算出)、
+  `tools/build_stage_d.sh`(ビルド一式。第3引数で自己故障注入用の読み込み
+  不足セクタ数を指定できる)
+
 ## 構成
 
 - `tools/build_stage_a.py` — Stage A(文字列表示)のバイト列を生成。68000の
@@ -170,8 +206,12 @@ POSITIVE_CONTROL_IMG=/path/to/known-bootable.xdf npx --no-install tsx verify/ver
 - `tools/build_zero_image.py` — 陰性対照(全バイト0)を生成
 - `tools/build_stage_c.sh` — Stage C(ネイティブ m68k-elf-gcc でビルドしたC)を
   ビルドし .xdf に合成する
+- `tools/build_stage_d.sh` / `tools/gen_pattern.py` — Stage D(複数トラック読み込み)
+  のビルド一式
 - `stage_c/` — Stage C のソース一式(`crt0/`, `boot/`, `src/`)
+- `stage_d/` — Stage D のソース一式(`boot/`, `crt0/`, `src/`)。`crt0/`の
+  `crt0.S`/`iocs.S`はStage Cのものを直接参照して共用する
 - `docs/toolchain調査.md` — elf2x68k/xdev68k のビルド定義を読んで確定した
   gcc/binutilsのバージョンとconfigureオプションの調査結果
-- `verify/verify.mts` — Node から px68k コアを直接回し、陽性/陰性対照とStage A/B/Cを実測する
+- `verify/verify.mts` — Node から px68k コアを直接回し、陽性/陰性対照とStage A/B/C/Dを実測する
 - `build/` — 生成物置き場(gitignore対象。スクリプトで再生成できる)
