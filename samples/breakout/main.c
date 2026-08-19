@@ -5,13 +5,6 @@
  * (文字列リテラルを除く。docs/API設計_20260819.md「L1の設計原則」2)。
  *
  * ループの形は素直に x68_cls() → 描画 → x68_screen_flip()。
- *
- * ビルド時に以下のマクロを定義すると、検証用に意図的に壊した版を作れる
- * (故障注入。tools/build_breakout.sh の fault 引数が渡す。通常ビルドでは
- * 一切定義されない):
- *   X68_FAULT_BREAKOUT_PADDLE_IGNORE_INPUT  パドルがキー入力を無視する
- *   X68_FAULT_BREAKOUT_BLOCK_NO_HIT         ブロックの当たり判定が常に外れる
- *   X68_FAULT_BREAKOUT_BALL_FROZEN          ボールが静止したまま動かない
  */
 #include "x68.h"
 
@@ -38,30 +31,6 @@
 #define BLOCK_X0 8
 #define BLOCK_Y0 40
 
-/* ============================================================
- * 検証用HOSTVAR(verify/verify_breakout.mtsが実測に使う固定アドレス)。
- * GVRAMはhost側からpeekできない(lib実装_20260819.md参照)ため、パドル位置・
- * ボール位置・スコア・ブロック破壊状況を自己申告としてここへ書く。
- * ただし検証はこれを鵜呑みにせず、ブロック消滅は実際のGVRAM画素(canvas)、
- * スコアは実際のテキスト画面表示と突き合わせる(docs/作例breakout_20260819.md
- * 参照)。
- * ============================================================ */
-#define HV3_BASE 0x000DA000UL
-#define HV3_PROGRESS       (*(volatile unsigned long *)(HV3_BASE + 0x00)) /* 完了したループ回数 */
-#define HV3_PADDLE_X       (*(volatile long          *)(HV3_BASE + 0x04))
-#define HV3_BALL_X         (*(volatile long          *)(HV3_BASE + 0x08))
-#define HV3_BALL_Y         (*(volatile long          *)(HV3_BASE + 0x0C))
-#define HV3_BALL_DX        (*(volatile long          *)(HV3_BASE + 0x10))
-#define HV3_BALL_DY        (*(volatile long          *)(HV3_BASE + 0x14))
-#define HV3_SCORE          (*(volatile long          *)(HV3_BASE + 0x18))
-#define HV3_BLOCKS_ALIVE   (*(volatile long          *)(HV3_BASE + 0x1C))
-#define HV3_LAST_DESTROYED (*(volatile long          *)(HV3_BASE + 0x20)) /* -1=まだ無し、以後は row*BLOCK_COLS+col */
-#define HV3_FLIP_BYTES     (*(volatile unsigned long *)(HV3_BASE + 0x24)) /* 直近flip()の実転送バイト数 */
-
-/* lib/src/x68_l1.c が公開する非公式カウンタ(x68.hには宣言しない。転送量の
- * 実負荷実測(docs/API設計_20260819.md「API実装時の宿題」1)のため参照する)。 */
-extern unsigned long x68_l1_last_flip_bytes;
-
 static int block_alive[BLOCK_ROWS][BLOCK_COLS];
 static int block_color_idx[BLOCK_ROWS][BLOCK_COLS];
 
@@ -78,16 +47,6 @@ static void reset_ball(void) {
     ball_y = SCREEN_H / 2;
     ball_dx = BALL_SPEED;
     ball_dy = -BALL_SPEED;
-}
-
-static int blocks_alive_count(void) {
-    int n = 0;
-    for (int r = 0; r < BLOCK_ROWS; r++) {
-        for (int c = 0; c < BLOCK_COLS; c++) {
-            if (block_alive[r][c]) n++;
-        }
-    }
-    return n;
 }
 
 void main(void) {
@@ -117,24 +76,16 @@ void main(void) {
 
     reset_ball();
 
-    HV3_PROGRESS = 0;
-    HV3_LAST_DESTROYED = -1;
-
-    unsigned long loop_count = 0;
     for (;;) {
         /* --- 入力: パドル移動 --- */
-#ifndef X68_FAULT_BREAKOUT_PADDLE_IGNORE_INPUT
         if (x68_key_down(X68_KEY_LEFT)) paddle_x -= PADDLE_SPEED;
         if (x68_key_down(X68_KEY_RIGHT)) paddle_x += PADDLE_SPEED;
-#endif
         if (paddle_x < 0) paddle_x = 0;
         if (paddle_x > SCREEN_W - PADDLE_W) paddle_x = SCREEN_W - PADDLE_W;
 
         /* --- ボール移動 --- */
-#ifndef X68_FAULT_BREAKOUT_BALL_FROZEN
         ball_x += ball_dx;
         ball_y += ball_dy;
-#endif
         if (ball_x <= 0) { ball_x = 0; ball_dx = -ball_dx; }
         if (ball_x >= SCREEN_W - BALL_SIZE) { ball_x = SCREEN_W - BALL_SIZE; ball_dx = -ball_dx; }
         if (ball_y <= 0) { ball_y = 0; ball_dy = -ball_dy; }
@@ -152,7 +103,6 @@ void main(void) {
         }
 
         /* --- ブロックとの当たり判定(最初に当たった1個だけ壊す) --- */
-#ifndef X68_FAULT_BREAKOUT_BLOCK_NO_HIT
         int hit = 0;
         for (int r = 0; r < BLOCK_ROWS && !hit; r++) {
             for (int c = 0; c < BLOCK_COLS && !hit; c++) {
@@ -169,7 +119,6 @@ void main(void) {
                 }
             }
         }
-#endif
 
         /* --- 描画: cls → 描画 → flip の素直な形 --- */
         x68_cls(color_bg);
@@ -192,18 +141,5 @@ void main(void) {
         printf("SCORE:%d", score);
 
         x68_screen_flip();
-
-        /* --- 検証用HOSTVAR更新 --- */
-        loop_count++;
-        HV3_PADDLE_X = (long)paddle_x;
-        HV3_BALL_X = (long)ball_x;
-        HV3_BALL_Y = (long)ball_y;
-        HV3_BALL_DX = (long)ball_dx;
-        HV3_BALL_DY = (long)ball_dy;
-        HV3_SCORE = (long)score;
-        HV3_BLOCKS_ALIVE = (long)blocks_alive_count();
-        HV3_LAST_DESTROYED = last_destroyed_index;
-        HV3_FLIP_BYTES = x68_l1_last_flip_bytes;
-        HV3_PROGRESS = loop_count;
     }
 }

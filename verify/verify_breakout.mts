@@ -112,6 +112,38 @@ function distRgb(a: [number, number, number], b: [number, number, number]): numb
 const COLOR_BG16 = ((0 << 11) | (0 << 6) | (0 << 1) | 1) >>> 0; // x68_rgb(0,0,0)
 const COLOR_BG_RGB = decode16to24(COLOR_BG16);
 
+/* --- スコア表示がフレームバッファ上で実際に見えているかの検査 ---
+ * 【背景(2026-08-20)】x68_gvram_mode_65536_1page()がVC R2($E82601)に0x01
+ * (グラフィックページ表示ビットのみ)を書いていたため、65536色グラフィック
+ * モードが有効な間、テキストはText VRAMには正しく書き込まれてもフレーム
+ * バッファ(実際にレンダリングされるcanvas)には一切現れなかった
+ * (docs/重なり実測_20260820.md「排他」の再発、docs/VC重畳実測_20260820.md
+ * で0x21(グラフィックとテキストが同時に見える値)が実測確定した)。
+ * この検査は readTextScreen()(Text VRAMを直読みするだけの経路。この排他を
+ * 経由しない)だけに頼っていた従来の検査(項目5)の穴を塞ぐもので、
+ * verify_panic.mtsのtextVisibleInFramebuffer()と同じ方式(実際にレンダリング
+ * されたcanvas上で、背景から変化した画素が一定数以上あるかを見る)を使う。 */
+const SCORE_TEXT_REGION = { x0: 0, y0: 0, x1: 80, y1: 16 }; // "SCORE:####"が入る桁0-9・行0
+const SCORE_TEXT_REF_POINT = { x: 600, y: 450 }; // グラフィック面(x<512)・ブロック/パドル/ボールの可動域の外
+const SCORE_TEXT_VISIBLE_DIST_THRESHOLD = 40; // verify_panic.mtsと同じ閾値
+const SCORE_TEXT_VISIBLE_MIN_DIFF_PIXELS = 50; // 実測(通常ビルドで170、故障注入版で0)を踏まえた閾値
+function scoreVisibleInFramebuffer(img: Image | null): { visible: boolean; diffCount: number } {
+  if (!img || img.width <= SCORE_TEXT_REF_POINT.x || img.height <= SCORE_TEXT_REF_POINT.y) {
+    return { visible: false, diffCount: 0 };
+  }
+  const refIdx = (SCORE_TEXT_REF_POINT.y * img.width + SCORE_TEXT_REF_POINT.x) * 4;
+  const ref: [number, number, number] = [img.data[refIdx], img.data[refIdx + 1], img.data[refIdx + 2]];
+  let diffCount = 0;
+  for (let y = SCORE_TEXT_REGION.y0; y < SCORE_TEXT_REGION.y1 && y < img.height; y++) {
+    for (let x = SCORE_TEXT_REGION.x0; x < SCORE_TEXT_REGION.x1 && x < img.width; x++) {
+      const idx = (y * img.width + x) * 4;
+      const px: [number, number, number] = [img.data[idx], img.data[idx + 1], img.data[idx + 2]];
+      if (distRgb(px, ref) > SCORE_TEXT_VISIBLE_DIST_THRESHOLD) diffCount++;
+    }
+  }
+  return { visible: diffCount >= SCORE_TEXT_VISIBLE_MIN_DIFF_PIXELS, diffCount };
+}
+
 /* ============================================================
  * px68k駆動(verify_e4.mts + verify_l1.mtsのSession定義を合成)
  * ============================================================ */
@@ -247,6 +279,10 @@ interface RunResult {
   scoreTextOk: boolean;
   scoreTextObserved: string;
   scoreExpected: number;
+  // (5b) スコアがフレームバッファ上で実際に見えているか(Text VRAM直読みだけの
+  // 穴を塞ぐ検査。docs/作例breakout_20260819.md参照)
+  scoreVisibleOnFramebuffer: boolean;
+  scoreFbDiffCount: number;
   // 転送量実測
   flipBytesSamples: number[];
 }
@@ -272,7 +308,9 @@ async function runFullCheck(label: string, diskBytes: Uint8Array, log: (s: strin
       booted: false, bootFrames, negControlOk: false, paddleLeftMoved: false, paddleRightMoved: false,
       ballMoved: false, dxFlipped: false, dyFlipped: false, reflectFrames: 0,
       blockDestroyed: false, blockCanvasOk: false, blockDestroyedFrame: -1,
-      scoreTextOk: false, scoreTextObserved: '', scoreExpected: 0, flipBytesSamples: [],
+      scoreTextOk: false, scoreTextObserved: '', scoreExpected: 0,
+      scoreVisibleOnFramebuffer: false, scoreFbDiffCount: 0,
+      flipBytesSamples: [],
     };
   }
 
@@ -382,12 +420,21 @@ async function runFullCheck(label: string, diskBytes: Uint8Array, log: (s: strin
   const scoreTextOk = blockDestroyed && !Number.isNaN(scoreTextValue) && scoreTextValue === scoreExpected;
   log(`  score text: line0="${line0}" parsed=${scoreTextValue} expected(from blocksAlive=${finalSnap.blocksAlive})=${scoreExpected} ok=${scoreTextOk}`);
 
+  // --- (5b) スコアが「実際にフレームバッファ上で」見えているかの実測。
+  // readTextScreen()はText VRAMを直読みするだけで、VC R2の設定次第では
+  // フレームバッファに一切現れない状態でもPASSしてしまう(今回の穴そのもの)。
+  // verify_panic.mtsのtextVisibleInFramebuffer()と同じ方式で実測する。 ---
+  const { visible: scoreVisibleOnFramebuffer, diffCount: scoreFbDiffCount } = scoreVisibleInFramebuffer(session.lastImage());
+  log(`  score framebuffer check: visible=${scoreVisibleOnFramebuffer} diffCount=${scoreFbDiffCount}(threshold=${SCORE_TEXT_VISIBLE_MIN_DIFF_PIXELS})`);
+
   session.dispose();
   return {
     booted, bootFrames, negControlOk, paddleLeftMoved, paddleRightMoved,
     ballMoved, dxFlipped, dyFlipped, reflectFrames,
     blockDestroyed, blockCanvasOk, blockDestroyedFrame,
-    scoreTextOk, scoreTextObserved, scoreExpected, flipBytesSamples,
+    scoreTextOk, scoreTextObserved, scoreExpected,
+    scoreVisibleOnFramebuffer, scoreFbDiffCount,
+    flipBytesSamples,
   };
 }
 
@@ -423,6 +470,11 @@ async function main(): Promise<void> {
 
   if (!r.scoreTextOk) fail(`(5) スコア表示がテキスト画面上で期待値と一致しなかった(observed="${r.scoreTextObserved}" expected=SCORE:${r.scoreExpected})`);
   else log(`RESULT: SCORE_TEXT_OK=true text="${r.scoreTextObserved}"`);
+
+  // (5b) Text VRAMだけでなく、実際にレンダリングされたフレームバッファ上でも
+  // スコアが見えているか(今回の穴そのものを塞ぐ検査)。
+  if (!r.scoreVisibleOnFramebuffer) fail(`(5b) スコア表示がフレームバッファ上で見えていなかった(diffCount=${r.scoreFbDiffCount}, 閾値=${SCORE_TEXT_VISIBLE_MIN_DIFF_PIXELS})`);
+  else log(`RESULT: SCORE_VISIBLE_ON_FRAMEBUFFER=true diffCount=${r.scoreFbDiffCount}`);
 
   // === 実負荷での転送量の実測(API設計_20260819.md「API実装時の宿題」1を閉じる) ===
   const bytes = r.flipBytesSamples;
@@ -469,6 +521,23 @@ async function main(): Promise<void> {
       check: (fr) => ({
         failed: !(fr.booted && (fr.ballMoved && fr.dxFlipped && fr.dyFlipped)),
         detail: `ballMoved=${fr.ballMoved} dxFlipped=${fr.dxFlipped} dyFlipped=${fr.dyFlipped}`,
+      }),
+    },
+    {
+      // 今回の穴そのものの故障注入: VC R2($E82601)を旧値(0x01、テキストが
+      // 隠れる)に戻す(lib/src/x68_l0.cへの注入、samples/breakout/main.cは
+      // 変更しない)。scoreTextOk(Text VRAM直読み)は影響を受けず引き続きtrueの
+      // ままになるはずだが、scoreVisibleOnFramebuffer(今回追加した検査)は
+      // falseになるはず。「Text VRAMだけの検査では見逃す」ことを再現する。
+      name: 'vc_text_hidden',
+      desc: 'VC R2を旧値(0x01)に戻し、スコアがフレームバッファ上で見えなくする',
+      check: (fr) => ({
+        // 正常なコードなら成立するはずの性質(起動・ブロック破壊・Text VRAM上の
+        // スコア・フレームバッファ上のスコア可視、すべてtrue)がこの故障注入で
+        // 崩れることを期待する。scoreVisibleOnFramebufferだけがfalseになり、
+        // scoreTextOk(Text VRAM直読み)はtrueのまま(=今回の穴を再現)のはず。
+        failed: !(fr.booted && fr.blockDestroyed && fr.scoreTextOk && fr.scoreVisibleOnFramebuffer),
+        detail: `blockDestroyed=${fr.blockDestroyed} scoreTextOk(TextVRAM)=${fr.scoreTextOk} scoreVisibleOnFramebuffer=${fr.scoreVisibleOnFramebuffer}(diffCount=${fr.scoreFbDiffCount})`,
       }),
     },
   ];

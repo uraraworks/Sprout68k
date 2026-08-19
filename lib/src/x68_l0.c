@@ -23,9 +23,25 @@ void x68_vsync_wait(void) {
 #define VC_R2    (*(x68_vu8 *)0x00E82601)
 
 /* Stage B/E-1 で実測確定した65536色1ページモードの設定
- * (docs/StageE-1_実測_20260819.md、docs/API設計_20260819.md)。 */
+ * (docs/StageE-1_実測_20260819.md、docs/API設計_20260819.md)。
+ *
+ * VC_R2 は当初 0x01(グラフィックページ0表示ビットのみ)だったが、これだと
+ * テキスト表示ビット(bit5, 0x20)が立たず、グラフィックモードが有効な間
+ * テキストが一切フレームバッファに現れない(Text VRAMへは書けるが見えない。
+ * `docs/作例breakout_20260819.md`のスコア表示が見えていなかった原因)。
+ * `docs/VC重畳実測_20260820.md`の実測で、0x21(=0x01|0x20)ならグラフィックと
+ * テキストが同時に見え、重なった位置ではテキストが手前になることが確定した
+ * ため、この値を採用する(推測ではなく実測値)。 */
 void x68_gvram_mode_65536_1page(void) {
     CRTC_R20 = 0x08;
     VC_R0 = 0x03;
+#ifdef X68_FAULT_VC_TEXT_HIDDEN
+    /* 故障注入: テキストが隠れる旧値(0x01)に戻す(verify/verify_breakout.mts
+     * の故障注入。スコア表示のフレームバッファ可視性検査が実際にFAILする
+     * ことを確認するためのもの。tools/build_breakout.sh の fault=vc_text_hidden
+     * が渡す。通常ビルドでは一切定義されない)。 */
     VC_R2 = 0x01;
+#else
+    VC_R2 = 0x21;
+#endif
 }

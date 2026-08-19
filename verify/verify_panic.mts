@@ -141,6 +141,51 @@ function textVisibleInFramebuffer(img: Image | null): { visible: boolean; diffCo
   return { visible: diffCount >= TEXT_VISIBLE_MIN_DIFF_PIXELS, diffCount };
 }
 
+/* --- 「グラフィックページ復元」マーカーの可視性判定(2026-08-20追加) ---
+ * 【なぜ追加したか】上のtextVisibleInFramebuffer()は「テキストが見えるか」
+ * だけを見ていたが、docs/VC重畳実測_20260820.mdの実測でライブラリ既定値が
+ * VC_R2=0x21(グラフィックとテキストが同時に見える値)になったため、
+ * x68_panic_show()がVC R2を復元しなくても(=故障注入no_mode_restoreでも)
+ * テキストは見えてしまうようになった。つまりtextVisibleInFramebuffer()
+ * だけではこの故障注入をもう検出できない(実際に検出できなくなったことを
+ * 本ファイル改修前に実測で確認した)。
+ *
+ * lib_test/src/main_panic.c は例外を起こす直前に、パニックメッセージと
+ * 同じ領域へシアン系の矩形(x68_rgb(0,255,255))を描いてflipしている。
+ * x68_panic_show()の復元処理(VC_R2=0x20、グラフィックページ表示ビットを
+ * クリア)が働けば、この矩形はフレームバッファから消えるはず(=復元が
+ * 実際に効いていることの実測)。故障注入no_mode_restoreではこの復元が
+ * 起きないので、矩形は消えずに残り続けるはず。 */
+const MARKER_REGION = { x0: 0, y0: 0, x1: 240, y1: 40 }; // main_panic.cが描くx68_box_fill(0,0,240,40,...)と一致させる
+const MARKER_RGB_16 = ((31 << 11) | (0 << 6) | (31 << 1) | 1) >>> 0; // x68_rgb(0,255,255): g5=31,r5=0,b5=31,I=1
+function decode16to24(color: number): [number, number, number] {
+  const g5 = (color >> 11) & 0x1f;
+  const r5 = (color >> 6) & 0x1f;
+  const b5 = (color >> 1) & 0x1f;
+  const iBit = color & 1;
+  const g6 = (g5 << 1) | iBit;
+  const r8 = (r5 << 3) | (r5 >> 2);
+  const g8 = (g6 << 2) | (g6 >> 4);
+  const b8 = (b5 << 3) | (b5 >> 2);
+  return [r8, g8, b8];
+}
+const MARKER_RGB = decode16to24(MARKER_RGB_16);
+const MARKER_DIST_THRESHOLD = 40;
+const MARKER_MIN_MATCH_PIXELS = 50; // 矩形240x40=9600pxのうち、一部でも残っていれば検出したい
+
+function markerVisibleInFramebuffer(img: Image | null): { visible: boolean; matchCount: number } {
+  if (!img) return { visible: false, matchCount: 0 };
+  let matchCount = 0;
+  for (let y = MARKER_REGION.y0; y < MARKER_REGION.y1 && y < img.height; y++) {
+    for (let x = MARKER_REGION.x0; x < MARKER_REGION.x1 && x < img.width; x++) {
+      const [r, g, b] = samplePixel(img, x, y);
+      const dr = r - MARKER_RGB[0], dg = g - MARKER_RGB[1], db = b - MARKER_RGB[2];
+      if (Math.sqrt(dr * dr + dg * dg + db * db) <= MARKER_DIST_THRESHOLD) matchCount++;
+    }
+  }
+  return { visible: matchCount >= MARKER_MIN_MATCH_PIXELS, matchCount };
+}
+
 interface Session {
   runFrame(): void;
   peekByteAt(addr: number): number;
@@ -210,6 +255,8 @@ interface RunResult {
   textLines: string[];
   fbVisible: boolean;
   fbDiffCount: number;
+  markerVisible: boolean;
+  markerMatchCount: number;
 }
 
 /* HV4_ALIVEが立つのを待ち、その後 EXTRA_FRAMES_AFTER_ALIVE フレームだけ
@@ -241,9 +288,11 @@ async function runAndMeasure(label: string, diskBytes: Uint8Array): Promise<RunR
   const doneSeen = session.peekU32(HV4_DONE) === HV4_DONE_MAGIC;
   const returnedSeen = session.peekByteAt(HV4_RETURNED) === 1;
   const textLines = session.readTextLines();
-  const { visible: fbVisible, diffCount: fbDiffCount } = textVisibleInFramebuffer(session.lastImage());
+  const lastImg = session.lastImage();
+  const { visible: fbVisible, diffCount: fbDiffCount } = textVisibleInFramebuffer(lastImg);
+  const { visible: markerVisible, matchCount: markerMatchCount } = markerVisibleInFramebuffer(lastImg);
   session.dispose();
-  return { aliveSeen, doneSeen, returnedSeen, framesRun, timedOut, textLines, fbVisible, fbDiffCount };
+  return { aliveSeen, doneSeen, returnedSeen, framesRun, timedOut, textLines, fbVisible, fbDiffCount, markerVisible, markerMatchCount };
 }
 
 async function runBuild(label: string, fault: string, mode: 0 | 1, excType: number, pad: number): Promise<RunResult> {
@@ -304,8 +353,12 @@ async function main(): Promise<void> {
     // レンダリングされたcanvas上で文字が見えているか(r.fbVisible)も
     // 合格条件に含める。65536色グラフィックモードがテキストを隠す罠
     // (docs/重なり実測_20260820.md)を検査自体が踏んでいないことの担保。
-    const ok = r.aliveSeen && !r.timedOut && !r.returnedSeen && !r.doneSeen && expectOk && pc !== undefined && stopOk && r.fbVisible;
-    console.log(`RESULT: PANIC_POSITIVE type=${EXC_NAMES[t]} aliveSeen=${r.aliveSeen} timedOut=${r.timedOut} returnedSeen=${r.returnedSeen} doneSeen=${r.doneSeen} foundTypes=${JSON.stringify(found)} pc=${pc !== undefined ? '0x' + pc.toString(16) : 'undefined'} stopOk=${stopOk} fbVisible=${r.fbVisible}(diffCount=${r.fbDiffCount}) ok=${ok}`);
+    // さらに、VC_R2既定値が0x21になった(docs/VC重畳実測_20260820.md)ことで
+    // fbVisibleだけでは「復元処理が実際に効いているか」を検出できなくなった
+    // ため、markerVisible===false(グラフィックページ復元マーカーが消えて
+    // いること)も合格条件に含める(下記「故障4」参照)。
+    const ok = r.aliveSeen && !r.timedOut && !r.returnedSeen && !r.doneSeen && expectOk && pc !== undefined && stopOk && r.fbVisible && !r.markerVisible;
+    console.log(`RESULT: PANIC_POSITIVE type=${EXC_NAMES[t]} aliveSeen=${r.aliveSeen} timedOut=${r.timedOut} returnedSeen=${r.returnedSeen} doneSeen=${r.doneSeen} foundTypes=${JSON.stringify(found)} pc=${pc !== undefined ? '0x' + pc.toString(16) : 'undefined'} stopOk=${stopOk} fbVisible=${r.fbVisible}(diffCount=${r.fbDiffCount}) markerVisible=${r.markerVisible}(matchCount=${r.markerMatchCount}) ok=${ok}`);
     console.log(`RESULT: PANIC_POSITIVE_TEXTLINES type=${EXC_NAMES[t]} textLines=${JSON.stringify(r.textLines)}`);
     if (!ok) fail(`陽性テスト(${EXC_NAMES[t]})が不合格`);
   }
@@ -386,22 +439,35 @@ async function main(): Promise<void> {
     if (!detectionFailedAsExpected) fail('故障注入pc_zeroで、壊れているのにPCが非ゼロのまま表示された(検査が空振り)');
   }
 
-  // 故障4(2026-08-20追加): no_mode_restore(65536色グラフィックモードを
-  // 解除しない) → readTextScreen()にはメッセージが出るが、実際に
-  // レンダリングされたフレームバッファには出ないため、
-  // 「フレームバッファ上で見えること」検査(手順1に組み込んだr.fbVisible)が
-  // FAILするはず。これがまさに並行実測(docs/重なり実測_20260820.md)で
-  // 見つかった落とし穴そのものであり、readTextScreen()だけの検査では
-  // この故障を検出できない(空振りする)ことを確かめるのが目的。
+  // 故障4(2026-08-20追加、同日中に検出方法を改修): no_mode_restore
+  // (65536色グラフィックモードを解除しない)。
+  //
+  // 【改修の経緯(誤りの記録)】当初はこの故障を「readTextScreen()には
+  // メッセージが出るが、実際にレンダリングされたフレームバッファには
+  // 出ない」で検出していた(r.fbVisibleがFAILすることを期待)。ところが
+  // 同日中に並行して進んだdocs/VC重畳実測_20260820.mdの実測で、
+  // x68_gvram_mode_65536_1page()の既定値がVC_R2=0x01→0x21(グラフィックと
+  // テキストが同時に見える値)へ修正された。この修正により、
+  // x68_panic_show()が復元処理をしなくてもテキストは既定でフレーム
+  // バッファに見えるようになったため、上記の検出方法(r.fbVisibleが
+  // FAILする)が成立しなくなった(本ファイルの改修前に実際に空振り
+  // <detectionFailedAsExpected=false>することを実測で確認した)。
+  //
+  // 代わりに、lib_test/src/main_panic.c が例外直前に描く「グラフィック
+  // ページ復元マーカー」(x68_box_fill+x68_rgb(0,255,255)の矩形)を使う。
+  // 復元処理(VC_R2=0x20でグラフィックページ表示ビットをクリア)が働けば
+  // このマーカーは消えるはずで、故障注入(復元しない)では消えずに残る
+  // はず。マーカーが残っている(markerVisible===true)ことが、この故障の
+  // 検出条件になる。
   {
     const r = await runBuild('fault_no_mode_restore', 'no_mode_restore', 0, 4, 0);
     const found = hasAnyExpectedText(r.textLines);
     const textVramStillHasMessage = found.length === 1 && found[0] === 4; // Text VRAM経路(readTextScreen)には出ている
-    const detectionFailedAsExpected = !r.fbVisible; // フレームバッファには出ていない(=検査がFAILする状況を検出)
+    const detectionFailedAsExpected = r.markerVisible; // マーカーが消えずに残っている(=検査がFAILする状況を検出)
     faultInjectionOk = faultInjectionOk && detectionFailedAsExpected;
-    console.log(`RESULT: PANIC_FAULT_NO_MODE_RESTORE textVramStillHasMessage=${textVramStillHasMessage} fbVisible=${r.fbVisible}(diffCount=${r.fbDiffCount}) detectionFailedAsExpected=${detectionFailedAsExpected}`);
+    console.log(`RESULT: PANIC_FAULT_NO_MODE_RESTORE textVramStillHasMessage=${textVramStillHasMessage} fbVisible=${r.fbVisible}(diffCount=${r.fbDiffCount}) markerVisible=${r.markerVisible}(matchCount=${r.markerMatchCount}) detectionFailedAsExpected=${detectionFailedAsExpected}`);
     if (!textVramStillHasMessage) fail('故障注入no_mode_restoreで、前提(Text VRAMにはメッセージが書かれているはず)が崩れた');
-    if (!detectionFailedAsExpected) fail('故障注入no_mode_restoreで、グラフィックモードを解除していないのにフレームバッファ上で文字が見えてしまった(検査が空振り)');
+    if (!detectionFailedAsExpected) fail('故障注入no_mode_restoreで、グラフィックページ復元マーカーが消えてしまった(検査が空振り)');
   }
 
   console.log(`RESULT: PANIC_FAULT_INJECTION_ALL_DETECTED=${faultInjectionOk}`);

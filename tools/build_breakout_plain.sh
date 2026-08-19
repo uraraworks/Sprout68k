@@ -1,42 +1,24 @@
 #!/usr/bin/env bash
-# X68kDev 作例「ブロック崩し」を検証用に組み立ててビルドする。
+# X68kDev 作例「ブロック崩し」の素のコード(samples/breakout/main.c)を、
+# 検証用パッチを一切当てずにそのままビルドする。
 #
-# samples/breakout/main.c は入門者が読む「素のコード」で、検証用HOSTVARの
-# 書き出しや故障注入マクロを一切含まない。本スクリプトは、その素のコードへ
-# verify/patches/breakout_verify.patch を当てて検証専用の版(HOSTVAR書き出し+
-# X68_FAULT_BREAKOUT_*マクロ入り)を生成し、それをビルドする。patchが当たらない
-# 場合(=main.cが検証用の版と食い違った場合)はここでビルドが失敗する
-# (「素のコードと検証用の版がずれない仕組み」。docs/作例breakout_20260819.md
-# 「作例と検証の分離」参照)。素のコードそのものをそのままビルドしたいときは
-# tools/build_breakout_plain.sh を使うこと。
+# tools/build_breakout.sh は verify/patches/breakout_verify.patch を当てた
+# 版(HOSTVAR書き出し+故障注入マクロ入り)をビルドするが、こちらは入門者が
+# 実際に読む main.c をそのままビルドし、「分離したせいで見本が壊れていないか」
+# を確認するためのもの(docs/作例breakout_20260819.md「作例と検証の分離」参照)。
+# verify/verify_breakout_plain.mts から呼ばれる。
 #
-# 使い方: tools/build_breakout.sh <output.xdf> [fault]
-#   output.xdf: 出力ディスクイメージ
-#   fault:      省略時は通常ビルド。以下のいずれかを指定すると、その挙動だけ
-#               意図的に壊した版をビルドする(検証の故障注入用。壊した版は
-#               成果物として残さないこと。docs/作例breakout_20260819.md参照):
-#                 paddle_ignore_input  パドルがキー入力を無視する
-#                 block_no_hit         ブロックの当たり判定が常に外れる
-#                 ball_frozen          ボールが静止したまま動かない
-#                 vc_text_hidden       VC R2($E82601)を旧値(0x01、テキストが
-#                                      隠れる)に戻す(lib/src/x68_l0.cへの
-#                                      故障注入。docs/VC重畳実測_20260820.md
-#                                      の穴そのものを再現する)
+# 使い方: tools/build_breakout_plain.sh <output.xdf>
 #
-# tools/build_l1_test.sh を土台にした(ブートセクタ・リンカスクリプト・
-# bss/スタック衝突チェックの構成を流用)。lib/src/x68_input.c(x68_key_down)を
-# 追加でリンクする点が異なる。
-#
-# 前提: m68k-elf-gcc / m68k-elf-ld / m68k-elf-objcopy / m68k-elf-nm / patch が
+# 前提: m68k-elf-gcc / m68k-elf-ld / m68k-elf-objcopy / m68k-elf-nm が
 # PATH にあること。
 set -euo pipefail
 
 OUT_XDF="${1:?output.xdf が必要}"
-FAULT="${2:-}"
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "$HERE/.." && pwd)"
-OBJDIR="$ROOT/build/breakout_obj"
+OBJDIR="$ROOT/build/breakout_plain_obj"
 mkdir -p "$OBJDIR"
 
 SECTOR_SIZE=1024
@@ -50,41 +32,18 @@ STACK_MARGIN=$((4096))
 
 CFLAGS=(-m68000 -Os -ffreestanding -nostdlib -fomit-frame-pointer -fno-builtin -Wall -I"$ROOT/lib/include")
 
-FAULT_DEFINE=()
-L0_FAULT_DEFINE=()
-case "$FAULT" in
-  "") ;;
-  paddle_ignore_input) FAULT_DEFINE=(-DX68_FAULT_BREAKOUT_PADDLE_IGNORE_INPUT) ;;
-  block_no_hit) FAULT_DEFINE=(-DX68_FAULT_BREAKOUT_BLOCK_NO_HIT) ;;
-  ball_frozen) FAULT_DEFINE=(-DX68_FAULT_BREAKOUT_BALL_FROZEN) ;;
-  vc_text_hidden) L0_FAULT_DEFINE=(-DX68_FAULT_VC_TEXT_HIDDEN) ;;
-  *) echo "ERROR: 未知のfault指定: ${FAULT}" >&2; exit 1 ;;
-esac
-if [ -n "$FAULT" ]; then
-  echo "== 故障注入ビルド: ${FAULT} =="
-fi
-
 echo "== ライブラリ本体のビルド =="
 m68k-elf-gcc "${CFLAGS[@]}" -c "$ROOT/lib/src/x68_std.c" -o "$OBJDIR/x68_std.o"
-m68k-elf-gcc "${CFLAGS[@]}" ${L0_FAULT_DEFINE[@]+"${L0_FAULT_DEFINE[@]}"} -c "$ROOT/lib/src/x68_l0.c" -o "$OBJDIR/x68_l0.o"
+m68k-elf-gcc "${CFLAGS[@]}" -c "$ROOT/lib/src/x68_l0.c" -o "$OBJDIR/x68_l0.o"
 m68k-elf-gcc "${CFLAGS[@]}" -c "$ROOT/lib/src/x68_l1.c" -o "$OBJDIR/x68_l1.o"
 m68k-elf-gcc "${CFLAGS[@]}" -c "$ROOT/lib/src/x68_panic.c" -o "$OBJDIR/x68_panic.o"
 m68k-elf-gcc "${CFLAGS[@]}" -c "$ROOT/lib/src/x68_input.c" -o "$OBJDIR/x68_input.o"
 m68k-elf-gcc -x assembler-with-cpp -m68000 -c "$ROOT/lib/asm/x68_iocs.S" -o "$OBJDIR/x68_iocs.o"
 m68k-elf-gcc -x assembler-with-cpp -m68000 -c "$ROOT/lib/asm/x68_gvram_copy.S" -o "$OBJDIR/x68_gvram_copy.o"
-# MOVEC(VBR設定の試行)を含むため-m68020でアセンブルする(tools/build_panic_test.shと同じ理由)。
 m68k-elf-gcc -x assembler-with-cpp -m68020 -c "$ROOT/lib/asm/x68_panic.S" -o "$OBJDIR/x68_panic_asm.o"
 
-echo "== 素のコードへ検証用パッチを適用(verify/patches/breakout_verify.patch) =="
-cp "$ROOT/samples/breakout/main.c" "$OBJDIR/main_verify.c"
-if ! patch "$OBJDIR/main_verify.c" "$ROOT/verify/patches/breakout_verify.patch"; then
-  echo "ERROR: breakout_verify.patch が samples/breakout/main.c(素のコード)に当たらなかった。" >&2
-  echo "       main.c を編集したなら、tools/gen_breakout_verify_patch.sh でパッチを再生成すること。" >&2
-  exit 1
-fi
-
-echo "== ブロック崩し本体(C)のビルド =="
-m68k-elf-gcc "${CFLAGS[@]}" ${FAULT_DEFINE[@]+"${FAULT_DEFINE[@]}"} -c "$OBJDIR/main_verify.c" -o "$OBJDIR/main.o"
+echo "== ブロック崩し本体(素のコード、C)のビルド =="
+m68k-elf-gcc "${CFLAGS[@]}" -c "$ROOT/samples/breakout/main.c" -o "$OBJDIR/main.o"
 m68k-elf-gcc -x assembler-with-cpp -m68000 -DSTACK_ADDR="${STACK_ADDR}" -c "$ROOT/stage_c/crt0/crt0.S" -o "$OBJDIR/crt0.o"
 
 LIBGCC="$(m68k-elf-gcc -m68000 -print-libgcc-file-name)"
@@ -110,7 +69,6 @@ if [ "$STACK_ADDR_DEC" -ge "$RAM_SIZE_DEC" ]; then
   exit 1
 fi
 
-# --- bss(裏バッファ512KBを含む)とスタックの衝突チェック(tools/build_l1_test.shと同じ) ---
 BSS_END_HEX="$(m68k-elf-nm "$OBJDIR/breakout.elf" | awk '$3 == "__bss_end" { print $1 }')"
 if [ -z "$BSS_END_HEX" ]; then
   echo "ERROR: __bss_end シンボルがELFに見つからない(リンカスクリプトの変更?)" >&2
