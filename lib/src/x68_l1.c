@@ -30,6 +30,12 @@
  */
 #include "x68.h"
 
+/* void x68_panic_install(void); lib/asm/x68_panic.S + lib/src/x68_panic.c。
+ * 設計原則3「暴走は静かに固まるのではなく、見える形で止まる」の入口。
+ * 公開ヘッダには置かず、x68_screen_open()の内部実装としてだけ呼ぶ
+ * (docs/パニック画面_20260820.md参照)。 */
+extern void x68_panic_install(void);
+
 #define GVRAM_BASE ((x68_vu16 *)0x00C00000UL)
 
 /* 裏バッファ: 512x512x2 = 524,288バイト(512KB)。.bss に置かれるため、
@@ -252,6 +258,11 @@ void x68_screen_open(void) {
      * 必ず呼ぶ関数なので、ここに置けばサンプルコード側でアセンブラを書かずに
      * 済む(ブロック崩し作例実装中に発見。docs/作例breakout_20260819.md参照)。 */
     __asm__ volatile ("move.w #0x2000,%%sr" ::: "cc");
+
+    /* 設計原則3: 例外ベクタを自前のパニック画面ハンドラへ差し替える
+     * (docs/パニック画面_20260820.md)。入門者が最初に必ず呼ぶこの関数の
+     * 中で行うことで、作例側でこれを呼ぶことを忘れられない。 */
+    x68_panic_install();
 
     x68_gvram_mode_65536_1page();
     for (unsigned long i = 0; i < (unsigned long)X68_SCREEN_W * X68_SCREEN_H; i++) {

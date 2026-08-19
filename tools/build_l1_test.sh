@@ -84,8 +84,11 @@ echo "== ライブラリ本体のビルド =="
 m68k-elf-gcc "${CFLAGS[@]}" ${FAULT_DEFINE[@]+"${FAULT_DEFINE[@]}"} -c "$ROOT/lib/src/x68_std.c" -o "$OBJDIR/x68_std.o"
 m68k-elf-gcc "${CFLAGS[@]}" ${FAULT_DEFINE[@]+"${FAULT_DEFINE[@]}"} -c "$ROOT/lib/src/x68_l0.c" -o "$OBJDIR/x68_l0.o"
 m68k-elf-gcc "${CFLAGS[@]}" ${FAULT_DEFINE[@]+"${FAULT_DEFINE[@]}"} -c "$ROOT/lib/src/x68_l1.c" -o "$OBJDIR/x68_l1.o"
+m68k-elf-gcc "${CFLAGS[@]}" ${FAULT_DEFINE[@]+"${FAULT_DEFINE[@]}"} -c "$ROOT/lib/src/x68_panic.c" -o "$OBJDIR/x68_panic.o"
 m68k-elf-gcc -x assembler-with-cpp -m68000 ${FAULT_DEFINE[@]+"${FAULT_DEFINE[@]}"} -c "$ROOT/lib/asm/x68_iocs.S" -o "$OBJDIR/x68_iocs.o"
 m68k-elf-gcc -x assembler-with-cpp -m68000 ${FAULT_DEFINE[@]+"${FAULT_DEFINE[@]}"} -c "$ROOT/lib/asm/x68_gvram_copy.S" -o "$OBJDIR/x68_gvram_copy.o"
+# MOVEC(VBR設定の試行)を含むため-m68020でアセンブルする(tools/build_panic_test.shと同じ理由)。
+m68k-elf-gcc -x assembler-with-cpp -m68020 ${FAULT_DEFINE[@]+"${FAULT_DEFINE[@]}"} -c "$ROOT/lib/asm/x68_panic.S" -o "$OBJDIR/x68_panic_asm.o"
 
 echo "== テストプログラム(C)のビルド =="
 m68k-elf-gcc "${CFLAGS[@]}" ${SCRIPT_DEFINE[@]+"${SCRIPT_DEFINE[@]}"} -c "$ROOT/lib_test/src/main_l1.c" -o "$OBJDIR/main_l1.o"
@@ -97,7 +100,8 @@ m68k-elf-gcc -x assembler-with-cpp -m68000 -DSTACK_ADDR="${STACK_ADDR}" -c "$ROO
 LIBGCC="$(m68k-elf-gcc -m68000 -print-libgcc-file-name)"
 m68k-elf-ld -T "$ROOT/stage_c/crt0/linker.ld" -o "$OBJDIR/l1_test.elf" \
   "$OBJDIR/crt0.o" "$OBJDIR/main_l1.o" \
-  "$OBJDIR/x68_std.o" "$OBJDIR/x68_l0.o" "$OBJDIR/x68_l1.o" "$OBJDIR/x68_iocs.o" "$OBJDIR/x68_gvram_copy.o" \
+  "$OBJDIR/x68_std.o" "$OBJDIR/x68_l0.o" "$OBJDIR/x68_l1.o" "$OBJDIR/x68_panic.o" \
+  "$OBJDIR/x68_iocs.o" "$OBJDIR/x68_gvram_copy.o" "$OBJDIR/x68_panic_asm.o" \
   "$LIBGCC"
 m68k-elf-objcopy -O binary "$OBJDIR/l1_test.elf" "$OBJDIR/l1_test.bin"
 
