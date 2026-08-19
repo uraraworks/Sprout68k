@@ -12,8 +12,13 @@
 #                 cls_no_fill        clsが前フレーム矩形を裏バッファへ塗り戻さない
 #                 cls_no_full_repaint 背景色が変わっても全画面塗り直しをしない
 #                 no_clip            クリップをしない(画面外描画が隣の行へ回り込む)
+#                 diff_ignore_shrink 命令数が減った場合(消えた命令)を差分に含めない
+#                 diff_color_blind   色だけ違う命令を「同一」と誤判定する
+#                 diff_no_overflow_fallback 一覧が溢れても全画面フォールバックしない
 #   script:     省略時は通常の8フレーム台本。"empty" を指定すると陰性対照用の
-#               「何も描かない」最小台本(1フレーム)に切り替わる。
+#               「何も描かない」最小台本(1フレーム)に切り替わる。"diff" を指定すると
+#               差分転送を狙った台本(静止物+動く物、色だけ変更、命令数減、一覧溢れ)に
+#               切り替わる。
 #
 # ブートセクタは stage_d/boot/boot.S(track/sideをまたぐ複数セクタ読み込み
 # 対応、実測済み)を流用する。crt0/リンカスクリプトは stage_c のものを
@@ -58,6 +63,9 @@ case "$FAULT" in
   cls_no_fill) FAULT_DEFINE=(-DX68_FAULT_L1_CLS_NO_FILL) ;;
   cls_no_full_repaint) FAULT_DEFINE=(-DX68_FAULT_L1_CLS_NO_FULL_REPAINT) ;;
   no_clip) FAULT_DEFINE=(-DX68_FAULT_L1_NO_CLIP) ;;
+  diff_ignore_shrink) FAULT_DEFINE=(-DX68_FAULT_L1_DIFF_IGNORE_SHRINK) ;;
+  diff_color_blind) FAULT_DEFINE=(-DX68_FAULT_L1_DIFF_COLOR_BLIND) ;;
+  diff_no_overflow_fallback) FAULT_DEFINE=(-DX68_FAULT_L1_DIFF_NO_OVERFLOW_FALLBACK) ;;
   *) echo "ERROR: 未知のfault指定: ${FAULT}" >&2; exit 1 ;;
 esac
 if [ -n "$FAULT" ]; then
@@ -68,6 +76,7 @@ SCRIPT_DEFINE=()
 case "$SCRIPT" in
   "") ;;
   empty) SCRIPT_DEFINE=(-DX68_L1_EMPTY_SCRIPT) ;;
+  diff) SCRIPT_DEFINE=(-DX68_L1_DIFF_SCRIPT) ;;
   *) echo "ERROR: 未知のscript指定: ${SCRIPT}" >&2; exit 1 ;;
 esac
 

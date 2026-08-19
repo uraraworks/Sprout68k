@@ -209,6 +209,48 @@ function buildEmptyScriptFrames(): Uint16Array[] {
   return [model.grid.slice()];
 }
 
+/* --- 差分転送を狙った台本(lib_test/src/main_l1.cのX68_L1_DIFF_SCRIPTと
+ * 1桁単位で一致させること)。host側モデルは「裏バッファを毎フレーム
+ * 塗り直す」素直な実装のままでよい(差分転送はGVRAM転送量だけの話で、
+ * 全画素の結果は変わらないはず)。 --- */
+const DIFF_BLK_W = 20, DIFF_BLK_H = 20, DIFF_BLK_Y = 20;
+const diffBlkX = (i: number) => 20 + i * 40;
+const DIFF_MOVER_W = 16, DIFF_MOVER_H = 16, DIFF_MOVER_Y = 200;
+const DIFF_BURST_COUNT = 70;
+const DIFF_BURST_Y = 400;
+
+const DIFF_C_BG = xRgb(0, 0, 0);
+const DIFF_C_S0 = xRgb(200, 50, 50);
+const DIFF_C_S1 = xRgb(50, 200, 50);
+const DIFF_C_S2 = xRgb(50, 50, 200);
+const DIFF_C_S2_NEW = xRgb(50, 200, 200);
+const DIFF_C_S3 = xRgb(200, 200, 50);
+const DIFF_C_S4 = xRgb(200, 50, 200);
+const DIFF_C_MOVER = xRgb(255, 255, 0);
+const DIFF_C_BURST = xRgb(128, 128, 128);
+
+function buildDiffScriptFrames(): Uint16Array[] {
+  const model = new Model();
+  const frames: Uint16Array[] = [];
+  for (let frame = 0; frame < 7; frame++) {
+    model.cls(DIFF_C_BG);
+    model.boxFill(diffBlkX(0), DIFF_BLK_Y, DIFF_BLK_W, DIFF_BLK_H, DIFF_C_S0);
+    model.boxFill(diffBlkX(1), DIFF_BLK_Y, DIFF_BLK_W, DIFF_BLK_H, DIFF_C_S1);
+    model.boxFill(diffBlkX(2), DIFF_BLK_Y, DIFF_BLK_W, DIFF_BLK_H, frame >= 2 ? DIFF_C_S2_NEW : DIFF_C_S2);
+    model.boxFill(diffBlkX(3), DIFF_BLK_Y, DIFF_BLK_W, DIFF_BLK_H, DIFF_C_S3);
+    if (frame <= 1) {
+      model.boxFill(diffBlkX(4), DIFF_BLK_Y, DIFF_BLK_W, DIFF_BLK_H, DIFF_C_S4);
+    }
+    const mx = 40 + frame * 10;
+    model.boxFill(mx, DIFF_MOVER_Y, DIFF_MOVER_W, DIFF_MOVER_H, DIFF_C_MOVER);
+    if (frame === 4) {
+      for (let i = 0; i < DIFF_BURST_COUNT; i++) model.pset(10 + i, DIFF_BURST_Y, DIFF_C_BURST);
+    }
+    frames.push(model.grid.slice());
+  }
+  return frames;
+}
+
 /* ============================================================
  * px68k駆動
  * ============================================================ */
@@ -442,6 +484,52 @@ async function main(): Promise<void> {
     const detected = !r.allOk;
     log(`RESULT: FAULT_${f.name.toUpperCase()} detected_fail=${detected}`);
     if (!detected) fail(`故障注入(${f.name})を検査が検出できなかった(検査が空振りしている)`);
+  }
+
+  // ==========================================================
+  // 差分転送(2026-08-20導入)の台本。静止物+動く物の同居・色だけの変更・
+  // 命令数が減る場面・一覧が溢れる場面を1本にまとめてある
+  // (docs/L1実装_20260819.md「差分転送」節参照)。
+  // ==========================================================
+  log('=== 差分転送台本(7フレーム) ===');
+  const diffFrames = buildDiffScriptFrames();
+  const diffImg = resolve(DEV_ROOT, 'build/l1_test_diff.xdf');
+  buildL1TestImage(diffImg, '', 'diff');
+  const diffRun = await runScript('diff', new Uint8Array(readFileSync(diffImg)), diffFrames, false, log);
+  if (!diffRun.reachedDone) fail('差分転送台本: HV2_DONEに到達しなかった');
+  if (!diffRun.allOk) fail('差分転送台本: 全画素比較が一致しないフレームがあった');
+  else log('RESULT: DIFF_SCRIPT_ALL_FRAMES_MATCH=true');
+
+  const db = diffRun.flipBytes;
+  log(`RESULT: DIFF_FLIP_BYTES per_frame=${JSON.stringify(db)}`);
+  // F0: 初回force_full(全画面) / F1: 静止物+動く物の同居、モーターだけ転送
+  // されるはず(全画面よりずっと小さい) / F4,F5: overflowフォールバックで
+  // 全画面(524288) / F6: 差分転送に復帰、再び小さくなるはず。
+  const FULL = 512 * 512 * 2;
+  const diffEfficient = db.length >= 7 && db[1] < FULL / 4 && db[6] < FULL / 4;
+  const diffOverflowFallback = db.length >= 7 && db[4] === FULL && db[5] === FULL;
+  log(`RESULT: DIFF_TRANSFER_EFFICIENT=${diffEfficient} (F1=${db[1]} F6=${db[6]}, 全画面=${FULL}の1/4未満であること)`);
+  log(`RESULT: DIFF_OVERFLOW_FALLBACK_BYTES=${diffOverflowFallback} (F4=${db[4]} F5=${db[5]}, 全画面=${FULL}と一致すること)`);
+  if (!diffEfficient) fail('差分転送: 静止物+動く物が同居するフレームで転送量が十分小さくならなかった');
+  if (!diffOverflowFallback) fail('差分転送: 一覧が溢れたフレーム(および直後)で全画面フォールバックの転送量にならなかった');
+
+  // --- 故障注入(4件)。それぞれ「意図的に壊した版で実際にFAILすること」を確認する。 ---
+  const diffFaults: { name: string; desc: string }[] = [
+    { name: 'skip_prev', desc: '変わった命令の前フレーム側の矩形を転送しない(消し残り)' },
+    { name: 'diff_ignore_shrink', desc: '命令数が減った場合を差分に含めない(消えない)' },
+    { name: 'diff_color_blind', desc: '色だけ違う命令を同一と誤判定する(色が変わらない)' },
+    { name: 'diff_no_overflow_fallback', desc: '一覧が溢れてもフォールバックしない(消し残り)' },
+  ];
+  let diffFaultIdx = 0;
+  for (const f of diffFaults) {
+    diffFaultIdx++;
+    log(`=== 差分転送 故障注入${diffFaultIdx}/${diffFaults.length}: ${f.name}(${f.desc}) ===`);
+    const img = resolve(DEV_ROOT, `build/l1_test_diff_fault_${f.name}.xdf`);
+    buildL1TestImage(img, f.name, 'diff');
+    const r = await runScript(`diff_fault_${f.name}`, new Uint8Array(readFileSync(img)), diffFrames, true, log);
+    const detected = !r.allOk;
+    log(`RESULT: DIFF_FAULT_${f.name.toUpperCase()} detected_fail=${detected}`);
+    if (!detected) fail(`差分転送の故障注入(${f.name})を検査が検出できなかった(検査が空振りしている)`);
   }
 
   log(`RESULT: L1_OVERALL_PASS=${overallOk}`);
