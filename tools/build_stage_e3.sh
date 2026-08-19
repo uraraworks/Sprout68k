@@ -1,13 +1,16 @@
 #!/usr/bin/env bash
-# Stage E-3(裏バッファ→GVRAM 転送速度の実測、再測定版)用ビルド。crt0/IOCS スタブ・
+# Stage E-3(裏バッファ→GVRAM 転送速度の実測、rev3)用ビルド。crt0/IOCS スタブ・
 # リンカスクリプト・ブートセクタは Stage C のものをそのまま流用する。
 #
-# 使い方: tools/build_stage_e3.sh <K_bytes> <method:0|1|2> <poll_interval> <n_repeats> <output.xdf>
-#   K_bytes        転送するバイト数
+# rev3ではゲスト側の転送ループから垂直同期ポーリングを完全に無くした
+# (時間はホスト側でrunFrame()の呼び出し回数を数えて測る。詳細は
+# stage_e/src/e3_copy.S / stage_e/src/main_e3.c 冒頭コメント参照)。
+# そのためビルド引数から poll_interval を削除した(rev2までは存在した)。
+#
+# 使い方: tools/build_stage_e3.sh <K_bytes> <method:0|1|2> <n_repeats> <output.xdf>
+#   K_bytes        1回の転送で送るバイト数
 #   method         0=word版(MOVE.W単位) 1=long版(MOVE.L単位) 2=movem版(8ロング=32バイト単位)
-#   poll_interval  何コピー単位ごとに1回 MFP GPIP を読むか(単位は方式依存)
-#   n_repeats      同じK_bytesの転送を何回繰り返すか(垂直同期回数を積算して
-#                   量子化誤差を薄めるため。詳細はstage_e/src/main_e3.cのコメント参照)
+#   n_repeats      転送を何回繰り返すか(0を指定すると陰性対照=転送なしになる)
 #
 # K_bytes は方式に応じた単位の倍数であること: word=2の倍数、long=4の倍数、
 # movem=32の倍数(8ロング分)。
@@ -17,9 +20,8 @@ set -euo pipefail
 
 K_BYTES="${1:?K_bytes(転送バイト数)が必要}"
 METHOD="${2:?method(0|1|2)が必要}"
-POLL_INTERVAL="${3:?poll_intervalが必要}"
-N_REPEATS="${4:?n_repeatsが必要}"
-OUT_XDF="${5:?output.xdf が必要}"
+N_REPEATS="${3:?n_repeatsが必要}"
+OUT_XDF="${4:?output.xdf が必要}"
 
 case "$METHOD" in
   0|1|2) ;;
@@ -42,18 +44,14 @@ if [ "$((K_BYTES % 2))" -ne 0 ]; then
 fi
 TRANSFER_WORDS=$((K_BYTES / 2))
 
-if [ "$POLL_INTERVAL" -lt 1 ]; then
-  echo "ERROR: poll_interval は1以上であること" >&2
-  exit 1
-fi
-if [ "$N_REPEATS" -lt 1 ]; then
-  echo "ERROR: n_repeats は1以上であること" >&2
+if [ "$N_REPEATS" -lt 0 ]; then
+  echo "ERROR: n_repeats は0以上であること" >&2
   exit 1
 fi
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "$HERE/.." && pwd)"
-OBJDIR="$ROOT/build/stage_e3_obj_k${K_BYTES}_m${METHOD}_p${POLL_INTERVAL}_r${N_REPEATS}"
+OBJDIR="$ROOT/build/stage_e3_obj_k${K_BYTES}_m${METHOD}_r${N_REPEATS}"
 mkdir -p "$OBJDIR"
 
 SECTOR_SIZE=1024
@@ -68,8 +66,9 @@ STACK_MARGIN=$((4096))
 # main_e3.c / e3_copy.S 内の固定アドレス(SRC/HOSTVAR)。ビルドスクリプト側でも整合を検査する。
 SRC_ADDR=$((0x20000))
 HOSTVAR_DONE_ADDR=$((0xE0010))
-HOSTVAR_VSYNC_ADDR=$((0xE0014))
+HOSTVAR_START_ADDR=$((0xE0020))
 SRC_END=$((SRC_ADDR + K_BYTES))
+HOSTVAR_MAX_ADDR=$((HOSTVAR_START_ADDR > HOSTVAR_DONE_ADDR ? HOSTVAR_START_ADDR : HOSTVAR_DONE_ADDR))
 
 if [ "$SRC_END" -gt "$STACK_ADDR_DEC" ]; then
   printf 'ERROR: 転送元領域末尾(0x%X, K_BYTES=%d)がスタック(STACK_ADDR=0x%X)と衝突する\n' "$SRC_END" "$K_BYTES" "$STACK_ADDR_DEC" >&2
@@ -79,12 +78,12 @@ if [ "$SRC_ADDR" -lt "$LOAD_ADDR" ]; then
   echo "ERROR: SRC_ADDR がロードアドレスより手前にある(想定外の定数変更)" >&2
   exit 1
 fi
-if [ "$HOSTVAR_VSYNC_ADDR" -lt "$SRC_END" ] && [ "$((HOSTVAR_VSYNC_ADDR + 4))" -gt "$SRC_ADDR" ]; then
+if [ "$HOSTVAR_MAX_ADDR" -lt "$SRC_END" ] && [ "$((HOSTVAR_MAX_ADDR + 4))" -gt "$SRC_ADDR" ]; then
   echo "ERROR: HOSTVAR領域がSRC領域と重なる可能性がある(K_BYTESが大きすぎる)" >&2
   exit 1
 fi
-if [ "$((HOSTVAR_VSYNC_ADDR + 4 + STACK_MARGIN))" -gt "$STACK_ADDR_DEC" ]; then
-  printf 'ERROR: HOSTVAR_VSYNC(0x%X)がスタック(STACK_ADDR=0x%X)に近すぎる\n' "$HOSTVAR_VSYNC_ADDR" "$STACK_ADDR_DEC" >&2
+if [ "$((HOSTVAR_MAX_ADDR + 4 + STACK_MARGIN))" -gt "$STACK_ADDR_DEC" ]; then
+  printf 'ERROR: HOSTVAR領域(0x%X)がスタック(STACK_ADDR=0x%X)に近すぎる\n' "$HOSTVAR_MAX_ADDR" "$STACK_ADDR_DEC" >&2
   exit 1
 fi
 if [ "$STACK_ADDR_DEC" -ge "$RAM_SIZE_DEC" ]; then
@@ -97,9 +96,9 @@ if [ "$SRC_END" -gt "$RAM_SIZE_DEC" ]; then
 fi
 
 CFLAGS=(-m68000 -Os -ffreestanding -nostdlib -fomit-frame-pointer -fno-builtin -Wall \
-  -DTRANSFER_WORDS="${TRANSFER_WORDS}" -DTRANSFER_METHOD="${METHOD}" -DPOLL_INTERVAL="${POLL_INTERVAL}" -DN_REPEATS="${N_REPEATS}")
+  -DTRANSFER_WORDS="${TRANSFER_WORDS}" -DTRANSFER_METHOD="${METHOD}" -DN_REPEATS="${N_REPEATS}")
 
-echo "== Stage E-3 本体(C+ASM, K_BYTES=${K_BYTES}, METHOD=${METHOD}, POLL_INTERVAL=${POLL_INTERVAL}, N_REPEATS=${N_REPEATS}, TRANSFER_WORDS=${TRANSFER_WORDS})のビルド =="
+echo "== Stage E-3 本体(C+ASM, K_BYTES=${K_BYTES}, METHOD=${METHOD}, N_REPEATS=${N_REPEATS}, TRANSFER_WORDS=${TRANSFER_WORDS})のビルド =="
 m68k-elf-gcc "${CFLAGS[@]}" -c "$ROOT/stage_e/src/main_e3.c" -o "$OBJDIR/main.o"
 m68k-elf-gcc -x assembler-with-cpp -m68000 -c "$ROOT/stage_e/src/e3_copy.S" -o "$OBJDIR/e3_copy.o"
 m68k-elf-gcc -x assembler-with-cpp -m68000 -DSTACK_ADDR="${STACK_ADDR}" -c "$ROOT/stage_c/crt0/crt0.S" -o "$OBJDIR/crt0.o"

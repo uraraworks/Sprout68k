@@ -1,45 +1,38 @@
 /*
- * Stage E-3(再測定・第2版): メインメモリ上の領域から GVRAM(65536色1ページ)へ K バイト
- * 転送する間に経過した垂直同期の回数を実測し、1フレームあたりの転送スループット
- * (バイト/フレーム)を求める。垂直同期の検出手段は Stage E-2 で実測確定した MFP
- * GPIP($E88001) bit4 の立下りエッジ検出をそのまま使う(stage_e/src/e3_copy.S 参照)。
+ * Stage E-3(rev3): メインメモリ上の領域から GVRAM(65536色1ページ)へ K バイト転送を
+ * R回繰り返すのに要する時間を、ホスト側が runFrame() の呼び出し回数で測る。
  *
- * 【この再測定を行った理由 その1(1回目の再測定)】最初の verify_e3.mts(main_e3.c
- * 単一実装、ワード単位コピーの内側ループで毎回 MFP をポーリング)は「転送速度」では
- * なく「転送+ワード毎ポーリング」の速度を測っていた。ポーリングという低速な I/O
- * バス読み出しが1コピー単位ごとに入っていたため支配的コストになっており、
- * K=64/128/256/512KB の4点が完全比例していたのもポーリングコストが一定だった
- * ことの裏返しでしかない(比例は変換式が丸ごと間違っていても成立する)。
+ * 【この版に至った経緯(訂正記録)】
+ * rev1(main_e3.c 単一実装、ワード単位コピーの内側ループで毎回 MFP GPIP をポーリング)
+ * は「転送速度」ではなく「転送+ワード毎ポーリング」の速度を測っていた。ポーリングと
+ * いう低速な I/O バス読み出しがコピーそのものより遥かに高価で支配的コストになっており、
+ * K=64/128/256/512KBの4点が完全比例していたのもポーリングコストが一定だったことの
+ * 裏返しに過ぎなかった。
  *
- * 【この再測定を行った理由 その2(2回目の再測定・今回)】ポーリングを内側ループから
- * 出し(POLL_INTERVAL個のコピー単位ごとに1回)、word/long/movemの3方式を1回ずつ
- * 実行して K=64〜512KB を測ったところ、今度は逆にポーリング負荷が無くなったぶん
- * 転送そのものが速すぎて、**1回の転送が1垂直同期(約16.7ms)未満で終わる**
- * ケースが大半になった。垂直同期の「回数」は整数(0,1,2...)でしか数えられない
- * ため、この状態で K/回数 を取ると量子化誤差が支配的になり、収束確認(N=256/1024/
- * 4096で値が収束するか)も線形性確認も成立しなかった(実測: movem版はK=512KB
- * でも1回の転送でguestVsyncEvents=0または1にしかならなかった)。
- * そこで今回は、同じK バイトの転送を N_REPEATS 回繰り返し(stage_e/src/main_e3.c
- * が積算)、累積した垂直同期回数で割ることで量子化誤差を薄める方式にした。
+ * rev2ではポーリングを内側ループから分離し(POLL_INTERVAL個のコピー単位ごとに1回)、
+ * word/long/movemの3方式を比較したが、これも誤りだった。**垂直帰線期間はフレーム
+ * 全体の数%程度しかなく、ポーリング間隔が帰線期間より長いと GPIP が0になっている
+ * 区間をまたいで飛び越し、立下りエッジ(垂直同期)そのものを見落とす。** 見落とすと
+ * 検出回数が過少になり、K/回数(バイト/フレーム)は大きい方向にずれる。rev2で
+ * 「ポーリング間隔を増やすほど値が増え続けて収束しなかった」ことも、「movemで
+ * 1ロング未満のサイクル数という物理的にあり得ない値が出た」ことも、この取り逃しの
+ * 署名だった。
  *
- * 測定は4段階:
- *   1. K=512KB固定で、ポーリング間隔(POLL_INTERVAL)を256/1024/4096の3通りに
- *      振り、スループットが収束することを確認する(N_REPEATS=100で量子化誤差を
- *      あらかじめ抑えた上で確認する。収束しなければポーリング負荷がまだ支配的)。
- *   2. 収束したポーリング間隔を使い、word/long/movemの3方式でK=64/128/256/512KB
- *      のスループットを測る。各(方式,K)ごとに N_REPEATS を、累積垂直同期回数が
- *      目標値(TARGET_VSYNCS=300)に近づくよう概算で決める(量子化誤差を約
- *      0.3%程度に抑える狙い。あくまで目標であり、実際に達成できたかは実測値を
- *      そのまま報告する)。
- *   3. 同一方式内でK/累積回数が一定(比例)しているかを線形性の消極的チェックとして見る。
- *   4. K=0(陰性対照)で全方式とも垂直同期回数が0になることを確認する。
- *
- * 妥当性の相互確認として、各実測値を16MHz換算で「1ロングワードあたり何サイクルか」
- * に変換し、68000の素朴なメモリ間コピーとして妥当な桁(目安20〜40サイクル/ロング。
- * GVRAMのウェイト次第でもう少し)から外れていないかを記録する。
+ * rev1・rev2に共通する原因は「ゲスト側の転送ループの中で時間(垂直同期)を測ろうと
+ * したこと」そのものだった。rev3ではこれをやめる:
+ *   - ゲスト(stage_e/src/e3_copy.S, stage_e/src/main_e3.c)は転送ループから
+ *     ポーリングを完全に無くし、開始直前に START_FLAG($000E0020)、
+ *     N_REPEATS回すべて完了した直後に DONE_FLAG($000E0010)を書くだけにする。
+ *   - host側(このファイル)が runFrame() を1回呼ぶごとに両フラグを peekByte() で
+ *     監視し、START_FLAGが立ってからDONE_FLAGが立つまでの runFrame() 呼び出し
+ *     回数を数える。ホストは自分が何回呼んだか正確に知っているので、取り逃しも
+ *     過剰計上も原理的に起きない。
+ *   - 分解能は1フレームなので、合計所要フレームが最低30フレーム以上になるよう
+ *     N_REPEATS(R)を方式・Kごとに調整する(校正: 小さいRで試し、目標フレーム数
+ *     に届くよう倍率をかけて本測定する)。
  *
  * 使い方: npx tsx verify/verify_e3.mts
- * 環境変数: WEBX68K_DIR(既定 ../WebX68k)、WARMUP(既定 150)、MAX_EXTRA_FRAMES(既定 20000)
+ * 環境変数: WEBX68K_DIR(既定 ../WebX68k)、MAX_FRAMES(既定 20000)
  */
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
@@ -55,8 +48,8 @@ const CORE_JS = resolve(WEBX68K_DIR, 'public/core/px68k_libretro.js');
 const IPL = resolve(WEBX68K_DIR, 'public/system/iplrom.dat');
 const CGROM = resolve(WEBX68K_DIR, 'public/system/cgrom.dat');
 
+const START_FLAG_ADDR = 0x000e0020;
 const DONE_FLAG_ADDR = 0x000e0010;
-const VSYNC_COUNT_ADDR = 0x000e0014;
 
 const DEADLINE_BASE_MS = 45_000;
 const DEADLINE_MS_PER_FRAME = 20;
@@ -95,20 +88,19 @@ const CORE_OPTION_DEFAULTS_NOT_SET = {
   px68k_audio_desync_hack: 'disabled (既定値)',
 };
 
-/* avInfo.fps(retro_get_system_av_info が報告する値)を16MHz換算の基準に使う。
- * 65536色1ページモード設定後、host.fetchAvInfo() で実測した値(61.46Hz)。
- * この値自体は「px68kが自己申告するfps」であり実機の垂直同期周波数の実測では
- * ないため、結果の読み方に出所を明記する。 */
-const REPORTED_FPS_FOR_CYCLE_ESTIMATE = 61.46;
+/* サイクル換算の基準として使う2値。host.fetchAvInfo()(loadGame直後、ゲスト側の
+ * CRTCレジスタ書き換え前)が報告する値をそのまま使う。 */
+const REPORTED_FPS_FOR_CYCLE_ESTIMATE_PLACEHOLDER = 0; // 実測後に埋める(下記main内でavInfoから取得)
 const CPU_HZ_FOR_CYCLE_ESTIMATE = 16_000_000;
 
 interface Session {
-  runFramesUntilDone(warmup: number, maxExtraFrames: number, label: string): { hostFramesAfterWarmup: number; done: boolean };
-  peekVsyncCount(): number;
+  host: any;
+  runFrameCounted(): void;
+  peekByteAt(addr: number): number;
   dispose(): void;
 }
 
-async function bootSession(label: string, diskBytes: Uint8Array): Promise<Session> {
+async function bootSession(label: string, diskBytes: Uint8Array): Promise<{ session: Session; reportedFps: number }> {
   const { LibretroHost } = await import(pathToFileURL(resolve(WEBX68K_DIR, 'src/libretro-host.ts')).href);
 
   (globalThis as any).window = { PX68K: loadFactory() };
@@ -130,245 +122,230 @@ async function bootSession(label: string, diskBytes: Uint8Array): Promise<Sessio
   const diskPath = host.writeDiskImage(`fdd0_${label}.xdf`, diskBytes);
   host.writeFile('/game/boot.cmd', new TextEncoder().encode(`px68k "${diskPath}" ""\n`));
   if (!host.loadGame('/game/boot.cmd')) throw new Error(`${label}: loadGame失敗`);
-  host.fetchAvInfo();
+  const avInfo = host.fetchAvInfo();
 
-  return {
-    runFramesUntilDone(warmup: number, maxExtraFrames: number, lbl: string) {
-      const checkDeadlineWarmup = makeDeadline(`${lbl}:warmup`, warmup);
-      for (let i = 0; i < warmup; i++) {
-        host.runFrame();
-        if (i % 50 === 0) checkDeadlineWarmup();
-      }
-      const checkDeadline = makeDeadline(`${lbl}:transfer`, maxExtraFrames);
-      let hostFramesAfterWarmup = 0;
-      let done = host.peekByte(DONE_FLAG_ADDR) === 1;
-      while (!done && hostFramesAfterWarmup < maxExtraFrames) {
-        host.runFrame();
-        hostFramesAfterWarmup++;
-        if (hostFramesAfterWarmup % 50 === 0) checkDeadline();
-        done = host.peekByte(DONE_FLAG_ADDR) === 1;
-      }
-      return { hostFramesAfterWarmup, done };
+  const session: Session = {
+    host,
+    runFrameCounted() {
+      host.runFrame();
     },
-    peekVsyncCount(): number {
-      const hi = host.peekWord(VSYNC_COUNT_ADDR) >>> 0;
-      const lo = host.peekWord(VSYNC_COUNT_ADDR + 2) >>> 0;
-      return (hi * 0x10000 + lo) >>> 0;
+    peekByteAt(addr: number) {
+      return host.peekByte(addr);
     },
     dispose() {
       host.dispose();
     },
   };
+  return { session, reportedFps: avInfo.fps };
 }
 
-function buildStageE3Image(kBytes: number, method: 0 | 1 | 2, pollInterval: number, nRepeats: number, outPath: string): void {
+function buildStageE3Image(kBytes: number, method: 0 | 1 | 2, nRepeats: number, outPath: string): void {
   execFileSync('bash', [
     resolve(DEV_ROOT, 'tools/build_stage_e3.sh'),
     String(kBytes),
     String(method),
-    String(pollInterval),
     String(nRepeats),
     outPath,
   ], { cwd: DEV_ROOT });
 }
 
-interface Measurement {
-  kBytes: number;
-  method: 0 | 1 | 2;
-  pollInterval: number;
-  nRepeats: number;
-  done: boolean;
-  hostFramesAfterWarmup: number;
-  guestVsyncEvents: number; // N_REPEATS回ぶんの累積
-  totalBytes: number; // kBytes * nRepeats
-  bytesPerFrame: number | null;
+interface RunResult {
+  framesToStart: number; // ブート開始からSTART_FLAGが立つまで
+  framesForTransfer: number; // START_FLAGからDONE_FLAGが立つまで(=計測したい値)
+  startSeen: boolean;
+  doneSeen: boolean;
 }
 
-async function measure(kBytes: number, method: 0 | 1 | 2, pollInterval: number, nRepeats: number, warmup: number, maxExtraFrames: number): Promise<Measurement> {
-  const label = `e3_k${kBytes}_m${method}_p${pollInterval}_r${nRepeats}`;
+/* host側で runFrame() を1回ずつ呼びながら START_FLAG→DONE_FLAG の遷移を数える。
+ * 取り逃し・過剰計上が起きないよう、フレームごとに必ず1回だけ判定する
+ * (rev2のようにゲスト側のカウンタへ依存しない)。 */
+async function runAndMeasure(kBytes: number, method: 0 | 1 | 2, nRepeats: number, maxFrames: number): Promise<{ result: RunResult; reportedFps: number }> {
+  const label = `e3_k${kBytes}_m${method}_r${nRepeats}`;
   const imgPath = resolve(DEV_ROOT, `build/stage_e3_${label}.xdf`);
-  buildStageE3Image(kBytes, method, pollInterval, nRepeats, imgPath);
-  const session = await bootSession(label, new Uint8Array(readFileSync(imgPath)));
-  const { hostFramesAfterWarmup, done } = session.runFramesUntilDone(warmup, maxExtraFrames, label);
-  const guestVsyncEvents = session.peekVsyncCount();
+  buildStageE3Image(kBytes, method, nRepeats, imgPath);
+  const { session, reportedFps } = await bootSession(label, new Uint8Array(readFileSync(imgPath)));
+
+  const checkDeadline = makeDeadline(label, maxFrames);
+  let framesToStart = 0;
+  let startSeen = session.peekByteAt(START_FLAG_ADDR) === 1;
+  while (!startSeen && framesToStart < maxFrames) {
+    session.runFrameCounted();
+    framesToStart++;
+    if (framesToStart % 200 === 0) checkDeadline();
+    startSeen = session.peekByteAt(START_FLAG_ADDR) === 1;
+  }
+
+  let framesForTransfer = 0;
+  let doneSeen = startSeen && session.peekByteAt(DONE_FLAG_ADDR) === 1;
+  if (startSeen) {
+    while (!doneSeen && framesForTransfer < maxFrames) {
+      session.runFrameCounted();
+      framesForTransfer++;
+      if (framesForTransfer % 200 === 0) checkDeadline();
+      doneSeen = session.peekByteAt(DONE_FLAG_ADDR) === 1;
+    }
+  }
+
   session.dispose();
-  const totalBytes = kBytes * nRepeats;
-  return {
-    kBytes,
-    method,
-    pollInterval,
-    nRepeats,
-    done,
-    hostFramesAfterWarmup,
-    guestVsyncEvents,
-    totalBytes,
-    bytesPerFrame: guestVsyncEvents > 0 ? totalBytes / guestVsyncEvents : (kBytes === 0 ? 0 : null),
-  };
+  return { result: { framesToStart, framesForTransfer, startSeen, doneSeen }, reportedFps };
 }
 
 const METHOD_NAMES: Record<number, string> = { 0: 'word(MOVE.W)', 1: 'long(MOVE.L)', 2: 'movem(MOVEM.L x8)' };
 
-function cyclesPerLong(bytesPerFrame: number): number {
-  const cyclesPerFrame = CPU_HZ_FOR_CYCLE_ESTIMATE / REPORTED_FPS_FOR_CYCLE_ESTIMATE;
-  const longsPerFrame = bytesPerFrame / 4;
-  return cyclesPerFrame / longsPerFrame;
-}
-
-/* 目標とする累積垂直同期回数(量子化誤差をおよそ 1/TARGET_VSYNCS に抑える狙い)。 */
-const TARGET_VSYNCS = 300;
-const MIN_N_REPEATS = 10;
-const MAX_N_REPEATS = 200_000;
-
-/* 大まかなスループット概算(N_REPEATSの罠を修正した後にK=512KBで軽く予備測定した
- * 実測値を初期シードとして使う。この値そのものは結論に使わない。N_REPEATSの
- * サイズを決めるためだけの概算であり、exact bytesPerFrame は最終的に本測定の
- * 実測値からそのまま算出する)。 */
-const ROUGH_BYTES_PER_FRAME_SEED: Record<number, number> = {
-  0: 82_000,    // word (予備測定: reps=50でevents=319 -> 524288*50/319≈82,182)
-  1: 160_000,   // long (予備測定: reps=30でevents=98  -> 524288*30/98≈160,517)
-  2: 1_390_000, // movem(予備測定: reps=300でevents=113 -> 524288*300/113≈1,392,268)
+/* 大まかな所要フレーム数の概算(校正用シード。あくまでR決定のためだけに使う。
+ * 実際のbytesPerFrameは本測定の実測値からそのまま算出する)。rev2の数値は
+ * 過大評価だったと判明したため使わず、保守的に「1フレームあたり数KB程度」を
+ * 仮定した小さめの値からスタートし、校正パスで実測しながら合わせる。 */
+const CALIBRATION_SEED_FRAMES_PER_KBYTE: Record<number, number> = {
+  0: 0.02, // word: 1KBあたり概算0.02フレーム(要校正)
+  1: 0.01, // long
+  2: 0.002, // movem
 };
 
-function pickNRepeats(kBytes: number, method: 0 | 1 | 2): number {
-  if (kBytes === 0) return 1;
-  const seed = ROUGH_BYTES_PER_FRAME_SEED[method];
-  const n = Math.ceil((seed * TARGET_VSYNCS) / kBytes);
-  return Math.min(MAX_N_REPEATS, Math.max(MIN_N_REPEATS, n));
+const TARGET_FRAMES = 40; // 「最低30フレーム以上」の指示に対し余裕を見て40
+const MAX_FRAMES = Number(process.env.MAX_FRAMES ?? 20000);
+
+/* K,methodについて、所要フレームがTARGET_FRAMES程度になるようRを校正してから
+ * 本測定する。校正パスの結果が小さすぎる(<2フレーム)場合は指数的にRを増やして
+ * 再校正する。 */
+async function calibratedMeasure(kBytes: number, method: 0 | 1 | 2): Promise<{ R: number; framesForTransfer: number; bytesPerFrame: number; reportedFps: number; raw: RunResult }> {
+  let R = Math.max(1, Math.ceil((TARGET_FRAMES / Math.max(CALIBRATION_SEED_FRAMES_PER_KBYTE[method] * (kBytes / 1024), 0.01))));
+  R = Math.min(R, 4000);
+  let attempt = 0;
+  let last: { result: RunResult; reportedFps: number } | null = null;
+  while (attempt < 6) {
+    last = await runAndMeasure(kBytes, method, R, MAX_FRAMES);
+    if (!last.result.startSeen || !last.result.doneSeen) {
+      throw new Error(`計測失敗: K=${kBytes} method=${method} R=${R} startSeen=${last.result.startSeen} doneSeen=${last.result.doneSeen}(MAX_FRAMES=${MAX_FRAMES}到達の可能性)`);
+    }
+    if (last.result.framesForTransfer >= TARGET_FRAMES * 0.75) break;
+    // 足りなければ倍率をかけて増やす
+    const ratio = TARGET_FRAMES / Math.max(last.result.framesForTransfer, 0.5);
+    R = Math.min(Math.ceil(R * ratio * 1.2), 2_000_000);
+    attempt++;
+  }
+  if (!last) throw new Error('unreachable');
+  const bytesPerFrame = (kBytes * R) / last.result.framesForTransfer;
+  return { R, framesForTransfer: last.result.framesForTransfer, bytesPerFrame, reportedFps: last.reportedFps, raw: last.result };
+}
+
+function cyclesPerLong(bytesPerFrame: number, cyclesPerFrame: number): number {
+  const longsPerFrame = bytesPerFrame / 4;
+  return cyclesPerFrame / longsPerFrame;
 }
 
 async function main(): Promise<void> {
   console.log(`WEBX68K_DIR=${WEBX68K_DIR}`);
   console.log(`RESULT: E3_CORE_OPTIONS_SET=${JSON.stringify(CORE_OPTIONS_USED)}`);
   console.log(`RESULT: E3_CORE_OPTIONS_DEFAULT=${JSON.stringify(CORE_OPTION_DEFAULTS_NOT_SET)}`);
-  console.log(`RESULT: E3_REPORTED_FPS_FOR_CYCLE_ESTIMATE=${REPORTED_FPS_FOR_CYCLE_ESTIMATE} (host.fetchAvInfo()の自己申告値。実機の垂直同期周波数の実測ではない)`);
-
-  const WARMUP = Number(process.env.WARMUP ?? 150);
-  const MAX_EXTRA_FRAMES = Number(process.env.MAX_EXTRA_FRAMES ?? 20000);
-  console.log(`WARMUP=${WARMUP} MAX_EXTRA_FRAMES=${MAX_EXTRA_FRAMES} TARGET_VSYNCS=${TARGET_VSYNCS}`);
+  console.log(`MAX_FRAMES=${MAX_FRAMES} TARGET_FRAMES=${TARGET_FRAMES}`);
 
   const methods: (0 | 1 | 2)[] = [0, 1, 2];
-
-  // === 手順1: ポーリング間隔の収束確認(K=512KB固定、3方式 x N=256/1024/4096) ===
-  // N_REPEATS=100固定で量子化誤差をあらかじめ抑えた上で、ポーリング間隔だけを振る。
-  console.log('--- 手順1: ポーリング間隔(POLL_INTERVAL)の収束確認(K=512KB, N_REPEATS=100) ---');
-  const CONVERGENCE_K = 512 * 1024;
-  const CONVERGENCE_N_REPEATS = 100;
-  const POLL_INTERVALS: number[] = [256, 1024, 4096];
-  const convergence: Measurement[] = [];
-  for (const method of methods) {
-    for (const n of POLL_INTERVALS) {
-      const r = await measure(CONVERGENCE_K, method, n, CONVERGENCE_N_REPEATS, WARMUP, MAX_EXTRA_FRAMES);
-      convergence.push(r);
-      console.log(`RESULT: E3_CONVERGENCE method=${METHOD_NAMES[method]} pollInterval=${n} guestVsyncEvents=${r.guestVsyncEvents} bytesPerFrame=${r.bytesPerFrame?.toFixed(2)} done=${r.done}`);
-    }
-  }
-  // 収束判定: 同一方式内でN=1024とN=4096のbytesPerFrameの差が5%以内なら収束とみなす
-  const convergenceOk: Record<number, boolean> = {};
-  for (const method of methods) {
-    const rows = convergence.filter((r) => r.method === method);
-    const at1024 = rows.find((r) => r.pollInterval === 1024)!;
-    const at4096 = rows.find((r) => r.pollInterval === 4096)!;
-    const b1024 = at1024.bytesPerFrame ?? 0;
-    const b4096 = at4096.bytesPerFrame ?? 0;
-    const diffRatio = b1024 > 0 ? Math.abs(b4096 - b1024) / b1024 : Infinity;
-    convergenceOk[method] = diffRatio <= 0.05;
-    console.log(`RESULT: E3_CONVERGENCE_CHECK method=${METHOD_NAMES[method]} N=1024:${b1024.toFixed(2)} N=4096:${b4096.toFixed(2)} diffRatio=${(diffRatio * 100).toFixed(2)}% converged=${convergenceOk[method]}`);
-  }
-  const allConverged = methods.every((m) => convergenceOk[m]);
-  console.log(`RESULT: E3_ALL_CONVERGED=${allConverged}`);
-
-  const CHOSEN_POLL_INTERVAL = 4096;
-  console.log(`RESULT: E3_CHOSEN_POLL_INTERVAL=${CHOSEN_POLL_INTERVAL}`);
-
-  // === 手順2: 3方式 x K=64/128/256/512KB のスループット・線形性確認 ===
-  console.log('--- 手順2: 方式別スループットと線形性(K=64/128/256/512KB、N_REPEATSは目標300回に合わせて算出) ---');
   const K_LIST = [64 * 1024, 128 * 1024, 256 * 1024, 512 * 1024];
-  const mainResults: Measurement[] = [];
+
+  // === 手順1: 陰性対照(R=0、転送なし) ===
+  console.log('--- 手順1: 陰性対照(R=0、転送なし) ---');
+  const zeroResults: { method: 0 | 1 | 2; framesForTransfer: number; ok: boolean }[] = [];
+  for (const method of methods) {
+    const { result } = await runAndMeasure(64 * 1024, method, 0, MAX_FRAMES);
+    const ok = result.startSeen && result.doneSeen && result.framesForTransfer <= 1;
+    zeroResults.push({ method, framesForTransfer: result.framesForTransfer, ok });
+    console.log(`RESULT: E3_ZERO method=${METHOD_NAMES[method]} framesForTransfer=${result.framesForTransfer} ok=${ok}`);
+  }
+  const zeroOk = zeroResults.every((r) => r.ok);
+  console.log(`RESULT: E3_NEGATIVE_CONTROL_OK=${zeroOk}`);
+
+  // === 手順2: 3方式 x K=64/128/256/512KB の本測定(校正付き) ===
+  console.log('--- 手順2: 方式別スループット(校正付き、目標フレーム数40以上) ---');
+  let reportedFps = 0;
+  const mainResults: { method: 0 | 1 | 2; kBytes: number; R: number; framesForTransfer: number; bytesPerFrame: number }[] = [];
   for (const method of methods) {
     for (const k of K_LIST) {
-      const nRepeats = pickNRepeats(k, method);
-      const r = await measure(k, method, CHOSEN_POLL_INTERVAL, nRepeats, WARMUP, MAX_EXTRA_FRAMES);
-      mainResults.push(r);
-      const cpl = r.bytesPerFrame ? cyclesPerLong(r.bytesPerFrame) : null;
-      const resolutionOk = r.guestVsyncEvents >= TARGET_VSYNCS * 0.3;
-      console.log(`RESULT: E3_MAIN method=${METHOD_NAMES[method]} K=${r.kBytes} nRepeats=${r.nRepeats} totalBytes=${r.totalBytes} guestVsyncEvents=${r.guestVsyncEvents} bytesPerFrame=${r.bytesPerFrame?.toFixed(2)} cyclesPerLong=${cpl?.toFixed(2)} resolutionOk=${resolutionOk} done=${r.done}`);
+      const r = await calibratedMeasure(k, method);
+      reportedFps = r.reportedFps; // 全実行で同一のはずなので最後の値を採用
+      mainResults.push({ method, kBytes: k, R: r.R, framesForTransfer: r.framesForTransfer, bytesPerFrame: r.bytesPerFrame });
+      console.log(`RESULT: E3_MAIN method=${METHOD_NAMES[method]} K=${k} R=${r.R} framesForTransfer=${r.framesForTransfer} bytesPerFrame=${r.bytesPerFrame.toFixed(2)}`);
     }
   }
-  const allMainDone = mainResults.every((r) => r.done);
+  console.log(`RESULT: E3_REPORTED_FPS=${reportedFps} (host.fetchAvInfo().fps。loadGame直後、ゲスト側CRTC書き換え前の値)`);
+  const cyclesPerFrame = CPU_HZ_FOR_CYCLE_ESTIMATE / reportedFps;
+  console.log(`RESULT: E3_CYCLES_PER_FRAME=${cyclesPerFrame.toFixed(2)} (=${CPU_HZ_FOR_CYCLE_ESTIMATE}Hz / ${reportedFps}fps)`);
 
-  // 線形性: 同一方式内でK/累積回数(bytesPerFrame)が一定(比例)しているかを確認する。
-  // 比例そのものは正しさの十分条件ではない(1回目の再測定で踏んだ教訓)ため、
-  // ここでは「破綻していないか」の消極的なチェックとしてのみ扱う。
-  const linearityByMethod: Record<number, { ok: boolean; values: number[] }> = {};
+  // === 手順3: 線形性確認(K=512KBについて、校正されたRと2Rで所要フレームが2倍になるか) ===
+  console.log('--- 手順3: 線形性確認(K=512KB、校正R と 2R) ---');
+  const linearity: { method: 0 | 1 | 2; R1: number; frames1: number; R2: number; frames2: number; ratio: number; ok: boolean }[] = [];
   for (const method of methods) {
-    const rows = mainResults.filter((r) => r.method === method && r.bytesPerFrame !== null);
-    const values = rows.map((r) => r.bytesPerFrame as number);
-    const maxV = Math.max(...values);
-    const minV = Math.min(...values);
-    const ok = minV > 0 && (maxV - minV) / minV <= 0.1;
-    linearityByMethod[method] = { ok, values };
-    console.log(`RESULT: E3_LINEARITY method=${METHOD_NAMES[method]} values=${JSON.stringify(values.map((v) => v.toFixed(2)))} ok=${ok}`);
+    const base = mainResults.find((r) => r.method === method && r.kBytes === 512 * 1024)!;
+    const { result: doubled } = await runAndMeasure(512 * 1024, method, base.R * 2, MAX_FRAMES);
+    if (!doubled.startSeen || !doubled.doneSeen) {
+      console.log(`RESULT: E3_LINEARITY method=${METHOD_NAMES[method]} 計測失敗(2R実行がMAX_FRAMESに到達)`);
+      linearity.push({ method, R1: base.R, frames1: base.framesForTransfer, R2: base.R * 2, frames2: -1, ratio: NaN, ok: false });
+      continue;
+    }
+    const ratio = doubled.framesForTransfer / base.framesForTransfer;
+    const ok = ratio >= 1.7 && ratio <= 2.3; // 2倍から大きくは外れない範囲を許容
+    linearity.push({ method, R1: base.R, frames1: base.framesForTransfer, R2: base.R * 2, frames2: doubled.framesForTransfer, ratio, ok });
+    console.log(`RESULT: E3_LINEARITY method=${METHOD_NAMES[method]} R1=${base.R} frames1=${base.framesForTransfer} R2=${base.R * 2} frames2=${doubled.framesForTransfer} ratio=${ratio.toFixed(3)} ok=${ok}`);
   }
+  const allLinearityOk = linearity.every((r) => r.ok);
+  console.log(`RESULT: E3_ALL_LINEARITY_OK=${allLinearityOk}`);
 
-  // === 手順3: 陰性対照(K=0) ===
-  console.log('--- 手順3: 陰性対照(K=0バイト転送) ---');
-  const zeroResults: Measurement[] = [];
-  for (const method of methods) {
-    const r = await measure(0, method, CHOSEN_POLL_INTERVAL, 1, WARMUP, MAX_EXTRA_FRAMES);
-    zeroResults.push(r);
-    console.log(`RESULT: E3_ZERO method=${METHOD_NAMES[method]} guestVsyncEvents=${r.guestVsyncEvents} done=${r.done}`);
-  }
-  const zeroOk = zeroResults.every((r) => r.done && r.guestVsyncEvents === 0);
-  console.log(`RESULT: E3_NEGATIVE_CONTROL_ZERO_OK=${zeroOk}`);
-
-  // === 総合結論 ===
-  const full = mainResults.filter((r) => r.kBytes === 512 * 1024);
+  // === 結論: サイクル換算、方式間の比、妥当性判定 ===
   console.log('--- 結論 ---');
-  for (const r of full) {
-    // 1回ぶんの転送が1フレームに収まるかは、累積値を1回あたりに換算して判定する
-    // (N_REPEATS回ぶん束ねて測っているため、素の回数ではなく平均で見る)。
-    const eventsPerRep = r.guestVsyncEvents / r.nRepeats;
-    const fits = eventsPerRep <= 1;
-    console.log(`RESULT: E3_512KB_FITS_IN_ONE_FRAME method=${METHOD_NAMES[r.method]} eventsPerRep=${eventsPerRep.toFixed(4)} fits=${fits}`);
-  }
-
-  // 最速方式(bytesPerFrameが最大)を「1フレームに収まる最大バイト数」の代表値として採用
-  let best: Measurement | null = null;
+  const byMethodAt512: Record<number, number> = {};
   for (const r of mainResults) {
-    if (r.kBytes !== 512 * 1024) continue;
-    if (!best || (r.bytesPerFrame ?? 0) > (best.bytesPerFrame ?? 0)) best = r;
+    if (r.kBytes === 512 * 1024) byMethodAt512[r.method] = r.bytesPerFrame;
   }
-  const FULL_SCREEN_BYTES = 512 * 1024;
-  const fraction = best?.bytesPerFrame !== null && best?.bytesPerFrame !== undefined ? best.bytesPerFrame / FULL_SCREEN_BYTES : null;
-  console.log(`RESULT: E3_BEST_METHOD=${best ? METHOD_NAMES[best.method] : 'null'}`);
-  console.log(`RESULT: E3_BEST_BYTES_PER_FRAME=${best?.bytesPerFrame?.toFixed(2)}`);
-  console.log(`RESULT: E3_BEST_AS_FRACTION_OF_FULLSCREEN=${fraction !== null ? (fraction * 100).toFixed(2) + '%' : 'null'}`);
+  const cyclesTable: Record<number, number> = {};
+  const plausible: Record<number, boolean> = {};
+  const MIN_PLAUSIBLE_CYCLES_PER_LONG = 5; // これ未満は物理的にあり得ない(故障とみなす)
+  const MAX_PLAUSIBLE_CYCLES_PER_LONG = 200; // 上限も参考として設ける(常識的な上振れ)
+  for (const method of methods) {
+    const bpf = byMethodAt512[method];
+    const cpl = cyclesPerLong(bpf, cyclesPerFrame);
+    cyclesTable[method] = cpl;
+    plausible[method] = cpl >= MIN_PLAUSIBLE_CYCLES_PER_LONG && cpl <= MAX_PLAUSIBLE_CYCLES_PER_LONG;
+    console.log(`RESULT: E3_CYCLES_PER_LONG method=${METHOD_NAMES[method]} bytesPerFrame(K=512KB)=${bpf.toFixed(2)} cyclesPerLong=${cpl.toFixed(2)} plausible=${plausible[method]}`);
+  }
 
-  const overallOk = allMainDone && zeroOk;
+  const movemVsLongRatio = byMethodAt512[2] / byMethodAt512[1];
+  const movemVsLongOk = movemVsLongRatio >= 1.5 && movemVsLongRatio <= 2.5;
+  console.log(`RESULT: E3_MOVEM_VS_LONG_RATIO=${movemVsLongRatio.toFixed(3)} plausible(1.5-2.5)=${movemVsLongOk}`);
+
+  const allPlausible = methods.every((m) => plausible[m]) && movemVsLongOk;
+  console.log(`RESULT: E3_ALL_PLAUSIBLE=${allPlausible}`);
+  if (!allPlausible) {
+    console.log('RESULT: E3_VERDICT=UNDETERMINED (妥当性チェックに落ちたため、方式別スループットの数値は未確定として報告する)');
+  } else {
+    console.log('RESULT: E3_VERDICT=DETERMINED');
+    for (const method of methods) {
+      const bpf = byMethodAt512[method];
+      const frames512 = (512 * 1024) / bpf;
+      const fits = frames512 <= 1;
+      console.log(`RESULT: E3_512KB_FITS_IN_ONE_FRAME method=${METHOD_NAMES[method]} framesFor512KB=${frames512.toFixed(3)} fits=${fits}`);
+    }
+  }
+
+  const overallOk = zeroOk; // 妥当性チェックの失敗は「未確定」であって「異常終了」ではない
   console.log(`RESULT: E3_PASS=${overallOk}`);
-  console.log(`RESULT: E3_ALL_CONVERGED=${allConverged} (収束しなかった場合はポーリング負荷がまだ支配的である可能性を報告に含めること)`);
   if (!overallOk) process.exitCode = 1;
 
   console.log('---JSON---');
   console.log(JSON.stringify({
     coreOptionsSet: CORE_OPTIONS_USED,
     coreOptionDefaults: CORE_OPTION_DEFAULTS_NOT_SET,
-    reportedFpsForCycleEstimate: REPORTED_FPS_FOR_CYCLE_ESTIMATE,
-    warmup: WARMUP,
-    maxExtraFrames: MAX_EXTRA_FRAMES,
-    targetVsyncs: TARGET_VSYNCS,
-    convergence,
-    convergenceOk,
-    allConverged,
-    chosenPollInterval: CHOSEN_POLL_INTERVAL,
-    mainResults,
-    linearityByMethod,
+    reportedFps,
+    cyclesPerFrame,
     zeroResults,
     zeroOk,
-    overallOk,
-    bestMethod: best ? METHOD_NAMES[best.method] : null,
-    bestBytesPerFrame: best?.bytesPerFrame ?? null,
-    fractionOfFullScreen: fraction,
+    mainResults,
+    linearity,
+    allLinearityOk,
+    cyclesTable,
+    plausible,
+    movemVsLongRatio,
+    movemVsLongOk,
+    allPlausible,
   }, null, 2));
 }
 
