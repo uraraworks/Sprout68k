@@ -3,6 +3,52 @@
 X68000 用の最小ブートセクタ(Human68k 不使用・生の 2HD イメージ)を自作し、
 px68k(WebX68k のコア)で実際に起動することを Node から直接コアを回して実測した。
 
+## Stage C(ネイティブ m68k-elf-gcc でビルドした C プログラムの起動)
+
+**起動した。** Homebrew の `m68k-elf-gcc`(16.2.0)/`m68k-elf-binutils`(2.47)の
+prebuilt をそのまま使い、`-ffreestanding -nostdlib` の最小構成(自作 crt0 +
+自作リンカスクリプト + 自作 IOCS スタブ)でビルドした C プログラムが、
+複数セクタ対応のブートセクタ経由で `.xdf` から実際に起動することを確認した。
+
+- 実測: `fill_color=0xFFFF` で `dominant_rgb=231,231,231 coverage=1.000`、
+  `fill_color=0x001F` で `dominant_rgb=0,4,115 coverage=1.000`(2色で支配色が
+  食い違うことを確認 = 「たまたま単色」ではなく指定通りに塗れている)
+- テキスト画面に `"STAGE C OK"` が実際に表示されていることを確認(IOCS $21)
+- 自己故障注入: Stage A(塗り処理を持たない画面)を Stage C の判定に通すと
+  `ok=false`(`dominant_rgb が未描画状態の支配色と同一`)になることを確認済み
+
+**IOCS $46(ディスク読み込み)のレジスタ規約を実測で確定した。** このリポジトリの
+過去の背景資料は「A0=転送先」としていたが、これは**誤りだった**。実際に確定した
+規約(`stage_c/boot/boot.S` のコメント、および実測用トライアルで検証済み):
+
+| レジスタ | 意味 |
+|---|---|
+| `D1.L` 上位バイト | PDA(物理ドライブアドレス)。2HD-FD ドライブ0 = `$90` |
+| `D1.L` 下位バイト | モード。bit6=MFM, bit5=リトライ, bit4=シーク(`$70`で成功を実測) |
+| `D2.L` bit31-24 | セクタ長コード(3=1024バイト) |
+| `D2.L` bit23-16 | トラック番号(0起点) |
+| `D2.L` bit15-8 | サイド(0/1) |
+| `D2.L` bit7-0 | セクタ番号(1起点) |
+| `D3.L` | 読み込むバイト数(複数セクタをまたいでも1回のTRAPで読める) |
+| **`A1.L`**(A0 ではない) | 転送先バッファアドレス |
+| `D0.L`(戻り値) | `0`=成功、`$FFFFFFFF`=エラー |
+
+この規約は `datacrystal.tcrf.net` の X68k/IOCS ページの構造記述(PDA/モードビット/
+D2 のビットフィールド)と付き合わせて一致することを確認済み。**第三者のブート
+可能ディスクのバイト列を直接コピーはしていない**(独自に組んだ値を実測で
+確認し、公開ドキュメントの記述と突き合わせて裏を取った)。
+
+- ブートセクタの複数セクタ対応: `stage_c/boot/boot.S` はビルド時に本体の
+  セクタ数を `SECTOR_COUNT` として埋め込み、track0/side0/sector2 から連続
+  読み込む。track0/side0 は8セクタ中7セクタ(sector2〜8=7168バイト)しか
+  使えず、それを超える本体サイズは未対応(track/sideをまたぐ読み込みの
+  レジスタ規約は未検証)
+- 構成: `stage_c/crt0/crt0.S`(スタック設定+BSSクリア+main呼び出し)、
+  `stage_c/crt0/iocs.S`(IOCS $21 の C スタブ)、
+  `stage_c/crt0/linker.ld`(ロードアドレス `$3000` 固定)、
+  `stage_c/src/main.c`(画面塗り+文字列表示)、
+  `tools/build_stage_c.sh`(ビルド一式)
+
 ## 結果
 
 - **Stage A(文字列表示): 起動した。** テキスト VRAM を読み取ると `"BOOT OK"` が
@@ -72,7 +118,10 @@ Stage B は IOCS ではなく、px68k のソースを実測して確認したメ
 ## 再現方法
 
 ```sh
-# 1. ブートセクタと陰性対照を生成
+# 0. m68k-elf ツールチェーンが必要(Stage C のみ。Stage A/B は不要)
+brew install m68k-elf-binutils m68k-elf-gcc
+
+# 1. ブートセクタと陰性対照を生成(Stage C は verify.mts が内部でビルドする)
 python3 tools/build_stage_a.py build/stage_a.xdf
 python3 tools/build_stage_b.py build/stage_b.xdf
 python3 tools/build_zero_image.py build/zero.xdf
@@ -119,5 +168,10 @@ POSITIVE_CONTROL_IMG=/path/to/known-bootable.xdf npx --no-install tsx verify/ver
   生バイト列を1命令ずつ手組み(アセンブラ不使用)
 - `tools/build_stage_b.py` — Stage B(画面を1色で塗る)のバイト列を生成
 - `tools/build_zero_image.py` — 陰性対照(全バイト0)を生成
-- `verify/verify.mts` — Node から px68k コアを直接回し、陽性/陰性対照とStage A/Bを実測する
+- `tools/build_stage_c.sh` — Stage C(ネイティブ m68k-elf-gcc でビルドしたC)を
+  ビルドし .xdf に合成する
+- `stage_c/` — Stage C のソース一式(`crt0/`, `boot/`, `src/`)
+- `docs/toolchain調査.md` — elf2x68k/xdev68k のビルド定義を読んで確定した
+  gcc/binutilsのバージョンとconfigureオプションの調査結果
+- `verify/verify.mts` — Node から px68k コアを直接回し、陽性/陰性対照とStage A/B/Cを実測する
 - `build/` — 生成物置き場(gitignore対象。スクリプトで再生成できる)

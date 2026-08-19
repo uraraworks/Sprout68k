@@ -188,6 +188,15 @@ function buildStageBImage(outPath: string, fillColor: number): void {
   ]);
 }
 
+/* tools/build_stage_c.sh に fill_color を渡してイメージを生成する(ネイティブ m68k-elf-gcc でビルド) */
+function buildStageCImage(outPath: string, fillColor: number): void {
+  execFileSync('bash', [
+    resolve(DEV_ROOT, 'tools/build_stage_c.sh'),
+    `0x${fillColor.toString(16).toUpperCase().padStart(4, '0')}`,
+    outPath,
+  ], { cwd: DEV_ROOT });
+}
+
 async function main(): Promise<void> {
   console.log(`WEBX68K_DIR=${WEBX68K_DIR}`);
   console.log(`POSITIVE_CONTROL_IMG=${POSITIVE_CONTROL_IMG}`);
@@ -282,7 +291,7 @@ async function main(): Promise<void> {
   const stageBFinal = stageBOk && colorTrackOk;
   console.log(`RESULT: STAGE_B_PASS=${stageBFinal}`);
 
-  // --- 手順6: 検査自身の自己故障注入 — Stage A(塗り処理を持たない画面)を Stage B 判定に通し、false になることを確認する ---
+  // --- 手順6: 検査自身の自己故障注入(Stage B) — Stage A(塗り処理を持たない画面)を Stage B 判定に通し、false になることを確認する ---
   // これは陽性対照ではない。「常に成功/失敗する検出器」で過去に空振りした実績があるため、
   // 検査が実際に失敗を検出できることをここで確認する。
   const selfInjectionCheck = checkUniformFillColor(stageADominant, stageADominant.rgb);
@@ -297,7 +306,66 @@ async function main(): Promise<void> {
     return;
   }
 
-  if (!stageBFinal) {
+  // === Stage C: ネイティブ m68k-elf-gcc でビルドした C プログラムが .xdf で起動するか ===
+  // ビルド定義: stage_c/crt0/{crt0.S,iocs.S,linker.ld}, stage_c/boot/boot.S, stage_c/src/main.c
+  // ブートセクタが IOCS $46 で本体(複数セクタ)を $3000 へ読み込み JMP する。
+  console.log('--- Stage C ---');
+  const STAGE_C_COLOR_1 = Number(process.env.STAGE_C_COLOR_1 ?? 0xffff);
+  const STAGE_C_COLOR_2 = Number(process.env.STAGE_C_COLOR_2 ?? 0x001f);
+  const stageCImg1 = resolve(DEV_ROOT, 'build/stage_c_color1.xdf');
+  const stageCImg2 = resolve(DEV_ROOT, 'build/stage_c_color2.xdf');
+  buildStageCImage(stageCImg1, STAGE_C_COLOR_1);
+  buildStageCImage(stageCImg2, STAGE_C_COLOR_2);
+
+  const stageC1 = await bootRaw('stage_c_color1', new Uint8Array(readFileSync(stageCImg1)), FRAMES);
+  const stageC2 = await bootRaw('stage_c_color2', new Uint8Array(readFileSync(stageCImg2)), FRAMES);
+  console.log(summarize(stageC1));
+  console.log(summarize(stageC2));
+
+  const stageCTextOk1 = stageC1.textLines.some((l) => l.includes('STAGE C OK'));
+  const stageCTextOk2 = stageC2.textLines.some((l) => l.includes('STAGE C OK'));
+  console.log(`RESULT: STAGE_C_TEXT_OK color1=${stageCTextOk1} color2=${stageCTextOk2}`);
+
+  let stageCColorOk = false;
+  let cdom1: DominantColor | null = null;
+  let cdom2: DominantColor | null = null;
+  const stageCFailReasons: string[] = [];
+  if (stageC1.lastImage && stageC2.lastImage) {
+    cdom1 = dominantColor(stageC1.lastImage);
+    cdom2 = dominantColor(stageC2.lastImage);
+    const c1check = checkUniformFillColor(cdom1, stageADominant.rgb);
+    const c2check = checkUniformFillColor(cdom2, stageADominant.rgb);
+    if (!c1check.ok) stageCFailReasons.push(`fill_color=0x${STAGE_C_COLOR_1.toString(16)}: ${c1check.failedConditions.join(',')}`);
+    if (!c2check.ok) stageCFailReasons.push(`fill_color=0x${STAGE_C_COLOR_2.toString(16)}: ${c2check.failedConditions.join(',')}`);
+    if (cdom1.rgb === cdom2.rgb) stageCFailReasons.push(`2色の支配色が同一(${cdom1.rgb})`);
+    stageCColorOk = c1check.ok && c2check.ok && cdom1.rgb !== cdom2.rgb;
+  } else {
+    stageCFailReasons.push('フレームバッファ未取得');
+  }
+  console.log(
+    `RESULT: STAGE_C_COLOR_TRACKS_DIFFER=${stageCColorOk} ` +
+      `color1(0x${STAGE_C_COLOR_1.toString(16)})=${cdom1?.rgb ?? 'n/a'} coverage=${cdom1?.coverage.toFixed(3) ?? 'n/a'} ` +
+      `color2(0x${STAGE_C_COLOR_2.toString(16)})=${cdom2?.rgb ?? 'n/a'} coverage=${cdom2?.coverage.toFixed(3) ?? 'n/a'}` +
+      (stageCColorOk ? '' : ` failed=${JSON.stringify(stageCFailReasons)}`),
+  );
+
+  const stageCFinal = stageCTextOk1 && stageCTextOk2 && stageCColorOk;
+  console.log(`RESULT: STAGE_C_PASS=${stageCFinal}`);
+
+  // --- Stage C 自己故障注入: Stage A の画面を Stage C の色判定に通して false になることを確認する ---
+  const stageCSelfInjectionCheck = checkUniformFillColor(stageADominant, stageADominant.rgb);
+  const stageCSelfInjectionDetected = !stageCSelfInjectionCheck.ok;
+  console.log(
+    `RESULT: STAGE_C_SELF_FAULT_INJECTION_DETECTED=${stageCSelfInjectionDetected} ` +
+      `(Stage A の画面をStage C色判定に通した結果: ok=${stageCSelfInjectionCheck.ok} failed=${JSON.stringify(stageCSelfInjectionCheck.failedConditions)})`,
+  );
+  if (!stageCSelfInjectionDetected) {
+    console.log('RESULT: STAGE_C_CHECKER_BROKEN — 自己故障注入で false にならなかった。検査が壊れている疑いがあるためここで異常終了する。');
+    process.exitCode = 1;
+    return;
+  }
+
+  if (!stageBFinal || !stageCFinal) {
     process.exitCode = 1;
   }
 }
