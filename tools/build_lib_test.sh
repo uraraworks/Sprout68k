@@ -10,6 +10,9 @@
 #                 memcpy_skip_last     memcpyが最後の1バイトをコピーしない
 #                 strlen_off_by_one    strlenが実際の長さ+1を返す
 #                 printf_drop_sign     printfの%dが負号を出力しない
+#                 vsync_no_wait        x68_vsync_waitが一切待たず即returnする
+#                 gvram_copy_offset    x68_gvram_copy_movemの転送先を1ワードずらす
+#                 bitsns_always_zero   x68_iocs_bitsnsが常に0(押下無し)を返す
 #
 # ブートセクタは stage_d/boot/boot.S(track/sideをまたぐ複数セクタ読み込み
 # 対応、実測済み)を流用する。crt0/リンカスクリプトは stage_c のものを
@@ -59,6 +62,9 @@ case "$FAULT" in
   memcpy_skip_last) FAULT_DEFINE=(-DX68_FAULT_MEMCPY_SKIP_LAST) ;;
   strlen_off_by_one) FAULT_DEFINE=(-DX68_FAULT_STRLEN_OFF_BY_ONE) ;;
   printf_drop_sign) FAULT_DEFINE=(-DX68_FAULT_PRINTF_DROP_SIGN) ;;
+  vsync_no_wait) FAULT_DEFINE=(-DX68_FAULT_VSYNC_NO_WAIT) ;;
+  gvram_copy_offset) FAULT_DEFINE=(-DX68_FAULT_GVRAM_COPY_OFFSET) ;;
+  bitsns_always_zero) FAULT_DEFINE=(-DX68_FAULT_BITSNS_ALWAYS_ZERO) ;;
   *) echo "ERROR: 未知のfault指定: ${FAULT}" >&2; exit 1 ;;
 esac
 if [ -n "$FAULT" ]; then
@@ -66,10 +72,13 @@ if [ -n "$FAULT" ]; then
 fi
 
 echo "== ライブラリ本体のビルド =="
+# FAULT_DEFINEはlib/配下の4ファイル全部に一律で渡す(該当するfaultマクロを
+# 見ないファイルでは単に無視されるだけなので害が無く、fault名→対象ファイルの
+# 対応表をここで管理しなくて済む)。
 m68k-elf-gcc "${CFLAGS[@]}" ${FAULT_DEFINE[@]+"${FAULT_DEFINE[@]}"} -c "$ROOT/lib/src/x68_std.c" -o "$OBJDIR/x68_std.o"
-m68k-elf-gcc "${CFLAGS[@]}" -c "$ROOT/lib/src/x68_l0.c" -o "$OBJDIR/x68_l0.o"
-m68k-elf-gcc -x assembler-with-cpp -m68000 -c "$ROOT/lib/asm/x68_iocs.S" -o "$OBJDIR/x68_iocs.o"
-m68k-elf-gcc -x assembler-with-cpp -m68000 -c "$ROOT/lib/asm/x68_gvram_copy.S" -o "$OBJDIR/x68_gvram_copy.o"
+m68k-elf-gcc "${CFLAGS[@]}" ${FAULT_DEFINE[@]+"${FAULT_DEFINE[@]}"} -c "$ROOT/lib/src/x68_l0.c" -o "$OBJDIR/x68_l0.o"
+m68k-elf-gcc -x assembler-with-cpp -m68000 ${FAULT_DEFINE[@]+"${FAULT_DEFINE[@]}"} -c "$ROOT/lib/asm/x68_iocs.S" -o "$OBJDIR/x68_iocs.o"
+m68k-elf-gcc -x assembler-with-cpp -m68000 ${FAULT_DEFINE[@]+"${FAULT_DEFINE[@]}"} -c "$ROOT/lib/asm/x68_gvram_copy.S" -o "$OBJDIR/x68_gvram_copy.o"
 
 echo "== テストプログラム(C)のビルド =="
 m68k-elf-gcc "${CFLAGS[@]}" -c "$ROOT/lib_test/src/main.c" -o "$OBJDIR/main.o"

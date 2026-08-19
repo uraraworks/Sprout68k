@@ -11,6 +11,9 @@
  * 帰線期間に入る立下りエッジを待つ(エッジを1回だけ確実に検出するため。
  * stage_e/src/main_e2.c の wait_vsync() と同じロジック)。 */
 void x68_vsync_wait(void) {
+#ifdef X68_FAULT_VSYNC_NO_WAIT
+    return; /* 故障注入: 一切待たずに即returnする */
+#endif
     while (!(MFP_GPIP & 0x10)) { }
     while (MFP_GPIP & 0x10) { }
 }

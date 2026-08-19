@@ -20,6 +20,9 @@
     .text
 x68_gvram_copy_movem:
     movea.l 4(%sp),%a0
+#ifdef X68_FAULT_GVRAM_COPY_OFFSET
+    adda.l  #2,%a0           /* 故障注入: 転送先を1ワード(2バイト)ずらす */
+#endif
     movea.l 8(%sp),%a1
     move.l  12(%sp),%d0     /* count (8ロング=32バイトのバッチ数) */
     movem.l %d5-%d7/%a2-%a6,-(%sp)

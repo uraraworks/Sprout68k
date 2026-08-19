@@ -12,23 +12,30 @@
  *     同じ種を2回与えたときの再現性をhost側が独立に比較する。
  *   - IOCS $46(x68_iocs_disk_read): track30/side0/sector1に焼き込んだ既知
  *     パターンをhostが独立に生成し、読み込んだバッファと比較する。
- *   - x68_vsync_wait: Stage E-2と同じ方式(host側runFrame()回数とゲスト内
- *     カウンタの比)で実測する。
+ *   - x68_vsync_wait: Stage E-2と同じ方式(measure窓でのhost側runFrame()回数と
+ *     ゲスト内カウンタ増分の比)で実測する。**最終カウンタが上限(300)に到達
+ *     したことだけを見る判定は、即returnする実装でも同じ最終値になり区別
+ *     できないため使わない**(2026-08-19、指摘を受けて修正した2つの穴のうち1つ)。
  *   - x68_iocs_bitsns: host側がsetKey(RETROK_SPACE)でSPACEキーを押し分けながら
  *     runFrame()を1回ずつ進め、ゲストが履歴配列に書いた生の戻り値を読んで
  *     押下/解放に追従しているか確認する(Stage E-4と同じ「状態を変えてから
  *     次のフレームで読む」順序)。
- *   - x68_gvram_mode_65536_1page / x68_gvram_copy_movem: Stage E-1と同じ
- *     「フレームバッファを実際にレンダリングして非背景クラスタの位置を見る」
- *     手法で確認する(ゲスト側の自己申告に頼らない)。
+ *   - x68_gvram_mode_65536_1page / x68_gvram_copy_movem: フレームバッファを
+ *     実際にレンダリングし、各サンプル点の観測色に最も近い「期待候補」
+ *     (decode16to24(genColor(i))で算出)を求め、自分自身の期待値と一致するかを
+ *     見る。**「背景色でない」「互いに区別できる」だけの判定は、転送先が
+ *     1ワードずれても各点の色が別の期待色に入れ替わるだけで両条件とも保たれて
+ *     しまいPASSしてしまうため使わない**(指摘を受けて修正したもう1つの穴)。
  *   - printf/puts: readTextScreen()で実際の文字表示を読み、期待した文字列と
  *     突き合わせる(自己申告で済ませない)。非対応書式は[BADFMT]が実際に
  *     表示されることを確認する。
  *
- * 故障注入(3件): memcpy_skip_last / strlen_off_by_one / printf_drop_sign の
- * それぞれについて tools/build_lib_test.sh に fault 引数を渡した版をビルドし、
- * 対応する検査が実際にFAILすることを確認する。FAILしなければ検査が空振り
- * していると判定し、そのテストをFAILとして報告する(緩めてPASS扱いにしない)。
+ * 故障注入(6件): memcpy_skip_last / strlen_off_by_one / printf_drop_sign
+ * (以上、初回実装時の3件)に加えて vsync_no_wait / gvram_copy_offset /
+ * bitsns_always_zero(上記2つの穴の指摘を受けて追加した3件)。それぞれについて
+ * tools/build_lib_test.sh に fault 引数を渡した版をビルドし、対応する検査が
+ * 実際にFAILすることを確認する。FAILしなければ検査が空振りしていると判定し、
+ * そのテストをFAILとして報告する(緩めてPASS扱いにしない)。
  *
  * 使い方: npx tsx verify/verify_lib.mts
  * 環境変数: WEBX68K_DIR(既定 ../WebX68k)、WARMUP(既定 1500)
@@ -101,6 +108,10 @@ const HV_DONE_MAGIC = 0xc0debeef;
 
 const R_MEMCPY = 0, R_MEMSET = 1, R_STRLEN = 2, R_ABS = 3, R_RAND = 4, R_DISKREAD = 5, R_BITSNS = 6;
 
+/* x68_vsync_wait のペーシング判定基準(Stage E-2 verify_e2.mts と同じ値)。 */
+const RATE_LOW = 0.5;
+const RATE_HIGH = 2.0;
+
 const RETROK_SPACE = 32;
 const BIT_SPACE = 1 << (0x35 & 7); // group6 bit5(docs/API設計_20260819.md のX68_KEY_SPACEと同じ)
 
@@ -114,7 +125,39 @@ function genColor(i: number): number {
 const GVRAM_DIRECT_OFF_A = 100;
 const GVRAM_DIRECT_OFF_B = 300;
 const GVRAM_COPY_BASE_OFF = 20000;
+const GVRAM_COPY_WORDS = 16; // x68_gvram_copy_movemで転送する1バッチぶんのワード数
 const GVRAM_STRIDE = 512; // Stage E-1で実測確定
+
+/* --- GVRAM 16bit色値 → 実際にcanvasへ出るRGB8の変換式 ---
+ * px68k-libretro(x68k/palette.c Pal_SetColor、libretro/windraw.c)と
+ * WebX68k(src/libretro-host.ts の handleVideoRefresh、RGB565→RGBA8変換)の
+ * ソースを実際に読んで確認した変換パイプライン(このverifyスクリプトを書く
+ * 時点でエージェントが該当ソースを検索し実装を確認済み。手読みで済ませず
+ * ソースの記述そのものを根拠にしている):
+ *   1. GVRAM語(G5 R5 B5 I1、bit15-11=G、bit10-6=R、bit5-1=B、bit0=I)から
+ *      G5/R5/B5/Iを抜き出す。
+ *   2. 内部的にRGB565へ詰め直す。R5→R565(5bitそのまま)、B5→B565(5bitそのまま)、
+ *      G565(6bit)は "G5<<1 | I" (Iビットはgreenの最下位ビットに落ちる。
+ *      赤・青には効かない、というこのエミュレータ実装固有の簡略化)。
+ *   3. RGB565→RGB888は5bit/6bitのビット複製方式: (v<<3)|(v>>2)(5bit)、
+ *      (v<<2)|(v>>4)(6bit)。
+ * ただし実際にcanvasから読み取れる色は、この変換に加えてcanvas側の
+ * 拡大縮小に伴う補間(アンチエイリアス)で背景色と混ざるため、変換式通りの
+ * 値と完全一致はしない(実測: 単純な非背景判定+相互区別だけでは transferの
+ * オフセットずれを検出できないという指摘を受け、以下のGVRAM検査では
+ * 「観測色に最も近い期待候補」を求める方式にした。混色があっても、期待候補
+ * 同士は離れているぶん最近傍判定は揺らがない)。 */
+function decode16to24(color: number): [number, number, number] {
+  const g5 = (color >> 11) & 0x1f;
+  const r5 = (color >> 6) & 0x1f;
+  const b5 = (color >> 1) & 0x1f;
+  const iBit = color & 1;
+  const g6 = (g5 << 1) | iBit;
+  const r8 = (r5 << 3) | (r5 >> 2);
+  const g8 = (g6 << 2) | (g6 >> 4);
+  const b8 = (b5 << 3) | (b5 >> 2);
+  return [r8, g8, b8];
+}
 
 /* --- ディスク読み込みテストの期待パターン(tools/build_lib_test.shと同じ生成規則) --- */
 function expectedDiskPattern(): Uint8Array {
@@ -199,6 +242,7 @@ interface RunResult {
   randB: number[];
   diskBuf: Uint8Array;
   vsyncCounter: number;
+  vsyncRate: number; // (measure窓でのHV_VSYNC_COUNTER増分) / (measure窓のhostフレーム数)
   bitsnsHistory: number[];
   bitsnsCount: number;
   textLines: string[];
@@ -231,6 +275,21 @@ async function runFullProgram(label: string, diskBytes: Uint8Array, driveKey: bo
   let done = 0;
   let dbgFrames = 0;
   let lastCount = -1;
+
+  // x68_vsync_wait のペーシング実測(Stage E-2と同じ「host側フレーム数と
+  // ゲスト内カウンタ増分の比」)。HV_PROGRESSが7になった瞬間(run_vsync_test
+  // 開始直後、まだ1回も待っていない)を基準点にし、そこから固定のVSYNC_MEASURE_
+  // FRAMESぶんだけhostフレームを進めた時点のHV_VSYNC_COUNTER増分を見る。
+  // 【注意】最終的なHV_VSYNC_COUNTERが300(ループの上限)に到達したことだけを
+  // 見る判定は、x68_vsync_waitが即returnする実装でも最終値が同じ300になり
+  // 区別できない(指摘を受けて修正)。measure窓をループの上限(300)よりずっと
+  // 小さくすることで、「正しく待てていれば窓内では終わらない」状態を作り、
+  // 即returnする実装との違いを速さの比として検出できるようにする。
+  const VSYNC_MEASURE_FRAMES = 50;
+  let vsyncStartFrame = -1;
+  let vsyncCounterAtStart = 0;
+  let vsyncCounterAtMeasure = -1;
+
   while (done !== HV_DONE_MAGIC && dbgFrames < MAX_TOTAL_FRAMES) {
     const pressed = driveKey && count >= 60 && count < 140;
     session.setKey(RETROK_SPACE, pressed);
@@ -239,6 +298,16 @@ async function runFullProgram(label: string, diskBytes: Uint8Array, driveKey: bo
     progress = session.peekU32(HV_PROGRESS);
     count = session.peekU32(HV_BITSNS_COUNT);
     done = session.peekU32(HV_DONE);
+
+    const vsyncCounterNow = session.peekU32(HV_VSYNC_COUNTER);
+    if (vsyncStartFrame === -1 && progress >= 7) {
+      vsyncStartFrame = dbgFrames;
+      vsyncCounterAtStart = vsyncCounterNow;
+    }
+    if (vsyncStartFrame !== -1 && vsyncCounterAtMeasure === -1 && dbgFrames >= vsyncStartFrame + VSYNC_MEASURE_FRAMES) {
+      vsyncCounterAtMeasure = vsyncCounterNow;
+    }
+
     if (process.env.DEBUG_BITSNS && count !== lastCount) {
       console.log(`DBG frame=${dbgFrames} pressed=${pressed} progress=${progress} count=${count} done=${done.toString(16)}`);
       lastCount = count;
@@ -248,6 +317,14 @@ async function runFullProgram(label: string, diskBytes: Uint8Array, driveKey: bo
   if (process.env.DEBUG_BITSNS) {
     console.log(`DBG main loop finished at frame=${dbgFrames} progress=${progress} count=${count} done=${done.toString(16)}`);
   }
+  // measure窓に届く前にHV_DONEへ到達してしまった場合(=極端に速い、故障注入の
+  // 疑いが強いケース)のフォールバック: ループ終了時点までの実際の経過フレームと
+  // カウンタ増分で比を計算する(それでも「速すぎる」ことは比の大きさに出る)。
+  if (vsyncStartFrame !== -1 && vsyncCounterAtMeasure === -1) {
+    vsyncCounterAtMeasure = session.peekU32(HV_VSYNC_COUNTER);
+  }
+  const vsyncMeasureFramesActual = vsyncStartFrame === -1 ? 0 : Math.max(1, Math.min(VSYNC_MEASURE_FRAMES, dbgFrames - vsyncStartFrame));
+  const vsyncRate = vsyncStartFrame === -1 ? NaN : (vsyncCounterAtMeasure - vsyncCounterAtStart) / vsyncMeasureFramesActual;
 
   // 5. フレームバッファ確定のための settle。
   for (let i = 0; i < 120; i++) step();
@@ -286,7 +363,7 @@ async function runFullProgram(label: string, diskBytes: Uint8Array, driveKey: bo
   return {
     reachedDone: done === HV_DONE_MAGIC,
     results, memcpySrc, memcpyDst, memsetDst, strlenResult, absResults, randA, randB,
-    diskBuf, vsyncCounter, bitsnsHistory, bitsnsCount, textLines, lastImage,
+    diskBuf, vsyncCounter, vsyncRate, bitsnsHistory, bitsnsCount, textLines, lastImage,
   };
 }
 
@@ -295,7 +372,6 @@ function rgbAt(img: Image, x: number, y: number): [number, number, number] {
   const idx = (y * img.width + x) * 4;
   return [img.data[idx], img.data[idx + 1], img.data[idx + 2]];
 }
-function rgbKey(rgb: [number, number, number]): string { return `${rgb[0]},${rgb[1]},${rgb[2]}`; }
 function dominantRgb(img: Image): string {
   const counts = new Map<string, number>();
   for (let i = 0; i < img.data.length; i += 4) {
@@ -316,6 +392,72 @@ function textAt(lines: string[], row: number, col: number, text: string): boolea
 }
 function anyLineContains(lines: string[], text: string): boolean {
   return lines.some((l) => l.includes(text));
+}
+
+/* --- GVRAM検査: 観測色に最も近い「期待候補」を求め、自分自身の期待値と
+ * 一致するか(かつ距離が閾値内か)を見る。単純な「背景色でない」「互いに
+ * 区別できる」だけの判定だと、x68_gvram_copy_movemの転送先が1ワードずれても
+ * (=各点の色がすべて「隣の期待色」に入れ替わるだけ)非背景かつ相互に区別
+ * できる状態は保たれてしまいFAILしない、という指摘を受けて実装した。 */
+interface GvramCandidate { label: string; rgb: [number, number, number]; }
+
+function buildGvramCandidates(): GvramCandidate[] {
+  const candidates: GvramCandidate[] = [{ label: 'background', rgb: [0, 0, 0] }];
+  candidates.push({ label: 'direct_A', rgb: decode16to24(genColor(200)) });
+  candidates.push({ label: 'direct_B', rgb: decode16to24(genColor(201)) });
+  for (let i = 0; i < GVRAM_COPY_WORDS; i++) {
+    candidates.push({ label: `copy_${i}`, rgb: decode16to24(genColor(i)) });
+  }
+  return candidates;
+}
+
+function distSq(a: [number, number, number], b: [number, number, number]): number {
+  const dr = a[0] - b[0], dg = a[1] - b[1], db = a[2] - b[2];
+  return dr * dr + dg * dg + db * db;
+}
+
+function nearestCandidate(rgb: [number, number, number], candidates: GvramCandidate[]): { label: string; dist: number } {
+  let best = candidates[0];
+  let bestDistSq = Infinity;
+  for (const c of candidates) {
+    const d = distSq(rgb, c.rgb);
+    if (d < bestDistSq) { bestDistSq = d; best = c; }
+  }
+  return { label: best.label, dist: Math.sqrt(bestDistSq) };
+}
+
+/* canvasの拡大縮小に伴う補間で観測色は変換式そのままの値からずれるため
+ * (verify_lib.mts冒頭のdecode16to24コメント参照)、実測(通常ビルド)で観測された
+ * ずれ(距離約25〜31)に十分な余裕を見た閾値にする。期待候補同士(genColor()で
+ * 生成した17色)は互いに大きく離れているため、この閾値でも取り違えは起きない。 */
+const GVRAM_DIST_THRESHOLD = 80;
+
+function checkGvram(img: Image | null, log: (s: string) => void): boolean {
+  if (!img) { log('RESULT: GVRAM_FATAL=フレームバッファ未取得'); return false; }
+  const backgroundRgb = dominantRgb(img);
+  const candidates = buildGvramCandidates();
+  const points: { n: number; label: string }[] = [
+    { n: GVRAM_DIRECT_OFF_A, label: 'direct_A' },
+    { n: GVRAM_DIRECT_OFF_B, label: 'direct_B' },
+    { n: GVRAM_COPY_BASE_OFF + 0, label: 'copy_0' },
+    { n: GVRAM_COPY_BASE_OFF + 5, label: 'copy_5' },
+    { n: GVRAM_COPY_BASE_OFF + 10, label: 'copy_10' },
+    { n: GVRAM_COPY_BASE_OFF + 15, label: 'copy_15' },
+  ];
+  log(`RESULT: GVRAM background=${backgroundRgb}`);
+  let ok = true;
+  for (const p of points) {
+    const x = p.n % GVRAM_STRIDE;
+    const y = Math.floor(p.n / GVRAM_STRIDE);
+    const observed = rgbAt(img, x, y);
+    const nearest = nearestCandidate(observed, candidates);
+    const matchOwn = nearest.label === p.label;
+    const withinThreshold = nearest.dist <= GVRAM_DIST_THRESHOLD;
+    if (!matchOwn || !withinThreshold) ok = false;
+    log(`  ${p.label} n=${p.n} (x=${x},y=${y}) observed=${observed.join(',')} nearest=${nearest.label}(dist=${nearest.dist.toFixed(1)}) matchOwn=${matchOwn} withinThreshold=${withinThreshold}`);
+  }
+  log(`RESULT: GVRAM_OK=${ok}`);
+  return ok;
 }
 
 async function main(): Promise<void> {
@@ -376,12 +518,17 @@ async function main(): Promise<void> {
   log(`RESULT: DISKREAD self=${normal.results[R_DISKREAD]} host_independent_match=${diskMismatch === -1}` + (diskMismatch !== -1 ? ` first_mismatch_at=${diskMismatch}` : ''));
   if (!(normal.results[R_DISKREAD] === 1 && diskMismatch === -1)) fail('x68_iocs_disk_read: 読み込んだ内容が既知パターンと不一致');
 
-  // --- x68_vsync_wait(Stage E-2と同じ判定基準を流用) ---
-  // ここでのdeltaFramesは「HV_PROGRESSが8に達するまでに実際に消費したhostフレーム数」
-  // ではなく、vsyncCounter自体(=ゲストが実際に待った回数)を直接見る。300回待つ
-  // ループなので、vsyncCounterが300に到達していれば「待てて完走した」ことの直接証拠になる。
-  log(`RESULT: VSYNC counter=${normal.vsyncCounter}(期待=300)`);
-  if (normal.vsyncCounter !== 300) fail('x68_vsync_wait: カウンタが300に到達していない(待ちが進んでいない疑い)');
+  // --- x68_vsync_wait(Stage E-2と同じ「host側フレーム数とゲスト内カウンタ
+  // 増分の比」判定に戻した) ---
+  // 【指摘を受けて修正】最終的なHV_VSYNC_COUNTERが300(ループの上限)に到達した
+  // ことだけを見る判定は、x68_vsync_waitが一切待たず即returnする実装でも
+  // 最終的には同じ300に達してしまい(ループ自体は300回まわるので)区別できず、
+  // PASSしてしまっていた(「到達したこと」は「待った」ことの証拠にならない)。
+  // runFullProgram側でStage E-2と同じ比(measure窓でのカウンタ増分/host
+  // フレーム数)を実測しているので、それが1に近いかどうかで判定する。
+  log(`RESULT: VSYNC rate=${normal.vsyncRate.toFixed(4)}(許容範囲[${RATE_LOW},${RATE_HIGH}]、Stage E-2と同じ基準) counter_final=${normal.vsyncCounter}(参考値)`);
+  const vsyncRateOk = Number.isFinite(normal.vsyncRate) && normal.vsyncRate >= RATE_LOW && normal.vsyncRate <= RATE_HIGH;
+  if (!vsyncRateOk) fail('x68_vsync_wait: host側フレーム数とゲスト内カウンタ増分の比が1から大きく外れている(待てていない疑い)');
 
   // --- x68_iocs_bitsns(押下区間[60,140)、それ以外は解放を期待) ---
   // 配送遅延(Stage E-4で実測済みの罠)を考慮し、遷移直後2サンプルは判定から除外する。
@@ -397,42 +544,15 @@ async function main(): Promise<void> {
   if (!bitsnsOk) fail('x68_iocs_bitsns: 押下/解放の追従が不十分');
 
   // --- GVRAM(mode設定 + movemコピー) ---
-  // 全面クラスタ走査(Stage E-1の手法)ではなく、期待する座標を直接サンプリングする
-  // 方式にする。理由: x68_gvram_copy_movem は16ワード全部をGVRAMへ実際に書くため、
-  // 「確認対象として選んだ4点」以外の12点も画面には出ており、かつ量子化
-  // (5-5-5-1、genColor()のコメント参照)により複数ワードが同じRGBに潰れて
-  // クラスタ数が「期待した点の数」と一致しない(実測: 16語中2組が衝突し
-  // 14クラスタに潰れた)。クラスタ総数の一致を条件にするとこの無関係な潰れで
-  // 誤ってFAIL扱いになるため、各期待点の実際の色を直接サンプリングして
-  // 「背景色ではないこと」「6点が互いに異なる色で区別できること」を見る。
-  const img = normal.lastImage;
-  if (!img) {
-    fail('GVRAM: フレームバッファ未取得');
-  } else {
-    const backgroundRgb = dominantRgb(img);
-    const expectedMarkers = [
-      { n: GVRAM_DIRECT_OFF_A, label: 'direct_A' },
-      { n: GVRAM_DIRECT_OFF_B, label: 'direct_B' },
-      { n: GVRAM_COPY_BASE_OFF + 0, label: 'copy_first' },
-      { n: GVRAM_COPY_BASE_OFF + 5, label: 'copy_mid1' },
-      { n: GVRAM_COPY_BASE_OFF + 10, label: 'copy_mid2' },
-      { n: GVRAM_COPY_BASE_OFF + 15, label: 'copy_last' },
-    ];
-    const observed = expectedMarkers.map((m) => {
-      const x = m.n % GVRAM_STRIDE;
-      const y = Math.floor(m.n / GVRAM_STRIDE);
-      const rgb = rgbKey(rgbAt(img, x, y));
-      return { ...m, x, y, rgb };
-    });
-    log(`RESULT: GVRAM background=${backgroundRgb}`);
-    for (const o of observed) log(`  ${o.label} n=${o.n} (x=${o.x},y=${o.y}) rgb=${o.rgb}`);
-    const allNonBackground = observed.every((o) => o.rgb !== backgroundRgb);
-    const uniqueRgbCount = new Set(observed.map((o) => o.rgb)).size;
-    const allDistinct = uniqueRgbCount === observed.length;
-    const gvramOk = allNonBackground && allDistinct;
-    log(`RESULT: GVRAM_OK=${gvramOk} allNonBackground=${allNonBackground} allDistinct=${allDistinct}(unique=${uniqueRgbCount}/${observed.length})`);
-    if (!gvramOk) fail('GVRAM: モード設定またはmovemコピーの内容が期待と不一致(背景色のまま、または区別できない)');
-  }
+  // 【指摘を受けて修正】以前は「背景色でないこと」「6点が互いに異なる色で
+  // 区別できること」だけを見ていたが、これだと x68_gvram_copy_movem の
+  // 転送先が1ワードずれても(=各点の色がすべて「隣の期待色」に入れ替わる
+  // だけ)非背景・相互区別という条件はどちらも保たれてしまいPASSしてしまう
+  // (「変化したこと」は「正しいこと」の証拠にならない)。checkGvram()では
+  // 各点の観測色に最も近い期待候補を求め、それが自分自身の期待値と一致するか
+  // (かつ量子化+補間による誤差の範囲内か)を見る方式にした。
+  const gvramOk = checkGvram(normal.lastImage, log);
+  if (!gvramOk) fail('GVRAM: モード設定またはmovemコピーの内容が期待した色と不一致');
 
   // === printf/puts: テキスト画面を実際に読んで突き合わせる ===
   const lines = normal.textLines;
@@ -459,7 +579,7 @@ async function main(): Promise<void> {
   // 故障注入(3件)。それぞれ「意図的に壊した版で実際にFAILすること」を確認する。
   // FAILしなければ検査が空振りしていると判定する。
   // ==========================================================
-  log('=== 故障注入1/3: memcpy_skip_last ===');
+  log('=== 故障注入1/6: memcpy_skip_last ===');
   {
     const img2 = resolve(DEV_ROOT, 'build/lib_test_fault_memcpy.xdf');
     buildLibTestImage(img2, 'memcpy_skip_last');
@@ -470,7 +590,7 @@ async function main(): Promise<void> {
     if (!detected) fail('故障注入(memcpy_skip_last)を検査が検出できなかった(検査が空振りしている)');
   }
 
-  log('=== 故障注入2/3: strlen_off_by_one ===');
+  log('=== 故障注入2/6: strlen_off_by_one ===');
   {
     const img3 = resolve(DEV_ROOT, 'build/lib_test_fault_strlen.xdf');
     buildLibTestImage(img3, 'strlen_off_by_one');
@@ -480,7 +600,7 @@ async function main(): Promise<void> {
     if (!detected) fail('故障注入(strlen_off_by_one)を検査が検出できなかった(検査が空振りしている)');
   }
 
-  log('=== 故障注入3/3: printf_drop_sign ===');
+  log('=== 故障注入3/6: printf_drop_sign ===');
   {
     const img4 = resolve(DEV_ROOT, 'build/lib_test_fault_printf.xdf');
     buildLibTestImage(img4, 'printf_drop_sign');
@@ -489,6 +609,45 @@ async function main(): Promise<void> {
     const detected = !stillMatches;
     log(`RESULT: FAULT_PRINTF stillMatchesExpected=${stillMatches} detected_fail=${detected} line4="${(r.textLines[4] ?? '').trimEnd()}"`);
     if (!detected) fail('故障注入(printf_drop_sign)を検査が検出できなかった(検査が空振りしている)');
+  }
+
+  // ==========================================================
+  // 追加の故障注入(3件)。既存3件は「穴のあった2箇所(vsync/GVRAM)」に
+  // 当たっていなかったため、コーディネータからの指摘を受けて追加した。
+  // ==========================================================
+  log('=== 故障注入4/6: vsync_no_wait(x68_vsync_waitが即returnする) ===');
+  {
+    const img5 = resolve(DEV_ROOT, 'build/lib_test_fault_vsync.xdf');
+    buildLibTestImage(img5, 'vsync_no_wait');
+    const r = await runFullProgram('fault_vsync', new Uint8Array(readFileSync(img5)), false);
+    const rateOk = Number.isFinite(r.vsyncRate) && r.vsyncRate >= RATE_LOW && r.vsyncRate <= RATE_HIGH;
+    const detected = !rateOk;
+    log(`RESULT: FAULT_VSYNC rate=${Number.isFinite(r.vsyncRate) ? r.vsyncRate.toFixed(4) : 'NaN'} detected_fail=${detected}`);
+    if (!detected) fail('故障注入(vsync_no_wait)を検査が検出できなかった(検査が空振りしている)');
+  }
+
+  log('=== 故障注入5/6: gvram_copy_offset(転送先を1ワードずらす) ===');
+  {
+    const img6 = resolve(DEV_ROOT, 'build/lib_test_fault_gvram.xdf');
+    buildLibTestImage(img6, 'gvram_copy_offset');
+    const r = await runFullProgram('fault_gvram', new Uint8Array(readFileSync(img6)), false);
+    const gOk = checkGvram(r.lastImage, log);
+    const detected = !gOk;
+    log(`RESULT: FAULT_GVRAM_COPY_OFFSET detected_fail=${detected}`);
+    if (!detected) fail('故障注入(gvram_copy_offset)を検査が検出できなかった(検査が空振りしている)');
+  }
+
+  log('=== 故障注入6/6: bitsns_always_zero(x68_iocs_bitsnsが常に0を返す) ===');
+  {
+    const img7 = resolve(DEV_ROOT, 'build/lib_test_fault_bitsns.xdf');
+    buildLibTestImage(img7, 'bitsns_always_zero');
+    const r = await runFullProgram('fault_bitsns', new Uint8Array(readFileSync(img7)), true);
+    const LAG = 2;
+    const pressedWindow = r.bitsnsHistory.slice(60 + LAG, 140);
+    const pressedFrac = pressedWindow.filter((b) => (b & BIT_SPACE) !== 0).length / Math.max(1, pressedWindow.length);
+    const detected = r.results[R_BITSNS] === 0 || pressedFrac < 0.9;
+    log(`RESULT: FAULT_BITSNS self=${r.results[R_BITSNS]} pressedFrac=${pressedFrac.toFixed(3)} detected_fail=${detected}`);
+    if (!detected) fail('故障注入(bitsns_always_zero)を検査が検出できなかった(検査が空振りしている)');
   }
 
   log(`RESULT: LIB_OVERALL_PASS=${overallOk}`);

@@ -40,6 +40,10 @@ x68_iocs_locate:
 /* unsigned char x68_iocs_bitsns(unsigned long group);
  * IOCS $04(D1.W=グループ、戻り値D0.B=8キー分の押下ビットパターン) */
 x68_iocs_bitsns:
+#ifdef X68_FAULT_BITSNS_ALWAYS_ZERO
+    moveq   #0,%d0            /* 故障注入: 常に0(押下無し)を返す */
+    rts
+#endif
     move.l  4(%sp),%d1
     moveq   #4,%d0
     trap    #15
