@@ -9,7 +9,7 @@
  * 使い方: npx tsx verify/verify.mts
  */
 import { execFileSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync, unlinkSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -76,22 +76,40 @@ function checksumPixels(data: Uint8ClampedArray): number {
   return sum;
 }
 
-async function bootRaw(label: string, diskBytes: Uint8Array, frameCount: number): Promise<BootResult> {
+async function bootRaw(label: string, diskBytes: Uint8Array, frameCount: number, ramSize: string = '2MB'): Promise<BootResult> {
   const { LibretroHost } = await import(pathToFileURL(resolve(WEBX68K_DIR, 'src/libretro-host.ts')).href);
 
   (globalThis as any).window = { PX68K: loadFactory() };
   let lastImage: BootResult['lastImage'] = null;
   const context = {
     createImageData(width: number, height: number) {
-      return { width, height, data: new Uint8ClampedArray(width * height * 4) };
+      // px68k は不正命令例外の処理中(cache_flush_before_jump が68000機では毎回これを
+      // 起こす)に、一時的に負値を含む不正なジオメトリ(実測: 幅4096/高さ-512)を
+      // videoRefresh経由で1フレームだけ報告することがある(実測で確認済み。真の原因は
+      // px68k内部のタイミング依存の挙動と見られ、本プロジェクトのコード側の不具合では
+      // ない)。負のバイト長でUint8ClampedArrayを確保しようとして例外で落ちないよう、
+      // 幅/高さを0以上にクランプする。
+      const w = Math.max(0, width | 0);
+      const h = Math.max(0, height | 0);
+      return { width: w, height: h, data: new Uint8ClampedArray(w * h * 4) };
     },
-    putImageData(img: any) { lastImage = img; },
+    putImageData(img: any) {
+      // 幅/高さが0の(=不正ジオメトリだった)フレームは採用せず、直近の正常フレームを
+      // lastImage として保持し続ける(実測で確認した px68k の既知の挙動への対処。
+      // 上のcreateImageDataのコメント参照)。
+      if (img && img.width > 0 && img.height > 0) lastImage = img;
+    },
   };
   const canvas = { width: 0, height: 0, getContext: () => context } as any;
 
   const host = new LibretroHost(canvas, () => {});
   host.setCoreOption('px68k_cpuspeed', '16Mhz');
-  host.setCoreOption('px68k_ramsize', '2MB');
+  // 既定は2MB(既存の陽性/陰性対照・Stage A/Bとの互換のため)。実機互換(1MB機)を
+  // 実測で確かめたいテストだけ ramSize='1MB' を明示的に渡す
+  // (px68k_ramsize core option。エミュ側のRAMを実機と同じ量に絞ることで、
+  // 「エミュのRAMを大きく設定していたせいで1MB機の不整合に気づけなかった」問題を
+  // 再発させない)。
+  host.setCoreOption('px68k_ramsize', ramSize);
   await host.init(new Uint8Array(readFileSync(IPL)), new Uint8Array(readFileSync(CGROM)));
   const diskPath = host.writeDiskImage(`fdd0_${label}.xdf`, diskBytes);
   // fd0 に検体を直接挿す。Human68k を経由しないので fd1 は空。
@@ -194,13 +212,15 @@ function buildStageBImage(outPath: string, fillColor: number): void {
   ]);
 }
 
-/* tools/build_stage_c.sh に fill_color を渡してイメージを生成する(ネイティブ m68k-elf-gcc でビルド) */
-function buildStageCImage(outPath: string, fillColor: number): void {
+/* tools/build_stage_c.sh に fill_color を渡してイメージを生成する(ネイティブ m68k-elf-gcc でビルド)。
+ * envOverrides で STACK_ADDR/RAM_SIZE を明示的に上書きできる(省略時はビルドスクリプトの
+ * 既定値=1MB機向けを使う)。大サイズ試験(Stage D側)だけ2MB機向けの値へ上書きする。 */
+function buildStageCImage(outPath: string, fillColor: number, envOverrides: Record<string, string> = {}): void {
   execFileSync('bash', [
     resolve(DEV_ROOT, 'tools/build_stage_c.sh'),
     `0x${fillColor.toString(16).toUpperCase().padStart(4, '0')}`,
     outPath,
-  ], { cwd: DEV_ROOT });
+  ], { cwd: DEV_ROOT, env: { ...process.env, ...envOverrides } });
 }
 
 async function main(): Promise<void> {
@@ -320,11 +340,15 @@ async function main(): Promise<void> {
   const STAGE_C_COLOR_2 = Number(process.env.STAGE_C_COLOR_2 ?? 0x001f);
   const stageCImg1 = resolve(DEV_ROOT, 'build/stage_c_color1.xdf');
   const stageCImg2 = resolve(DEV_ROOT, 'build/stage_c_color2.xdf');
+  // STACK_ADDR/RAM_SIZE を上書きしない = ビルドスクリプトの既定値(1MB機向け、$F0000)を使う。
+  // 起動側も px68k_ramsize='1MB' にして、エミュのRAMを実機と同じ量に絞った状態で
+  // 実際に起動することを実測する(2026-08-19: 実機互換の要件追加。エミュのRAMを
+  // 大きく設定していたせいで1MB機での不整合に気づけなかった問題の再発防止)。
   buildStageCImage(stageCImg1, STAGE_C_COLOR_1);
   buildStageCImage(stageCImg2, STAGE_C_COLOR_2);
 
-  const stageC1 = await bootRaw('stage_c_color1', new Uint8Array(readFileSync(stageCImg1)), FRAMES);
-  const stageC2 = await bootRaw('stage_c_color2', new Uint8Array(readFileSync(stageCImg2)), FRAMES);
+  const stageC1 = await bootRaw('stage_c_color1', new Uint8Array(readFileSync(stageCImg1)), FRAMES, '1MB');
+  const stageC2 = await bootRaw('stage_c_color2', new Uint8Array(readFileSync(stageCImg2)), FRAMES, '1MB');
   console.log(summarize(stageC1));
   console.log(summarize(stageC2));
 
@@ -376,13 +400,21 @@ async function main(): Promise<void> {
   // stage_d/src/{main.c,pattern_data.S}, tools/gen_pattern.py, tools/build_stage_d.sh
   console.log('--- Stage D ---');
 
-  function buildStageDImage(outPath: string, patternBytes: number, deficit = 0): void {
+  // 大サイズ試験(near_1mb/disk_max/fault_injection_max)専用の、スタック位置とRAM量。
+  // 既定(1MB機向け、$F0000)では収まらないため明示的なパラメータとして切り出す。
+  const LARGE_BUILD_ENV = { STACK_ADDR: '0x1F0000', RAM_SIZE: '0x200000' };
+  const LARGE_BOOT_RAMSIZE = '2MB';
+  // それ以外(小〜256KB程度)はビルドスクリプトの既定値(1MB機向け)のまま、
+  // エミュ側も px68k_ramsize='1MB' にして実機(1MB機)相当で実測する。
+  const DEFAULT_BOOT_RAMSIZE = '1MB';
+
+  function buildStageDImage(outPath: string, patternBytes: number, deficit = 0, envOverrides: Record<string, string> = {}): void {
     execFileSync('bash', [
       resolve(DEV_ROOT, 'tools/build_stage_d.sh'),
       String(patternBytes),
       outPath,
       String(deficit),
-    ], { cwd: DEV_ROOT });
+    ], { cwd: DEV_ROOT, env: { ...process.env, ...envOverrides } });
   }
 
   interface LoadResult {
@@ -407,10 +439,11 @@ async function main(): Promise<void> {
     patternBytes: number,
     deficit: number,
     frames: number,
+    opts: { envOverrides?: Record<string, string>; ramSize?: string } = {},
   ): Promise<LoadResult & { label: string }> {
     const img = resolve(DEV_ROOT, `build/stage_d_${label}.xdf`);
-    buildStageDImage(img, patternBytes, deficit);
-    const result = await bootRaw(`stage_d_${label}`, new Uint8Array(readFileSync(img)), frames);
+    buildStageDImage(img, patternBytes, deficit, opts.envOverrides ?? {});
+    const result = await bootRaw(`stage_d_${label}`, new Uint8Array(readFileSync(img)), frames, opts.ramSize ?? DEFAULT_BOOT_RAMSIZE);
     const parsed = parseLoadResult(result.textLines);
     console.log(
       `RESULT: STAGE_D_${label.toUpperCase()}=${parsed.matched ? (parsed.ok ? 'OK' : 'NG') : 'CRASH_OR_NO_OUTPUT'} ` +
@@ -429,19 +462,52 @@ async function main(): Promise<void> {
   // (実測: 8000フレームで完了)。977/1231セクタほどではないので中間の予算を用意する。
   const STAGE_D_MEDIUM_FRAMES = Number(process.env.STAGE_D_MEDIUM_FRAMES ?? 12000);
 
-  // 2026-08-19: 「32KB/256KB以上で失敗する」は交絡だったと判明(詳細は
+  // 2026-08-19(旧修正): 「32KB/256KB以上で失敗する」は交絡だったと判明(詳細は
   // stage_d/boot/boot.S 冒頭コメントの訂正、および docs/toolchain調査.md 参照)。
-  // 真因は本体ロードアドレス($3000)と旧スタックアドレス($B000)の衝突で、
-  // 本体が使える領域(32,768バイト)をちょうど使い切るサイズで壊れていた。
-  // スタックを STACK_ADDR($1F0000)へ移すことで解消したため、ここではディスク全体
-  // (1231セクタ)まで含めて実測する。判定条件は緩めない: LOAD OK が実際に
-  // 出力された場合のみ ok=true とする。
-  const dSmall = await runStageDCase('small_7168', 6000, 0, STAGE_D_FRAMES); // 7168バイト以下(退行チェック)
-  const dSide = await runStageDCase('side_cross', 10000, 0, STAGE_D_FRAMES); // 8192バイト超(side境界またぎ)
-  const d32k = await runStageDCase('32k', 32000, 0, STAGE_D_FRAMES); // 約32KB(旧スタック衝突点。修正の直接確認)
-  const d256k = await runStageDCase('256k', 262144, 0, STAGE_D_MEDIUM_FRAMES); // 256KB以上
-  const d1mb = await runStageDCase('near_1mb', 1000000, 0, STAGE_D_LARGE_FRAMES); // 約1MB(977セクタ)
-  const dMax = await runStageDCase('disk_max', 1260000, 0, STAGE_D_LARGE_FRAMES); // 1231セクタ = 本体が取り得る最大(ディスク全体)
+  // 真因は本体ロードアドレス($3000)と旧スタックアドレス($B000)の衝突だった。
+  //
+  // 2026-08-19(実機互換の要件追加): スタックの既定値を「1MB機で確実に成立する
+  // 位置」($F0000)へ変更したため、本体が既定で使える予算は約943KBに縮む。
+  // small/side_cross/32k/256kはこの予算に収まるので、ビルド既定値(1MB機向け)の
+  // ままエミュ側も px68k_ramsize='1MB' にして実機(1MB機)相当で実測する
+  // (DEFAULT_BOOT_RAMSIZEが既定で使われる)。near_1mb/disk_maxは既定予算を
+  // 超えるため、STACK_ADDR/RAM_SIZEを明示的に2MB機向けへ上書きする
+  // (LARGE_BUILD_ENV/LARGE_BOOT_RAMSIZE)。「本体サイズごとに必要なRAM量」は
+  // docs/実機互換_要件追加_20260819.md の表を参照。判定条件は緩めない:
+  // LOAD OK が実際に出力された場合のみ ok=true とする。
+  // --- ビルド時の衝突検査そのものへの故障注入 ---
+  // 本体が既定のスタック予算(≒943KB)を超える構成でビルドし、tools/build_stage_d.sh の
+  // 衝突検査が「非ゼロ終了し、成果物(.xdf)を残さない」ことを確認する。検査コード自体が
+  // 壊れていないかをここで実測する(過去に「委譲先はテストを緩めてPASSにする」事故が
+  // あったため、検査自体の健全性も毎回測る)。
+  {
+    const collisionImg = resolve(DEV_ROOT, 'build/stage_d_build_collision_check.xdf');
+    try { unlinkSync(collisionImg); } catch { /* 無ければ何もしない */ }
+    let buildCollisionExitCode = 0;
+    try {
+      buildStageDImage(collisionImg, 1000000, 0); // 既定のSTACK_ADDR/RAM_SIZEのまま977セクタ相当を要求→衝突するはず
+    } catch (e: any) {
+      buildCollisionExitCode = e?.status ?? 1;
+    }
+    const artifactLeftBehind = existsSync(collisionImg);
+    const buildCollisionDetected = buildCollisionExitCode !== 0 && !artifactLeftBehind;
+    console.log(
+      `RESULT: STAGE_D_BUILD_COLLISION_CHECK_DETECTED=${buildCollisionDetected} ` +
+        `(exitCode=${buildCollisionExitCode} artifactLeftBehind=${artifactLeftBehind})`,
+    );
+    if (!buildCollisionDetected) {
+      console.log('RESULT: STAGE_D_BUILD_COLLISION_CHECK_BROKEN — 衝突する構成でもビルドが成功した(または成果物が残った)。ビルド時衝突検査が壊れている疑いがあるためここで異常終了する。');
+      process.exitCode = 1;
+      return;
+    }
+  }
+
+  const dSmall = await runStageDCase('small_7168', 6000, 0, STAGE_D_FRAMES); // 7168バイト以下(退行チェック)。1MB機相当で実測
+  const dSide = await runStageDCase('side_cross', 10000, 0, STAGE_D_FRAMES); // 8192バイト超(side境界またぎ)。1MB機相当で実測
+  const d32k = await runStageDCase('32k', 32000, 0, STAGE_D_FRAMES); // 約32KB(旧スタック衝突点。修正の直接確認)。1MB機相当で実測
+  const d256k = await runStageDCase('256k', 262144, 0, STAGE_D_MEDIUM_FRAMES); // 256KB以上。1MB機の既定予算(≒943KB)内に収まる。1MB機相当で実測
+  const d1mb = await runStageDCase('near_1mb', 1000000, 0, STAGE_D_LARGE_FRAMES, { envOverrides: LARGE_BUILD_ENV, ramSize: LARGE_BOOT_RAMSIZE }); // 約1MB(977セクタ)。1MB機の既定予算を超えるため2MB機向けに明示上書き
+  const dMax = await runStageDCase('disk_max', 1260000, 0, STAGE_D_LARGE_FRAMES, { envOverrides: LARGE_BUILD_ENV, ramSize: LARGE_BOOT_RAMSIZE }); // 1231セクタ = 本体が取り得る最大(ディスク全体)。同上、2MB機向け
 
   const stageDAllSizesOk = dSmall.matched && dSmall.ok && dSide.matched && dSide.ok
     && d32k.matched && d32k.ok && d256k.matched && d256k.ok
@@ -471,7 +537,7 @@ async function main(): Promise<void> {
 
   // --- 自己故障注入(新しい最大サイズ付近): 小サイズだけで検出できても大サイズで検査が
   // 効いている証明にはならないため、1231セクタ(ディスク全体)付近でも同じ検査をする ---
-  const dFaultInjectionMax = await runStageDCase('fault_injection_max', 1260000, 1, STAGE_D_LARGE_FRAMES);
+  const dFaultInjectionMax = await runStageDCase('fault_injection_max', 1260000, 1, STAGE_D_LARGE_FRAMES, { envOverrides: LARGE_BUILD_ENV, ramSize: LARGE_BOOT_RAMSIZE });
   const faultInjectionMaxDetected = dFaultInjectionMax.matched && !dFaultInjectionMax.ok;
   console.log(
     `RESULT: STAGE_D_SELF_FAULT_INJECTION_MAX_DETECTED=${faultInjectionMaxDetected} ` +

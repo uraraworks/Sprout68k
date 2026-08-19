@@ -47,6 +47,9 @@ _start:
     cmpi.l  #-1,%d0
     beq.s   read_error
 
+    /* 68030機での命令キャッシュ対策(cache_flush.S参照)。68000では安全に
+     * 素通りする。JMPの直前に必ず呼ぶ。 */
+    bsr     cache_flush_before_jump
     jmp     0x3000
 
 read_error:

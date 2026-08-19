@@ -199,6 +199,9 @@ read_loop:
     bra     read_loop
 
 done:
+    /* 68030機での命令キャッシュ対策(stage_c/boot/cache_flush.S参照、Stage Cと共用)。
+     * 68000では安全に素通りする。JMPの直前に必ず呼ぶ。 */
+    bsr     cache_flush_before_jump
     jmp     0x3000
 
 read_error:

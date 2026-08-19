@@ -25,13 +25,20 @@ SECTOR_SIZE=1024
 TOTAL_SECTORS=1232
 MAX_BODY_SECTORS=$((TOTAL_SECTORS - 1)) # sector1はブートセクタ自身
 LOAD_ADDR=$((0x3000))
-# スタックは本体ロードアドレス($3000)から十分離れた固定アドレス。
-# 検証ハーネス(verify/verify.mts)が px68k に設定する px68k_ramsize=2MB(=0x200000バイト)の
-# 範囲内に収める(2026-08-19: 旧 $B000 は本体が32KB以上になるとロード先と衝突していた不具合の修正。
-# 環境変数 STACK_ADDR で上書き可能。切り分け実験用)。
-STACK_ADDR="${STACK_ADDR:-0x1F0000}"
+# スタックの既定値は「1MB機(ACE/EXPERT等、X68000の標準構成)で確実に成立する
+# 位置」を主軸にする(2026-08-19: 実機互換の要件を追加)。$F0000 付近を採用し、
+# 本体が使える既定の予算は $F0000 - $3000 - マージン ≒ 943KB になる
+# (docs/実機互換_要件追加_20260819.md の表を参照)。
+# 977/1231セクタ級の大サイズ試験はこの既定では収まらないため、その場合は
+# 呼び出し側(verify/verify.mts)が STACK_ADDR と RAM_SIZE を明示的に大きい値
+# (旧既定 $1F0000 / 2MB)へ上書きして呼ぶ。番地を記憶や伝聞で決めない方針の
+# 一環として、動的なRAM量検出は行わず、既定値+明示パラメータのみで運用する。
+STACK_ADDR="${STACK_ADDR:-0xF0000}"
 STACK_ADDR_DEC=$((STACK_ADDR)) # bash 3.2(macOS既定)の `[` は0x接頭辞を認識しないため10進化しておく
-RAM_SIZE=$((0x200000))
+# RAM_SIZE は「このビルドが対象とする機械の実RAM量」。検証ハーネス側で設定する
+# px68k_ramsize core option と一致させること(既定は1MB機を想定)。
+RAM_SIZE="${RAM_SIZE:-0x100000}"
+RAM_SIZE_DEC=$((RAM_SIZE))
 STACK_MARGIN=$((4096)) # ロード末尾とスタックの間に最低限空ける余白
 
 CFLAGS=(-m68000 -Os -ffreestanding -nostdlib -fomit-frame-pointer -fno-builtin -Wall -Wno-array-bounds)
@@ -75,17 +82,20 @@ if [ "$((BODY_END + STACK_MARGIN))" -gt "$STACK_ADDR_DEC" ]; then
   printf 'ERROR: 本体末尾(0x%X)がスタック(STACK_ADDR=0x%X, margin=%dバイト)と衝突する\n' "$BODY_END" "$STACK_ADDR_DEC" "$STACK_MARGIN" >&2
   exit 1
 fi
-if [ "$STACK_ADDR_DEC" -ge "$RAM_SIZE" ]; then
-  printf 'ERROR: STACK_ADDR(0x%X)が設定RAMサイズ(0x%X)を超えている\n' "$STACK_ADDR" "$RAM_SIZE" >&2
+if [ "$STACK_ADDR_DEC" -ge "$RAM_SIZE_DEC" ]; then
+  printf 'ERROR: STACK_ADDR(0x%X)が設定RAMサイズ(RAM_SIZE=0x%X)を超えている\n' "$STACK_ADDR_DEC" "$RAM_SIZE_DEC" >&2
   exit 1
 fi
 
-echo "== ブートセクタのビルド(SECTOR_COUNT=${LOAD_SECTOR_COUNT}, STACK_ADDR=${STACK_ADDR}) =="
+echo "== ブートセクタのビルド(SECTOR_COUNT=${LOAD_SECTOR_COUNT}, STACK_ADDR=${STACK_ADDR}, RAM_SIZE=${RAM_SIZE}) =="
 m68k-elf-gcc -x assembler-with-cpp -m68000 -DSECTOR_COUNT="${LOAD_SECTOR_COUNT}" -DSTACK_ADDR="${STACK_ADDR}" -c "$ROOT/stage_d/boot/boot.S" -o "$OBJDIR/boot.o"
+# cache_flush.S は stage_c/boot/ のものを共用する(MOVEC使用のため -m68020 で assemble。
+# 詳細は tools/build_stage_c.sh 側のコメントおよび stage_c/boot/cache_flush.S 参照)。
+m68k-elf-gcc -x assembler-with-cpp -m68020 -c "$ROOT/stage_c/boot/cache_flush.S" -o "$OBJDIR/cache_flush.o"
 cat > "$OBJDIR/boot_link.ld" <<'EOF'
 SECTIONS { . = 0x0; .text : { *(.text) *(.rodata) *(.data) } }
 EOF
-m68k-elf-ld -T "$OBJDIR/boot_link.ld" -o "$OBJDIR/boot.elf" "$OBJDIR/boot.o"
+m68k-elf-ld -T "$OBJDIR/boot_link.ld" -o "$OBJDIR/boot.elf" "$OBJDIR/boot.o" "$OBJDIR/cache_flush.o"
 m68k-elf-objcopy -O binary "$OBJDIR/boot.elf" "$OBJDIR/boot.bin"
 BOOT_SIZE=$(wc -c < "$OBJDIR/boot.bin" | tr -d ' ')
 if [ "$BOOT_SIZE" -gt "$SECTOR_SIZE" ]; then
