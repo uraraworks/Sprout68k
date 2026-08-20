@@ -9,11 +9,21 @@ const ROOT = resolve(HERE, '../..');
 const RESULT_DIR = resolve(ROOT, 'build/f2_wasm_verify');
 const TOOLCHAIN = resolve(process.env.X68KDEV_TOOLCHAIN ?? resolve(homedir(), 'x68kdev-toolchain'));
 const OBJDUMP = resolve(TOOLCHAIN, 'bin/m68k-elf-objdump');
+const wasmTool = (name: string): string => {
+  const named = resolve(ROOT, `build/wasm-tools/m68k-elf-${name}.noderawfs.js`);
+  return existsSync(named) ? named : resolve(ROOT, `build/wasm-tools/m68k-elf-${name}.js`);
+};
 const WASM_MODULES = {
-  cc1: resolve(ROOT, 'build/wasm-tools/m68k-elf-cc1.js'),
-  as: resolve(ROOT, 'build/wasm-tools/m68k-elf-as.js'),
-  ld: resolve(ROOT, 'build/wasm-tools/m68k-elf-ld.js'),
-  objcopy: resolve(ROOT, 'build/wasm-tools/m68k-elf-objcopy.js'),
+  cc1: wasmTool('cc1'),
+  as: wasmTool('as'),
+  ld: wasmTool('ld'),
+  objcopy: wasmTool('objcopy'),
+};
+const MEMFS_MODULES = {
+  cc1: resolve(ROOT, 'build/wasm-tools/m68k-elf-cc1.memfs.js'),
+  as: resolve(ROOT, 'build/wasm-tools/m68k-elf-as.memfs.js'),
+  ld: resolve(ROOT, 'build/wasm-tools/m68k-elf-ld.memfs.js'),
+  objcopy: resolve(ROOT, 'build/wasm-tools/m68k-elf-objcopy.memfs.js'),
 };
 
 const rows = [
@@ -24,6 +34,7 @@ const rows = [
   { no: 5, name: 'binutils_wasm', mode: 'cc1=native,as=wasm,ld=wasm,objcopy=wasm' },
   { no: 6, name: 'cc1_wasm', mode: 'cc1=wasm,as=native,ld=native,objcopy=native' },
   { no: 7, name: 'all_wasm', mode: 'cc1=wasm,as=wasm,ld=wasm,objcopy=wasm' },
+  { no: 8, name: 'all_memfs', mode: 'cc1=memfs,as=memfs,ld=memfs,objcopy=memfs' },
 ] as const;
 
 function requirePath(label: string, path: string): void {
@@ -53,6 +64,10 @@ function runBuild(row: typeof rows[number], target: 'stage_c' | 'breakout'): voi
       X68KDEV_AS_WASM_JS: WASM_MODULES.as,
       X68KDEV_LD_WASM_JS: WASM_MODULES.ld,
       X68KDEV_OBJCOPY_WASM_JS: WASM_MODULES.objcopy,
+      X68KDEV_CC1_MEMFS_JS: MEMFS_MODULES.cc1,
+      X68KDEV_AS_MEMFS_JS: MEMFS_MODULES.as,
+      X68KDEV_LD_MEMFS_JS: MEMFS_MODULES.ld,
+      X68KDEV_OBJCOPY_MEMFS_JS: MEMFS_MODULES.objcopy,
     },
   });
   if (result.stdout) process.stdout.write(result.stdout);
@@ -155,7 +170,7 @@ function compareTarget(row: typeof rows[number], target: 'stage_c' | 'breakout')
 }
 
 function verifyCc1FaultInjection(): void {
-  const wasm = resolve(ROOT, 'build/wasm-tools/m68k-elf-cc1.wasm');
+  const wasm = WASM_MODULES.cc1.replace(/\.js$/, '.wasm');
   requirePath('cc1 wasm本体', wasm);
   const originalMode = statSync(wasm).mode & 0o777;
   const faultDir = resolve(RESULT_DIR, 'fault_cc1_unreadable');
@@ -186,7 +201,7 @@ function verifyCc1FaultInjection(): void {
 }
 
 for (const [label, path] of Object.entries(WASM_MODULES)) requirePath(`${label} wasm JS`, path);
-requirePath('cc1 wasm本体', resolve(ROOT, 'build/wasm-tools/m68k-elf-cc1.wasm'));
+requirePath('cc1 wasm本体', WASM_MODULES.cc1.replace(/\.js$/, '.wasm'));
 requirePath('native objdump', OBJDUMP);
 const nativeAsVersion = version(resolve(TOOLCHAIN, 'bin/m68k-elf-as'), ['--version']);
 if (!nativeAsVersion.includes('2.44')) throw new Error(`native as が binutils 2.44 ではありません: ${nativeAsVersion}`);
@@ -200,12 +215,21 @@ mkdirSync(RESULT_DIR, { recursive: true });
 
 verifyCc1FaultInjection();
 
-for (const row of rows) {
+const missingMemfs = Object.entries(MEMFS_MODULES).flatMap(([label, js]) =>
+  [js, js.replace(/\.js$/, '.wasm')]
+    .filter((path) => !existsSync(path))
+    .map((path) => `${label}:${relative(ROOT, path)}`));
+const runnableRows = missingMemfs.length === 0 ? rows : rows.filter((row) => row.no !== 8);
+if (missingMemfs.length > 0) {
+  console.log(`#8 stage_c/breakout: SKIP(memfs版未ビルド: ${missingMemfs.join(', ')})`);
+}
+
+for (const row of runnableRows) {
   for (const target of ['stage_c', 'breakout'] as const) runBuild(row, target);
 }
 
 let failed = false;
-for (const row of rows) {
+for (const row of runnableRows) {
   for (const target of ['stage_c', 'breakout'] as const) {
     const result = row.no === 1 ? { ok: true, details: [] } : compareTarget(row, target);
     console.log(`#${row.no} ${target}: ${result.ok ? 'PASS(基準と全成果物バイト一致)' : 'FAIL(不一致)'}`);
@@ -213,5 +237,5 @@ for (const row of rows) {
     failed ||= !result.ok;
   }
 }
-if (failed) throw new Error('F-2 wasm 混成比較 FAIL');
-console.log('F-2 wasm 混成比較 PASS');
+if (failed) throw new Error('wasm 混成比較 FAIL');
+console.log(`wasm 混成比較 PASS（実行=${runnableRows.length}構成、スキップ=${rows.length - runnableRows.length}構成）`);

@@ -5,7 +5,7 @@
 #
 # 使い方:
 #   tools/build_wasm_gcc.sh [-j N] [--configure-only]
-#   NATIVE_PREFIX="$HOME/x68kdev-toolchain" PREFIX="$HOME/x68kdev-wasm" \
+#   WASM_FS=noderawfs|memfs NATIVE_PREFIX="$HOME/x68kdev-toolchain" PREFIX="$HOME/x68kdev-wasm" \
 #     tools/build_wasm_gcc.sh -j 8
 #
 # all-gcc は依存関係上 driver 等もビルドし得るが、インストールはせず cc1 のみを
@@ -16,13 +16,13 @@ GCC_VERSION=13.4.0
 HOST=wasm32-unknown-emscripten
 TARGET=m68k-elf
 PROGRAM_PREFIX=m68k-elf-
+WASM_FS="${WASM_FS:-noderawfs}"
 
 PREFIX="${PREFIX:-$HOME/x68kdev-wasm}"
 NATIVE_PREFIX="${NATIVE_PREFIX:-$HOME/x68kdev-toolchain}"
 EMSDK="${EMSDK:-$HOME/emsdk}"
 GCC_SOURCE="${GCC_SOURCE:-$NATIVE_PREFIX/src/gcc-${GCC_VERSION}}"
 BUILD_ROOT="$PREFIX/build"
-GCC_BUILD="$BUILD_ROOT/gcc-${GCC_VERSION}-cc1-wasm"
 BIN_DIR="$PREFIX/bin"
 EM_CACHE="$PREFIX/emscripten-cache"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -34,6 +34,23 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 WASM_INITIAL_MEMORY="${WASM_INITIAL_MEMORY:-268435456}"
 WASM_MAXIMUM_MEMORY="${WASM_MAXIMUM_MEMORY:-2147483648}"
 WASM_STACK_SIZE="${WASM_STACK_SIZE:-16777216}"
+
+# noderawfs は従来の Node 専用 CLI。memfs はブラウザ本番と Node 上のバイト一致検証で
+# 同じ factory を使えるよう ENVIRONMENT=web,node とし、入力配置前の main 自動実行を止める。
+# FS/callMain/ENV は tools/driver/runner.mts が入出力と GCC_EXEC_PREFIX を設定するため export する。
+case "$WASM_FS" in
+  noderawfs)
+    WASM_RUNTIME_LDFLAGS='-sNODERAWFS=1 -sENVIRONMENT=node'
+    ;;
+  memfs)
+    WASM_RUNTIME_LDFLAGS='-sMODULARIZE=1 -sINVOKE_RUN=0 -sENVIRONMENT=web,node -sEXPORTED_RUNTIME_METHODS=FS,callMain,ENV'
+    ;;
+  *)
+    echo "ERROR: WASM_FS は noderawfs または memfs を指定してください: $WASM_FS" >&2
+    exit 2
+    ;;
+esac
+GCC_BUILD="$BUILD_ROOT/gcc-${GCC_VERSION}-cc1-${WASM_FS}"
 
 detect_jobs() {
   if command -v nproc >/dev/null 2>&1; then
@@ -178,7 +195,7 @@ done
 # 逆にネイティブ側で in-tree zlib が使えないのは、同梱 zlib が最近の macOS SDK の
 # ヘッダと衝突するため(F-0 で実測済み)。同じ理由で両者の指定が逆になっている。
 BUILD="$($GCC_SOURCE/config.guess)"
-WASM_LDFLAGS="${LDFLAGS:+$LDFLAGS }-sNODERAWFS=1 -sENVIRONMENT=node -sALLOW_MEMORY_GROWTH=1 -sINITIAL_MEMORY=$WASM_INITIAL_MEMORY -sMAXIMUM_MEMORY=$WASM_MAXIMUM_MEMORY -sSTACK_SIZE=$WASM_STACK_SIZE"
+WASM_LDFLAGS="${LDFLAGS:+$LDFLAGS }$WASM_RUNTIME_LDFLAGS -sALLOW_MEMORY_GROWTH=1 -sINITIAL_MEMORY=$WASM_INITIAL_MEMORY -sMAXIMUM_MEMORY=$WASM_MAXIMUM_MEMORY -sSTACK_SIZE=$WASM_STACK_SIZE"
 
 mkdir -p "$GCC_BUILD"
 if [ ! -f "$GCC_BUILD/Makefile" ]; then
@@ -250,7 +267,7 @@ CC1_WASM="$CC1_STEM.wasm"
 }
 
 mkdir -p "$BIN_DIR"
-OUTPUT_STEM="$BIN_DIR/${PROGRAM_PREFIX}cc1"
+OUTPUT_STEM="$BIN_DIR/${PROGRAM_PREFIX}cc1.${WASM_FS}"
 SOURCE_WASM_NAME="$(basename "$CC1_WASM")"
 OUTPUT_WASM_NAME="$(basename "$OUTPUT_STEM").wasm"
 sed "s/${SOURCE_WASM_NAME}/${OUTPUT_WASM_NAME}/g" "$CC1_JS" > "$OUTPUT_STEM.js"
@@ -260,7 +277,5 @@ chmod 644 "$OUTPUT_STEM.wasm"
 
 echo '== 生成物サイズ（バイト） =='
 wc -c "$OUTPUT_STEM.js" "$OUTPUT_STEM.wasm"
-echo '== 完了（動作・バイト一致は未検証） =='
+echo '== 完了（この生成物の動作・バイト一致は verify_wasm.mts で別途検証する） =='
 echo "生成: $OUTPUT_STEM.js + $OUTPUT_STEM.wasm"
-# --version の起動確認すら「ビルドスクリプトを実行しない」という F-3 今回範囲外。
-# また NODERAWFS は Node 専用。ブラウザ移行時は MEMFS への明示転送が必要になる。

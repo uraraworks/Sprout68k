@@ -61,32 +61,37 @@ class Builder {
       as: process.env.X68KDEV_AS_WASM_JS,
       ld: process.env.X68KDEV_LD_WASM_JS,
       objcopy: process.env.X68KDEV_OBJCOPY_WASM_JS,
+    }, {
+      cc1: process.env.X68KDEV_CC1_MEMFS_JS,
+      as: process.env.X68KDEV_AS_MEMFS_JS,
+      ld: process.env.X68KDEV_LD_MEMFS_JS,
+      objcopy: process.env.X68KDEV_OBJCOPY_MEMFS_JS,
     });
   }
 
-  private run(tool: ToolName, args: string[]): void {
-    this.executors.run({ tool, program: this.tools[tool], args, cwd: ROOT });
+  private async run(tool: ToolName, args: string[]): Promise<void> {
+    await this.executors.run({ tool, program: this.tools[tool], args, cwd: ROOT });
   }
 
-  private compileC(src: string, out: string, extra: string[] = []): void {
+  private async compileC(src: string, out: string, extra: string[] = []): Promise<void> {
     const asmOut = out.replace(/\.o$/, '.s');
-    this.run('cc1', [
+    await this.run('cc1', [
       '-quiet', '-imultilib', 'm68000', ...extra, src, '-quiet',
       '-dumpdir', `${dirname(out)}/`, '-dumpbase', basename(src), '-dumpbase-ext', '.c',
       '-mcpu=68000', this.optLevel, '-Wall', '-ffreestanding', '-fomit-frame-pointer',
       '-fno-builtin', '-o', asmOut,
     ]);
-    this.run('as', ['-mcpu=68000', '-o', out, asmOut]);
+    await this.run('as', ['-mcpu=68000', '-o', out, asmOut]);
   }
 
-  private assembleCpp(cpu: '68000' | '68020', src: string, out: string, extra: string[] = []): void {
+  private async assembleCpp(cpu: '68000' | '68020', src: string, out: string, extra: string[] = []): Promise<void> {
     const asmOut = out.replace(/\.o$/, '.s');
     const multilib = cpu === '68000' ? ['-imultilib', 'm68000'] : [];
-    this.run('cc1', [
+    await this.run('cc1', [
       '-E', '-lang-asm', '-quiet', ...multilib, ...extra, src,
       `-mcpu=${cpu}`, '-fno-directives-only', '-o', asmOut,
     ]);
-    this.run('as', [`-mcpu=${cpu}`, '-o', out, asmOut]);
+    await this.run('as', [`-mcpu=${cpu}`, '-o', out, asmOut]);
   }
 
   private checkMemoryLayout(bodySize: number): void {
@@ -99,15 +104,15 @@ class Builder {
     }
   }
 
-  private linkBoot(objdir: string, bootSrc: string, sectors: number): void {
-    this.assembleCpp('68000', bootSrc, resolve(objdir, 'boot.o'), [
+  private async linkBoot(objdir: string, bootSrc: string, sectors: number): Promise<void> {
+    await this.assembleCpp('68000', bootSrc, resolve(objdir, 'boot.o'), [
       '-D', `SECTOR_COUNT=${sectors}`, '-D', `STACK_ADDR=${this.stackAddress}`,
     ]);
-    this.assembleCpp('68020', resolve(ROOT, 'stage_c/boot/cache_flush.S'), resolve(objdir, 'cache_flush.o'));
+    await this.assembleCpp('68020', resolve(ROOT, 'stage_c/boot/cache_flush.S'), resolve(objdir, 'cache_flush.o'));
     const linkerScript = resolve(objdir, 'boot_link.ld');
     writeFileSync(linkerScript, 'SECTIONS { . = 0x0; .text : { *(.text) *(.rodata) *(.data) } }\n');
-    this.run('ld', ['-T', linkerScript, '-o', resolve(objdir, 'boot.elf'), resolve(objdir, 'boot.o'), resolve(objdir, 'cache_flush.o')]);
-    this.run('objcopy', ['-O', 'binary', resolve(objdir, 'boot.elf'), resolve(objdir, 'boot.bin')]);
+    await this.run('ld', ['-T', linkerScript, '-o', resolve(objdir, 'boot.elf'), resolve(objdir, 'boot.o'), resolve(objdir, 'cache_flush.o')]);
+    await this.run('objcopy', ['-O', 'binary', resolve(objdir, 'boot.elf'), resolve(objdir, 'boot.bin')]);
     const bootSize = statSync(resolve(objdir, 'boot.bin')).size;
     if (bootSize > SECTOR_SIZE) throw new Error(`ブートセクタが1024バイトを超えています(${bootSize})`);
   }
@@ -126,48 +131,48 @@ class Builder {
     console.log(`wrote ${output} (${image.length} bytes, body=${sectors} sectors)`);
   }
 
-  buildStageC(): void {
+  async buildStageC(): Promise<void> {
     const objdir = resolve(this.buildRoot, `stage_c${this.variantSuffix}`);
     mkdirSync(objdir, { recursive: true });
     console.log(`== Stage C を駆動層でビルド(opt=${this.optLevel}) ==`);
-    this.compileC(resolve(ROOT, 'stage_c/src/main.c'), resolve(objdir, 'main.o'), ['-D', 'FILL_COLOR=0xFFFF']);
-    this.assembleCpp('68000', resolve(ROOT, 'stage_c/crt0/crt0.S'), resolve(objdir, 'crt0.o'), ['-D', `STACK_ADDR=${this.stackAddress}`]);
-    this.assembleCpp('68000', resolve(ROOT, 'stage_c/crt0/iocs.S'), resolve(objdir, 'iocs.o'));
+    await this.compileC(resolve(ROOT, 'stage_c/src/main.c'), resolve(objdir, 'main.o'), ['-D', 'FILL_COLOR=0xFFFF']);
+    await this.assembleCpp('68000', resolve(ROOT, 'stage_c/crt0/crt0.S'), resolve(objdir, 'crt0.o'), ['-D', `STACK_ADDR=${this.stackAddress}`]);
+    await this.assembleCpp('68000', resolve(ROOT, 'stage_c/crt0/iocs.S'), resolve(objdir, 'iocs.o'));
     const elf = resolve(objdir, 'stage_c.elf');
     const bin = resolve(objdir, 'stage_c.bin');
-    this.run('ld', ['-T', resolve(ROOT, 'stage_c/crt0/linker.ld'), '-o', elf, resolve(objdir, 'crt0.o'), resolve(objdir, 'iocs.o'), resolve(objdir, 'main.o')]);
-    this.run('objcopy', ['-O', 'binary', elf, bin]);
+    await this.run('ld', ['-T', resolve(ROOT, 'stage_c/crt0/linker.ld'), '-o', elf, resolve(objdir, 'crt0.o'), resolve(objdir, 'iocs.o'), resolve(objdir, 'main.o')]);
+    await this.run('objcopy', ['-O', 'binary', elf, bin]);
     const bodySize = statSync(bin).size;
     const sectors = Math.max(1, Math.ceil(bodySize / SECTOR_SIZE));
     if (sectors > 7) throw new Error('本体が7セクタ(7168バイト)を超えています');
     this.checkMemoryLayout(bodySize);
-    this.linkBoot(objdir, resolve(ROOT, 'stage_c/boot/boot.S'), sectors);
+    await this.linkBoot(objdir, resolve(ROOT, 'stage_c/boot/boot.S'), sectors);
     this.makeXdf(resolve(objdir, 'boot.bin'), bin, sectors);
   }
 
-  buildBreakout(): void {
+  async buildBreakout(): Promise<void> {
     const objdir = resolve(this.buildRoot, `breakout${this.variantSuffix}`);
     mkdirSync(objdir, { recursive: true });
     console.log(`== breakout を駆動層でビルド(opt=${this.optLevel}) ==`);
     const include = ['-I', resolve(ROOT, 'lib/include')];
     for (const name of ['x68_std', 'x68_l0', 'x68_l1', 'x68_panic', 'x68_input']) {
-      this.compileC(resolve(ROOT, `lib/src/${name}.c`), resolve(objdir, `${name}.o`), include);
+      await this.compileC(resolve(ROOT, `lib/src/${name}.c`), resolve(objdir, `${name}.o`), include);
     }
-    this.compileC(resolve(ROOT, 'samples/breakout/main.c'), resolve(objdir, 'main.o'), include);
-    this.assembleCpp('68000', resolve(ROOT, 'lib/asm/x68_iocs.S'), resolve(objdir, 'x68_iocs.o'));
-    this.assembleCpp('68000', resolve(ROOT, 'lib/asm/x68_gvram_copy.S'), resolve(objdir, 'x68_gvram_copy.o'));
-    this.assembleCpp('68020', resolve(ROOT, 'lib/asm/x68_panic.S'), resolve(objdir, 'x68_panic_asm.o'));
-    this.assembleCpp('68000', resolve(ROOT, 'stage_c/crt0/crt0.S'), resolve(objdir, 'crt0.o'), ['-D', `STACK_ADDR=${this.stackAddress}`]);
+    await this.compileC(resolve(ROOT, 'samples/breakout/main.c'), resolve(objdir, 'main.o'), include);
+    await this.assembleCpp('68000', resolve(ROOT, 'lib/asm/x68_iocs.S'), resolve(objdir, 'x68_iocs.o'));
+    await this.assembleCpp('68000', resolve(ROOT, 'lib/asm/x68_gvram_copy.S'), resolve(objdir, 'x68_gvram_copy.o'));
+    await this.assembleCpp('68020', resolve(ROOT, 'lib/asm/x68_panic.S'), resolve(objdir, 'x68_panic_asm.o'));
+    await this.assembleCpp('68000', resolve(ROOT, 'stage_c/crt0/crt0.S'), resolve(objdir, 'crt0.o'), ['-D', `STACK_ADDR=${this.stackAddress}`]);
     const elf = resolve(objdir, 'breakout.elf');
     const bin = resolve(objdir, 'breakout.bin');
-    this.run('ld', [
+    await this.run('ld', [
       '-T', resolve(ROOT, 'stage_c/crt0/linker.ld'), '-o', elf,
       resolve(objdir, 'crt0.o'), resolve(objdir, 'main.o'),
       ...['x68_std', 'x68_l0', 'x68_l1', 'x68_panic', 'x68_input'].map((name) => resolve(objdir, `${name}.o`)),
       resolve(objdir, 'x68_iocs.o'), resolve(objdir, 'x68_gvram_copy.o'), resolve(objdir, 'x68_panic_asm.o'),
       this.tools.libgcc,
     ]);
-    this.run('objcopy', ['-O', 'binary', elf, bin]);
+    await this.run('objcopy', ['-O', 'binary', elf, bin]);
     const bodySize = statSync(bin).size;
     const sectors = Math.max(1, Math.ceil(bodySize / SECTOR_SIZE));
     this.checkMemoryLayout(bodySize);
@@ -178,29 +183,29 @@ class Builder {
     if (bssEnd + STACK_MARGIN > this.stackAddressNumber || bssEnd + STACK_MARGIN > this.ramSizeNumber) {
       throw new Error('bss末尾がスタックまたは設定RAMサイズと衝突します');
     }
-    this.linkBoot(objdir, resolve(ROOT, 'stage_d/boot/boot.S'), sectors);
+    await this.linkBoot(objdir, resolve(ROOT, 'stage_d/boot/boot.S'), sectors);
     this.makeXdf(resolve(objdir, 'boot.bin'), bin, sectors);
   }
 }
 
-export function build(options: BuildOptions): void {
+export async function build(options: BuildOptions): Promise<void> {
   const builder = new Builder(options);
-  if (options.target === 'stage_c') builder.buildStageC();
-  else builder.buildBreakout();
+  if (options.target === 'stage_c') await builder.buildStageC();
+  else await builder.buildBreakout();
 }
 
 function parseMode(value: string | undefined, tool: ToolName): ToolMode {
   const mode = value ?? 'native';
-  if (mode !== 'native' && mode !== 'wasm') throw new Error(`${tool} のモードが不正です: ${mode}`);
+  if (mode !== 'native' && mode !== 'wasm' && mode !== 'memfs') throw new Error(`${tool} のモードが不正です: ${mode}`);
   return mode;
 }
 
-function main(): void {
+async function main(): Promise<void> {
   const args = process.argv.slice(2);
   const target = args.shift();
   const output = args.shift();
   if ((target !== 'stage_c' && target !== 'breakout') || !output) {
-    throw new Error('使い方: node tools/driver/build.mts <stage_c|breakout> <output.xdf> [--mode cc1=native,as=wasm,...]');
+    throw new Error('使い方: node tools/driver/build.mts <stage_c|breakout> <output.xdf> [--mode cc1=native,as=wasm|memfs,...]');
   }
   const modes: ModeMap = {
     cc1: parseMode(process.env.X68KDEV_CC1_MODE, 'cc1'),
@@ -219,7 +224,7 @@ function main(): void {
       modes[tool as ToolName] = parseMode(value, tool as ToolName);
     }
   }
-  build({
+  await build({
     target,
     output,
     modes,
@@ -231,4 +236,4 @@ function main(): void {
   });
 }
 
-if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) main();
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) await main();

@@ -4,12 +4,12 @@
 #
 # 使い方:
 #   tools/build_wasm_binutils.sh [-j N] [--configure-only]
-#   PREFIX=/任意の絶対パス tools/build_wasm_binutils.sh -j 8
+#   WASM_FS=noderawfs|memfs PREFIX=/任意の絶対パス tools/build_wasm_binutils.sh -j 8
 #
-# 当面は Node から通常のパスを引数に渡して cc1 -> as -> ld -> objcopy と起動するため、
-# MEMFS へのファイル転送が不要な NODERAWFS を採用する。これは Node 専用であり、ブラウザ
-# 移行時は -sNODERAWFS=1 と -sENVIRONMENT=node を外し、MEMFS に入力を FS.writeFile() で
-# 配置（固定資材なら --preload-file も可）して、実行後に FS.readFile() で回収する必要がある。
+# 既定の noderawfs は従来どおり Node から実ファイルを直接扱う。memfs は factory を
+# export し、自動実行せず、呼び出し側が FS.writeFile() -> callMain() -> FS.readFile() の
+# 順で駆動する。memfs の ENVIRONMENT=web,node はブラウザ本番と Node 上のバイト一致検証を
+# 同じ生成物で行うためであり、NODERAWFS を使う noderawfs は Node 専用のままとする。
 set -euo pipefail
 
 BINUTILS_VERSION=2.44
@@ -18,6 +18,7 @@ BINUTILS_URL="https://ftp.gnu.org/gnu/binutils/binutils-${BINUTILS_VERSION}.tar.
 HOST=wasm32-unknown-emscripten
 TARGET=m68k-elf
 PROGRAM_PREFIX=m68k-elf-
+WASM_FS="${WASM_FS:-noderawfs}"
 
 PREFIX="${PREFIX:-$HOME/x68kdev-wasm}"
 EMSDK="${EMSDK:-$HOME/emsdk}"
@@ -136,7 +137,19 @@ mkdir -p "$DOWNLOAD_DIR" "$BUILD_ROOT"
 export EM_CACHE
 BINUTILS_ARCHIVE="$DOWNLOAD_DIR/binutils-${BINUTILS_VERSION}.tar.xz"
 BINUTILS_SOURCE="$SRC_DIR/binutils-${BINUTILS_VERSION}"
-BINUTILS_BUILD="$BUILD_ROOT/binutils-${BINUTILS_VERSION}"
+case "$WASM_FS" in
+  noderawfs)
+    WASM_RUNTIME_LDFLAGS='-sNODERAWFS=1 -sENVIRONMENT=node'
+    ;;
+  memfs)
+    WASM_RUNTIME_LDFLAGS='-sMODULARIZE=1 -sINVOKE_RUN=0 -sENVIRONMENT=web,node -sEXPORTED_RUNTIME_METHODS=FS,callMain,ENV'
+    ;;
+  *)
+    echo "ERROR: WASM_FS は noderawfs または memfs を指定してください: $WASM_FS" >&2
+    exit 2
+    ;;
+esac
+BINUTILS_BUILD="$BUILD_ROOT/binutils-${BINUTILS_VERSION}-${WASM_FS}"
 
 download_and_verify "$BINUTILS_ARCHIVE"
 if [ ! -d "$BINUTILS_SOURCE" ]; then
@@ -158,7 +171,7 @@ export ac_cv_func_psignal=yes
 # 本体が呼ばない補助関数なので、代替定義そのものを無効化する(ac_cv_func_psignal=yes)。
 # 万一どこかが psignal を呼んでいれば未定義シンボルとしてリンク時に必ず表面化する。
 BUILD="$($BINUTILS_SOURCE/config.guess)"
-WASM_LDFLAGS="${LDFLAGS:+$LDFLAGS }-sNODERAWFS=1 -sENVIRONMENT=node"
+WASM_LDFLAGS="${LDFLAGS:+$LDFLAGS }$WASM_RUNTIME_LDFLAGS"
 mkdir -p "$BINUTILS_BUILD"
 if [ ! -f "$BINUTILS_BUILD/Makefile" ]; then
   echo "== binutils configure (build=$BUILD host=$HOST target=$TARGET) =="
@@ -229,11 +242,15 @@ package_tool() {
   echo "生成: $output_stem.js + $output_stem.wasm"
 }
 
-package_tool "$BINUTILS_BUILD/gas/as-new" "$BIN_DIR/${PROGRAM_PREFIX}as"
-package_tool "$BINUTILS_BUILD/ld/ld-new" "$BIN_DIR/${PROGRAM_PREFIX}ld"
-package_tool "$BINUTILS_BUILD/binutils/objcopy" "$BIN_DIR/${PROGRAM_PREFIX}objcopy"
+package_tool "$BINUTILS_BUILD/gas/as-new" "$BIN_DIR/${PROGRAM_PREFIX}as.${WASM_FS}"
+package_tool "$BINUTILS_BUILD/ld/ld-new" "$BIN_DIR/${PROGRAM_PREFIX}ld.${WASM_FS}"
+package_tool "$BINUTILS_BUILD/binutils/objcopy" "$BIN_DIR/${PROGRAM_PREFIX}objcopy.${WASM_FS}"
 
 echo '== 完了 =='
-"$EMSDK_NODE" "$BIN_DIR/${PROGRAM_PREFIX}as.js" --version
-"$EMSDK_NODE" "$BIN_DIR/${PROGRAM_PREFIX}ld.js" --version
-"$EMSDK_NODE" "$BIN_DIR/${PROGRAM_PREFIX}objcopy.js" --version
+if [ "$WASM_FS" = noderawfs ]; then
+  "$EMSDK_NODE" "$BIN_DIR/${PROGRAM_PREFIX}as.noderawfs.js" --version
+  "$EMSDK_NODE" "$BIN_DIR/${PROGRAM_PREFIX}ld.noderawfs.js" --version
+  "$EMSDK_NODE" "$BIN_DIR/${PROGRAM_PREFIX}objcopy.noderawfs.js" --version
+else
+  echo 'memfs 版は自動実行しないため、動作確認は tools/driver/verify_wasm.mts で行う'
+fi
