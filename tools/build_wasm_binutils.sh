@@ -146,6 +146,12 @@ else
   echo "== 展開済みソースを再利用: $BINUTILS_SOURCE =="
 fi
 
+# 注意: この cache 変数は configure のコマンド前置きにすると**サブディレクトリの
+# configure に渡らない**(libiberty は自前の configure を持つため、そこで再び
+# 「psignal は無い」と判定されて同じ衝突で落ちる。実際に1回落ちた)。環境変数
+# として export し、すべての configure に効かせる。
+export ac_cv_func_psignal=yes
+
 # emscripten の libc は psignal を signal.h で宣言するが実体を持たない。configure は
 # 「関数が無い」と判定して libiberty の代替定義を有効にするが、その代替定義の引数型
 # (char *)がヘッダの宣言(const char *)と衝突してビルドが落ちる。psignal は binutils
@@ -158,7 +164,6 @@ if [ ! -f "$BINUTILS_BUILD/Makefile" ]; then
   echo "== binutils configure (build=$BUILD host=$HOST target=$TARGET) =="
   (
     cd "$BINUTILS_BUILD"
-    ac_cv_func_psignal=yes \
     CC_FOR_BUILD="${CC_FOR_BUILD:-cc}" \
     CXX_FOR_BUILD="${CXX_FOR_BUILD:-c++}" \
     CFLAGS="${CFLAGS:--O2}" \
