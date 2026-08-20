@@ -116,6 +116,8 @@ function outputPaths(tool: ToolName, args: readonly string[], cwd: string): Set<
  * 引数に現れる既存ファイル/ディレクトリを同じ絶対パスで MEMFS へ複製し、-o（および
  * objcopy の最終引数）の生成物をホストへ回収する。ブラウザ UI では同じ FS 境界へ
  * File/Uint8Array を渡すが、その結線は F-4 の範囲とする。
+ * 終了後の同一モジュールを再度 callMain すると binutils の内部状態が壊れるため、
+ * run ごとに factory から新しいインスタンスを生成する。
  */
 export class MemfsWasmToolRunner implements ToolRunner {
   readonly mode = 'memfs' as const;
@@ -136,6 +138,13 @@ export class MemfsWasmToolRunner implements ToolRunner {
       throw new Error(`${tool}=memfs の wasm 本体が見つかりません（未ビルド）: ${wasmPath}`);
     }
 
+    const outputs = outputPaths(tool, args, cwd);
+    const cc1ExecPrefix = process.env.X68KDEV_CC1_GCC_EXEC_PREFIX;
+    if (tool === 'cc1' && cc1ExecPrefix) {
+      const prefix = resolve(cc1ExecPrefix);
+      if (!existsSync(prefix)) throw new Error(`cc1=memfs の GCC_EXEC_PREFIX が見つかりません: ${prefix}`);
+    }
+
     const imported = await import(pathToFileURL(modulePath).href);
     const factory = (imported.default ?? imported) as EmscriptenFactory;
     if (typeof factory !== 'function') {
@@ -143,27 +152,28 @@ export class MemfsWasmToolRunner implements ToolRunner {
     }
     const module = await factory({
       locateFile: (name: string) => name.endsWith('.wasm') ? wasmPath : resolve(dirname(modulePath), name),
+      // GCC は初期化中にも環境変数を参照するため、factory 解決後では遅い。
+      // FS 入力と GCC_EXEC_PREFIX は initRuntime より前の preRun で用意する。
+      preRun: [(preRunModule: EmscriptenMemfsModule) => {
+        if (!preRunModule.FS) throw new Error(`${tool}=memfs の preRun に FS export がありません: ${modulePath}`);
+        mkdirMemfs(preRunModule, cwd);
+        for (const arg of args) {
+          const hostPath = resolve(cwd, arg);
+          if (!outputs.has(hostPath) && existsSync(hostPath)) copyHostInput(preRunModule, hostPath);
+        }
+        if (tool === 'cc1' && cc1ExecPrefix) {
+          const prefix = resolve(cc1ExecPrefix);
+          copyHostInput(preRunModule, prefix);
+          if (!preRunModule.ENV) throw new Error(`${tool}=memfs の preRun に ENV export がありません: ${modulePath}`);
+          preRunModule.ENV.GCC_EXEC_PREFIX = `${prefix}/`;
+        }
+        for (const output of outputs) mkdirMemfs(preRunModule, dirname(output));
+        preRunModule.FS.chdir(cwd);
+      }],
     });
     if (!module.FS || typeof module.callMain !== 'function') {
       throw new Error(`${tool}=memfs に FS/callMain export がありません: ${modulePath}`);
     }
-
-    const outputs = outputPaths(tool, args, cwd);
-    mkdirMemfs(module, cwd);
-    for (const arg of args) {
-      const hostPath = resolve(cwd, arg);
-      if (!outputs.has(hostPath) && existsSync(hostPath)) copyHostInput(module, hostPath);
-    }
-    const cc1ExecPrefix = process.env.X68KDEV_CC1_GCC_EXEC_PREFIX;
-    if (tool === 'cc1' && cc1ExecPrefix) {
-      const prefix = resolve(cc1ExecPrefix);
-      if (!existsSync(prefix)) throw new Error(`cc1=memfs の GCC_EXEC_PREFIX が見つかりません: ${prefix}`);
-      copyHostInput(module, prefix);
-      if (!module.ENV) throw new Error(`${tool}=memfs に ENV export がありません: ${modulePath}`);
-      module.ENV.GCC_EXEC_PREFIX = `${prefix}/`;
-    }
-    for (const output of outputs) mkdirMemfs(module, dirname(output));
-    module.FS.chdir(cwd);
 
     try {
       const status = module.callMain(args);

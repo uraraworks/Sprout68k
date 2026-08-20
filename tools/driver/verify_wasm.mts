@@ -3,6 +3,7 @@ import { chmodSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, st
 import { homedir } from 'node:os';
 import { dirname, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { MemfsWasmToolRunner } from './runner.mts';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(HERE, '../..');
@@ -200,6 +201,62 @@ function verifyCc1FaultInjection(): void {
   console.log(`故障注入 PASS: cc1.wasm mode=000 で#6が失敗し、mode=${originalMode.toString(8)}へ復元`);
 }
 
+function verifyMemfsFaultInjection(): void {
+  const wasm = MEMFS_MODULES.cc1.replace(/\.js$/, '.wasm');
+  requirePath('memfs cc1 wasm本体', wasm);
+  const originalMode = statSync(wasm).mode & 0o777;
+  const faultDir = resolve(RESULT_DIR, 'fault_memfs_cc1_unreadable');
+  mkdirSync(faultDir, { recursive: true });
+  let result: ReturnType<typeof spawnSync> | undefined;
+  try {
+    chmodSync(wasm, 0o000);
+    result = spawnSync(process.execPath, [resolve(HERE, 'build.mts'), 'stage_c', resolve(faultDir, 'stage_c.xdf'), '--mode', rows[7].mode], {
+      cwd: ROOT,
+      encoding: 'utf8',
+      env: {
+        ...process.env,
+        X68KDEV_TOOLCHAIN: TOOLCHAIN,
+        X68KDEV_CC1_GCC_EXEC_PREFIX: `${resolve(TOOLCHAIN, 'lib/gcc')}/`,
+        X68KDEV_DRIVER_BUILD_ROOT: resolve(faultDir, 'objects'),
+        X68KDEV_CC1_MEMFS_JS: MEMFS_MODULES.cc1,
+        X68KDEV_AS_MEMFS_JS: MEMFS_MODULES.as,
+        X68KDEV_LD_MEMFS_JS: MEMFS_MODULES.ld,
+        X68KDEV_OBJCOPY_MEMFS_JS: MEMFS_MODULES.objcopy,
+      },
+    });
+  } finally {
+    chmodSync(wasm, originalMode);
+  }
+  if (!result) throw new Error('故障注入FAIL: #8の実行結果を取得できませんでした');
+  if (result.status === 0) throw new Error('故障注入FAIL: memfs cc1.wasmを読めなくしても#8が成功（黙示fallback疑い）');
+  console.log(`故障注入 PASS: memfs cc1.wasm mode=000 で#8が失敗し、mode=${originalMode.toString(8)}へ復元`);
+}
+
+async function verifyMemfsCallMainAndFreshInstances(): Promise<void> {
+  const probeDir = resolve(RESULT_DIR, 'memfs_runtime_probe');
+  mkdirSync(probeDir, { recursive: true });
+  const runner = new MemfsWasmToolRunner(MEMFS_MODULES.as);
+  let invalidRejected = false;
+  try {
+    await runner.run({ tool: 'as', program: '', cwd: ROOT, args: ['--x68kdev-invalid-option'] });
+  } catch (error) {
+    invalidRejected = error instanceof Error && error.message.includes('callMain が失敗しました')
+      && String(error.cause).includes('終了コード 1');
+  }
+  if (!invalidRejected) throw new Error('memfs callMain 故障検査FAIL: 不正引数の非0終了を捕捉できませんでした');
+
+  const source = resolve(probeDir, 'probe.s');
+  const first = resolve(probeDir, 'first.o');
+  const second = resolve(probeDir, 'second.o');
+  writeFileSync(source, '.text\n\tnop\n');
+  await runner.run({ tool: 'as', program: '', cwd: ROOT, args: ['-mcpu=68000', '-o', first, source] });
+  await runner.run({ tool: 'as', program: '', cwd: ROOT, args: ['-mcpu=68000', '-o', second, source] });
+  if (!readFileSync(first).equals(readFileSync(second))) {
+    throw new Error('memfs factory 再生成検査FAIL: 同じrunnerの連続実行で出力が一致しません');
+  }
+  console.log('memfs駆動 PASS: callMainの非0戻り値を捕捉、同じrunnerでfactoryを2回生成して連続実行成功');
+}
+
 for (const [label, path] of Object.entries(WASM_MODULES)) requirePath(`${label} wasm JS`, path);
 requirePath('cc1 wasm本体', WASM_MODULES.cc1.replace(/\.js$/, '.wasm'));
 requirePath('native objdump', OBJDUMP);
@@ -222,6 +279,9 @@ const missingMemfs = Object.entries(MEMFS_MODULES).flatMap(([label, js]) =>
 const runnableRows = missingMemfs.length === 0 ? rows : rows.filter((row) => row.no !== 8);
 if (missingMemfs.length > 0) {
   console.log(`#8 stage_c/breakout: SKIP(memfs版未ビルド: ${missingMemfs.join(', ')})`);
+} else {
+  verifyMemfsFaultInjection();
+  await verifyMemfsCallMainAndFreshInstances();
 }
 
 for (const row of runnableRows) {

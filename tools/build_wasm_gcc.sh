@@ -238,16 +238,28 @@ fi
 # ネイティブ基準器とコード生成条件を揃えるため、F-0 と同じ arch/cpu/multilib、
 # C 言語、headers/newlib、thread/shared/NLS、system-zlib の設定を上で明記した。
 # wasm 版では target libgcc を作らない。最終リンクは F-0 の既存 libgcc.a を使う。
-# all-gcc は cc1 以外のホストプログラム(gcov-tool 等)まで作ろうとして落ちる。
-# 実測: gcov-tool のリンクで libgcov-util.o が ftw を要求し、emscripten の libc に
-# 無いため wasm-ld が undefined symbol で停止する。**欲しいのは cc1 だけ**なので、
-# 依存するホスト側ライブラリを名指しで作ってから gcc サブディレクトリの cc1 を作る。
-echo "== GCC ${GCC_VERSION} 依存ライブラリ build (-j${JOBS}) =="
-emmake make -C "$GCC_BUILD" -j"$JOBS" \
-  all-libiberty all-libcpp all-libdecnumber all-libbacktrace all-libcody
+# ここは「どの make を回すか」で2回失敗した箇所なので、経緯ごと残す。
+#
+# 1) all-gcc をそのまま回すと gcov-tool のリンクで止まる(libgcov-util.o が emscripten に
+#    無い ftw を要求する)。欲しいのは cc1 だけなので当初は
+#    「依存ライブラリを名指し → make -C gcc cc1」に切り替えた。
+# 2) ところがそれは**クリーンな木では通らない**。gcc/build/ 以下のジェネレータ
+#    (genmodes/genmatch/genhooks/genchecksum 等)は **build 側(ネイティブ)のコンパイラで
+#    ビルドしなければならない**が、gcc サブディレクトリを emmake で直接叩くと em++ で
+#    リンクしようとし、ネイティブの libiberty.a を掴んで undefined symbol で落ちる。
+#    noderawfs 版がこの形で通っていたのは、先に all-gcc を試した失敗ビルドの残骸として
+#    ジェネレータが既に出来ていたからで、スクリプトの正しさではなかった。
+#
+# build 側と host 側の区別を知っているのは top-level の make なので、そちらに任せる。
+# gcov-tool で止まる件は -k(keep going)で越え、**cc1 が実際に出来たかを後で必ず検査する**
+# (-k で失敗を握り潰したまま先へ進まないための歯止め)。
+echo "== GCC ${GCC_VERSION} all-gcc build (-k, -j${JOBS}) =="
+emmake make -C "$GCC_BUILD" -j"$JOBS" -k all-gcc || true
 
-echo "== GCC ${GCC_VERSION} cc1 build (-j${JOBS}) =="
-emmake make -C "$GCC_BUILD/gcc" -j"$JOBS" cc1
+if [ ! -f "$GCC_BUILD/gcc/cc1" ] && [ ! -f "$GCC_BUILD/gcc/cc1.js" ]; then
+  echo 'ERROR: cc1 が生成されていません(all-gcc の失敗は gcov-tool 以外の原因です)' >&2
+  exit 1
+fi
 
 # GCC の host executable は Emscripten では拡張子なしの JS launcher + .wasm になる
 # 場合と .js + .wasm になる場合があるため両方を扱う。この命名規則も実ビルド未確認。
