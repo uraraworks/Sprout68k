@@ -1,4 +1,6 @@
 import { spawnSync } from 'node:child_process';
+import { existsSync } from 'node:fs';
+import { resolve } from 'node:path';
 
 export type ToolName = 'cc1' | 'as' | 'ld' | 'objcopy';
 export type ToolMode = 'native' | 'wasm';
@@ -29,8 +31,9 @@ export class NativeToolRunner implements ToolRunner {
 }
 
 /**
- * Emscripten 生成 .js の factory を読み込み、仮想FSを準備して main を呼ぶ実装予定地。
- * F-3 で実物の入出力規約が確定するまでは、動作したふりをせず必ず停止する。
+ * NODERAWFS 付き Emscripten CLI を独立した Node プロセスで実行する。
+ * 生成 JS は読み込み時に process.argv から main を自動実行する非 factory 型なので、
+ * 1プロセス内でのモジュール再利用は行わない。
  */
 export class WasmToolRunner implements ToolRunner {
   readonly mode = 'wasm' as const;
@@ -40,11 +43,19 @@ export class WasmToolRunner implements ToolRunner {
     this.modulePath = modulePath;
   }
 
-  run({ tool }: ToolInvocation): never {
-    const pathInfo = this.modulePath ? ` (指定モジュール: ${this.modulePath})` : '';
-    throw new Error(
-      `${tool}=wasm は未実装です${pathInfo}。Emscripten .js の factory/main と仮想FSの接続は F-3 で実装します`,
-    );
+  run({ tool, args, cwd }: ToolInvocation): void {
+    if (!this.modulePath) {
+      throw new Error(`${tool}=wasm の Emscripten JS が指定されていません`);
+    }
+    const modulePath = resolve(this.modulePath);
+    if (!existsSync(modulePath)) {
+      throw new Error(`${tool}=wasm の Emscripten JS が見つかりません: ${modulePath}`);
+    }
+    const result = spawnSync(process.execPath, [modulePath, ...args], { cwd, stdio: 'inherit' });
+    if (result.error) throw result.error;
+    if (result.status !== 0) {
+      throw new Error(`${tool}=wasm (${modulePath}) が終了コード ${result.status ?? '不明'} で失敗しました`);
+    }
   }
 }
 
