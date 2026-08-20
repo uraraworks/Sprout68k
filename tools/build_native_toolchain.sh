@@ -157,6 +157,7 @@ if [ ! -f "$BINUTILS_BUILD/Makefile" ]; then
     --program-prefix="$PROGRAM_PREFIX" \
     --target="$TARGET" \
     --enable-lto \
+    --with-system-zlib \
     --enable-multilib)
 fi
 echo "== binutils ${BINUTILS_VERSION} build/install (-j${JOBS}) =="
@@ -173,6 +174,7 @@ if [ ! -f "$GCC_BUILD/Makefile" ]; then
     --program-prefix="$PROGRAM_PREFIX" \
     --target="$TARGET" \
     --enable-lto \
+    --with-system-zlib \
     --enable-languages=c \
     --without-headers \
     --with-arch=m68k \
