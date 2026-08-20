@@ -51,7 +51,11 @@ export class WasmToolRunner implements ToolRunner {
     if (!existsSync(modulePath)) {
       throw new Error(`${tool}=wasm の Emscripten JS が見つかりません: ${modulePath}`);
     }
-    const result = spawnSync(process.execPath, [modulePath, ...args], { cwd, stdio: 'inherit' });
+    const cc1ExecPrefix = process.env.X68KDEV_CC1_GCC_EXEC_PREFIX;
+    const env = tool === 'cc1' && cc1ExecPrefix
+      ? { ...process.env, GCC_EXEC_PREFIX: cc1ExecPrefix }
+      : process.env;
+    const result = spawnSync(process.execPath, [modulePath, ...args], { cwd, stdio: 'inherit', env });
     if (result.error) throw result.error;
     if (result.status !== 0) {
       throw new Error(`${tool}=wasm (${modulePath}) が終了コード ${result.status ?? '不明'} で失敗しました`);

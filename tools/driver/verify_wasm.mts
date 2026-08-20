@@ -1,5 +1,5 @@
 import { execFileSync, spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -10,6 +10,7 @@ const RESULT_DIR = resolve(ROOT, 'build/f2_wasm_verify');
 const TOOLCHAIN = resolve(process.env.X68KDEV_TOOLCHAIN ?? resolve(homedir(), 'x68kdev-toolchain'));
 const OBJDUMP = resolve(TOOLCHAIN, 'bin/m68k-elf-objdump');
 const WASM_MODULES = {
+  cc1: resolve(ROOT, 'build/wasm-tools/m68k-elf-cc1.js'),
   as: resolve(ROOT, 'build/wasm-tools/m68k-elf-as.js'),
   ld: resolve(ROOT, 'build/wasm-tools/m68k-elf-ld.js'),
   objcopy: resolve(ROOT, 'build/wasm-tools/m68k-elf-objcopy.js'),
@@ -21,6 +22,8 @@ const rows = [
   { no: 3, name: 'ld_wasm', mode: 'cc1=native,as=native,ld=wasm,objcopy=native' },
   { no: 4, name: 'objcopy_wasm', mode: 'cc1=native,as=native,ld=native,objcopy=wasm' },
   { no: 5, name: 'binutils_wasm', mode: 'cc1=native,as=wasm,ld=wasm,objcopy=wasm' },
+  { no: 6, name: 'cc1_wasm', mode: 'cc1=wasm,as=native,ld=native,objcopy=native' },
+  { no: 7, name: 'all_wasm', mode: 'cc1=wasm,as=wasm,ld=wasm,objcopy=wasm' },
 ] as const;
 
 function requirePath(label: string, path: string): void {
@@ -34,18 +37,28 @@ function version(program: string, args: string[]): string {
 function runBuild(row: typeof rows[number], target: 'stage_c' | 'breakout'): void {
   const rowDir = resolve(RESULT_DIR, row.name);
   mkdirSync(rowDir, { recursive: true });
-  execFileSync(process.execPath, [resolve(HERE, 'build.mts'), target, resolve(rowDir, `${target}.xdf`), '--mode', row.mode], {
+  // cc1 の Emscripten JS は一部の Node/Emscripten 組合せで TTY ioctl に失敗するため、
+  // 検証子プロセスの出力は pipe で受け、内容をそのまま転送する。
+  const result = spawnSync(process.execPath, [resolve(HERE, 'build.mts'), target, resolve(rowDir, `${target}.xdf`), '--mode', row.mode], {
     cwd: ROOT,
-    stdio: 'inherit',
+    encoding: 'utf8',
     env: {
       ...process.env,
       X68KDEV_TOOLCHAIN: TOOLCHAIN,
+      // wasm cc1 だけを、基準器と同じGCC内部ヘッダへ向ける。
+      // GCC_EXEC_PREFIX は末尾の / が必須。
+      X68KDEV_CC1_GCC_EXEC_PREFIX: `${resolve(TOOLCHAIN, 'lib/gcc')}/`,
       X68KDEV_DRIVER_BUILD_ROOT: resolve(rowDir, 'objects'),
+      X68KDEV_CC1_WASM_JS: WASM_MODULES.cc1,
       X68KDEV_AS_WASM_JS: WASM_MODULES.as,
       X68KDEV_LD_WASM_JS: WASM_MODULES.ld,
       X68KDEV_OBJCOPY_WASM_JS: WASM_MODULES.objcopy,
     },
   });
+  if (result.stdout) process.stdout.write(result.stdout);
+  if (result.stderr) process.stderr.write(result.stderr);
+  if (result.error) throw result.error;
+  if (result.status !== 0) throw new Error(`#${row.no} ${target} のビルドが終了コード ${result.status ?? '不明'} で失敗しました`);
 }
 
 function filesWithSuffix(root: string, suffix: string): string[] {
@@ -67,18 +80,37 @@ function firstCmpDifference(left: string, right: string): string {
   return `cmp -l: 共通部分は一致、size native=${a.length}, test=${b.length}`;
 }
 
-function firstObjdumpDifference(left: string, right: string): string | undefined {
-  if (!left.endsWith('.o') && !left.endsWith('.elf')) return undefined;
-  const args = ['-drs', left];
-  const leftDump = execFileSync(OBJDUMP, args, { encoding: 'utf8' }).split('\n');
-  const rightDump = execFileSync(OBJDUMP, ['-drs', right], { encoding: 'utf8' }).split('\n');
+function objdumpDiagnosis(left: string, right: string, reportStem: string): string[] {
+  if (!left.endsWith('.o') && !left.endsWith('.elf')) return [];
+  const normalizedDump = (file: string, args: string[]): string =>
+    execFileSync(OBJDUMP, [...args, file], { encoding: 'utf8' }).replaceAll(file, '<FILE>');
+  const leftCode = normalizedDump(left, ['-d']);
+  const rightCode = normalizedDump(right, ['-d']);
+  if (leftCode === rightCode) {
+    return ['objdump -d: 生成コードは一致（コード以外のELFメタ情報が不一致）'];
+  }
+
+  const leftPath = `${reportStem}.native.objdump-d.txt`;
+  const rightPath = `${reportStem}.test.objdump-d.txt`;
+  const diffPath = `${reportStem}.objdump-d.diff`;
+  writeFileSync(leftPath, leftCode);
+  writeFileSync(rightPath, rightCode);
+  const diff = spawnSync('diff', ['-u', leftPath, rightPath], { encoding: 'utf8' });
+  writeFileSync(diffPath, diff.stdout ?? '');
+  const leftDump = leftCode.split('\n');
+  const rightDump = rightCode.split('\n');
   const count = Math.max(leftDump.length, rightDump.length);
   for (let index = 0; index < count; index += 1) {
-    const a = leftDump[index]?.replace(left, '<FILE>');
-    const b = rightDump[index]?.replace(right, '<FILE>');
-    if (a !== b) return `objdump -drs: line=${index + 1}, native=${JSON.stringify(a)}, test=${JSON.stringify(b)}`;
+    const a = leftDump[index];
+    const b = rightDump[index];
+    if (a !== b) {
+      return [
+        `objdump -d: 生成コードが不一致; line=${index + 1}, native=${JSON.stringify(a)}, test=${JSON.stringify(b)}`,
+        `逆アセンブル差分: ${relative(ROOT, diffPath)}`,
+      ];
+    }
   }
-  return 'objdump -drs: 表示内容は一致（ELFメタデータ差の可能性）';
+  return ['objdump -d: 生成コードが不一致'];
 }
 
 interface Comparison {
@@ -113,24 +145,60 @@ function compareTarget(row: typeof rows[number], target: 'stage_c' | 'breakout')
     if (readFileSync(pair.left).equals(readFileSync(pair.right))) continue;
     const rel = pair.stage === '.xdf' ? `${target}.xdf` : relative(nativeObjects, pair.left);
     details.push(`${pair.stage} 最初の不一致ファイル: ${rel}; ${firstCmpDifference(pair.left, pair.right)}`);
-    const dump = firstObjdumpDifference(pair.left, pair.right);
-    if (dump) details.push(dump);
+    if (pair.stage === '.o') {
+      const reportStem = resolve(testDir, `${target}-${relative(nativeObjects, pair.left).replaceAll('/', '_')}`);
+      details.push(...objdumpDiagnosis(pair.left, pair.right, reportStem));
+    }
     break;
   }
   return { ok: details.length === 0, details };
 }
 
+function verifyCc1FaultInjection(): void {
+  const wasm = resolve(ROOT, 'build/wasm-tools/m68k-elf-cc1.wasm');
+  requirePath('cc1 wasm本体', wasm);
+  const originalMode = statSync(wasm).mode & 0o777;
+  const faultDir = resolve(RESULT_DIR, 'fault_cc1_unreadable');
+  mkdirSync(faultDir, { recursive: true });
+  let result: ReturnType<typeof spawnSync> | undefined;
+  try {
+    chmodSync(wasm, 0o000);
+    result = spawnSync(process.execPath, [resolve(HERE, 'build.mts'), 'stage_c', resolve(faultDir, 'stage_c.xdf'), '--mode', rows[5].mode], {
+      cwd: ROOT,
+      encoding: 'utf8',
+      env: {
+        ...process.env,
+        X68KDEV_TOOLCHAIN: TOOLCHAIN,
+        X68KDEV_CC1_GCC_EXEC_PREFIX: `${resolve(TOOLCHAIN, 'lib/gcc')}/`,
+        X68KDEV_DRIVER_BUILD_ROOT: resolve(faultDir, 'objects'),
+        X68KDEV_CC1_WASM_JS: WASM_MODULES.cc1,
+        X68KDEV_AS_WASM_JS: WASM_MODULES.as,
+        X68KDEV_LD_WASM_JS: WASM_MODULES.ld,
+        X68KDEV_OBJCOPY_WASM_JS: WASM_MODULES.objcopy,
+      },
+    });
+  } finally {
+    chmodSync(wasm, originalMode);
+  }
+  if (!result) throw new Error('故障注入FAIL: #6の実行結果を取得できませんでした');
+  if (result.status === 0) throw new Error('故障注入FAIL: cc1.wasmを読めなくしても#6が成功（nativeへの黙示fallback疑い）');
+  console.log(`故障注入 PASS: cc1.wasm mode=000 で#6が失敗し、mode=${originalMode.toString(8)}へ復元`);
+}
+
 for (const [label, path] of Object.entries(WASM_MODULES)) requirePath(`${label} wasm JS`, path);
+requirePath('cc1 wasm本体', resolve(ROOT, 'build/wasm-tools/m68k-elf-cc1.wasm'));
 requirePath('native objdump', OBJDUMP);
 const nativeAsVersion = version(resolve(TOOLCHAIN, 'bin/m68k-elf-as'), ['--version']);
 if (!nativeAsVersion.includes('2.44')) throw new Error(`native as が binutils 2.44 ではありません: ${nativeAsVersion}`);
-for (const [label, path] of Object.entries(WASM_MODULES)) {
+for (const [label, path] of Object.entries(WASM_MODULES).filter(([label]) => label !== 'cc1')) {
   const wasmVersion = version(process.execPath, [path, '--version']);
   if (!wasmVersion.includes('2.44')) throw new Error(`${label} wasm が binutils 2.44 ではありません: ${wasmVersion}`);
 }
 console.log(`native基準器: ${nativeAsVersion}`);
 rmSync(RESULT_DIR, { recursive: true, force: true });
 mkdirSync(RESULT_DIR, { recursive: true });
+
+verifyCc1FaultInjection();
 
 for (const row of rows) {
   for (const target of ['stage_c', 'breakout'] as const) runBuild(row, target);

@@ -154,6 +154,29 @@ export PATH="$NATIVE_PREFIX/bin:$PATH"
 # cc1 のリンク時に未定義シンボルとして失敗する。この回避の完走可否は未確認。
 export ac_cv_func_psignal=yes
 
+# in-tree の gmp/mpfr/isl が同梱する config.sub は古く、wasm32-unknown-emscripten を
+# 「system `emscripten' not recognized」で弾く(実測: mpfr と isl が該当。gmp と gcc 本体の
+# config.sub は認識する)。gcc 本体の config.sub/config.guess を各サブディレクトリへ配って
+# 揃える。新しい config.sub を配るだけなので、同じソース木を使うネイティブ側のビルドにも
+# 影響しない(ホスト種別の認識範囲が広がるだけ)。
+for sub_dir in gmp mpfr mpc isl; do
+  [ -d "$GCC_SOURCE/$sub_dir" ] || continue
+  # config.guess は引数を取らない(ホストを自分で判定する)ので、判定に使えるのは
+  # config.sub だけ。config.guess は触らない。
+  [ -f "$GCC_SOURCE/$sub_dir/config.sub" ] || continue
+  if ! sh "$GCC_SOURCE/$sub_dir/config.sub" "$HOST" >/dev/null 2>&1; then
+    cp "$GCC_SOURCE/config.sub" "$GCC_SOURCE/$sub_dir/config.sub"
+    echo "config.sub を更新(${HOST} を認識しないため): $sub_dir"
+  fi
+done
+
+# zlib について: ネイティブ基準器(F-0)は --with-system-zlib を使うが、host=wasm では
+# emscripten 側に zlib.h が無く lto-compress.cc がビルドできない(実測: fatal error:
+# 'zlib.h' file not found)。wasm 側は in-tree zlib を使う。zlib は LTO セクションの
+# 圧縮にしか使われず m68k のコード生成には効かないので、出力のバイト一致という
+# 判定条件は保たれる(そのバイト一致自体が、この判断の答え合わせになる)。
+# 逆にネイティブ側で in-tree zlib が使えないのは、同梱 zlib が最近の macOS SDK の
+# ヘッダと衝突するため(F-0 で実測済み)。同じ理由で両者の指定が逆になっている。
 BUILD="$($GCC_SOURCE/config.guess)"
 WASM_LDFLAGS="${LDFLAGS:+$LDFLAGS }-sNODERAWFS=1 -sENVIRONMENT=node -sALLOW_MEMORY_GROWTH=1 -sINITIAL_MEMORY=$WASM_INITIAL_MEMORY -sMAXIMUM_MEMORY=$WASM_MAXIMUM_MEMORY -sSTACK_SIZE=$WASM_STACK_SIZE"
 
@@ -186,7 +209,7 @@ if [ ! -f "$GCC_BUILD/Makefile" ]; then
         --without-headers \
         --with-newlib \
         --enable-languages=c \
-        --with-system-zlib
+        --without-system-zlib
   )
 fi
 
@@ -198,8 +221,16 @@ fi
 # ネイティブ基準器とコード生成条件を揃えるため、F-0 と同じ arch/cpu/multilib、
 # C 言語、headers/newlib、thread/shared/NLS、system-zlib の設定を上で明記した。
 # wasm 版では target libgcc を作らない。最終リンクは F-0 の既存 libgcc.a を使う。
-echo "== GCC ${GCC_VERSION} all-gcc build (-j${JOBS}) =="
-emmake make -C "$GCC_BUILD" -j"$JOBS" all-gcc
+# all-gcc は cc1 以外のホストプログラム(gcov-tool 等)まで作ろうとして落ちる。
+# 実測: gcov-tool のリンクで libgcov-util.o が ftw を要求し、emscripten の libc に
+# 無いため wasm-ld が undefined symbol で停止する。**欲しいのは cc1 だけ**なので、
+# 依存するホスト側ライブラリを名指しで作ってから gcc サブディレクトリの cc1 を作る。
+echo "== GCC ${GCC_VERSION} 依存ライブラリ build (-j${JOBS}) =="
+emmake make -C "$GCC_BUILD" -j"$JOBS" \
+  all-libiberty all-libcpp all-libdecnumber all-libbacktrace all-libcody
+
+echo "== GCC ${GCC_VERSION} cc1 build (-j${JOBS}) =="
+emmake make -C "$GCC_BUILD/gcc" -j"$JOBS" cc1
 
 # GCC の host executable は Emscripten では拡張子なしの JS launcher + .wasm になる
 # 場合と .js + .wasm になる場合があるため両方を扱う。この命名規則も実ビルド未確認。

@@ -20,8 +20,13 @@ X68KDEV_LD_WASM_JS=build/wasm-tools/m68k-elf-ld.js
 X68KDEV_OBJCOPY_WASM_JS=build/wasm-tools/m68k-elf-objcopy.js
 ```
 
+インストール前の `cc1` wasm を使う場合は、その組み込みprefixに存在しないGCC内部
+ヘッダ（`stdarg.h` 等）を基準器から探せるよう、`X68KDEV_CC1_GCC_EXEC_PREFIX` に
+基準器の `lib/gcc/` を指定します。この値は `cc1=wasm` の子プロセスだけで
+`GCC_EXEC_PREFIX` へ渡され、native ツールの探索には影響しません。
+
 未指定または存在しないモジュールを `wasm` にすると明示的に失敗します。
-`cc1` も実行形式は同じですが、wasm 生成物自体はまだありません。
+`cc1` も同じ実行形式で、`X68KDEV_CC1_WASM_JS` にランチャーを指定します。
 
 `X68KDEV_TOOLCHAIN=/path/to/prefix` を指定すると、その配下の `bin`、`libexec/gcc`、
 `lib/gcc` を使います。未指定時は従来どおり PATH 上の Homebrew ツールを使います。
