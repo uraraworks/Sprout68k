@@ -281,12 +281,14 @@ $B000に到達し、下方向に伸びるスタックと衝突する)だった�
 [`docs/パニック画面_20260820.md`](docs/パニック画面_20260820.md)、
 [`docs/重なり実測_20260820.md`](docs/重なり実測_20260820.md)、
 [`docs/VC重畳実測_20260820.md`](docs/VC重畳実測_20260820.md)。
-ホスト側の wasm クロスビルドは Node/NODERAWFS 版まで完了した。driver を外した直呼び経路（F-1）と、
+ホスト側の wasm クロスビルドは Node 上の NODERAWFS/MEMFS 両形態で完了した。
+driver を外した直呼び経路（F-1）と、
 binutils 2.44 + GCC 13.4.0 のネイティブ基準器（F-0）、ツール単位で native / wasm を
 差し替える駆動層、binutils（F-2）と `cc1`（F-3）の wasm 化まで作成・検証済み。
-混成表 #1〜#7 は Stage C / breakout の全成果物が正典ネイティブ版とバイト一致し、
-GCC 13.4.0 の成果物も px68k 上の既存検証を全通過した。全4ツールは raw 22,674,096 bytes、
-gzip合計6,978,999 bytes、`main.c` 1本の `cc1` は native 0.07秒 / wasm 1.93秒だった。
-`WASM_FS=memfs` の factory/FS/callMain 駆動は実装済みだが未ビルド・未実測であり、
-**ブラウザ結線（F-4）は未完了。** 詳細:
+混成表 #1〜#8 は Stage C / breakout の `.o/.elf/.bin/.xdf` が正典ネイティブ版と
+すべてバイト一致した。両形態ともビルド木を捨てたクリーン再現ビルドと、その生成物での
+再検証までPASSしている。配布gzip合計は約6.7MB、`main.c` 1本の `cc1` は native
+0.07秒 / NODERAWFS版 wasm 1.93秒（約28倍）、混成検証一式は約79秒だった。
+MEMFS版はツール実行ごとに factory から新規生成する。**検証はすべて Node 上で、
+ブラウザ実測とブラウザ結線（F-4）は未完了。** 詳細:
 [`docs/コンパイラwasm化_20260820.md`](docs/コンパイラwasm化_20260820.md)。
