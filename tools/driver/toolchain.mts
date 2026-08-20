@@ -20,6 +20,15 @@ function requireFile(label: string, path: string): string {
   return path;
 }
 
+/**
+ * -m68000 用 libgcc の場所は gcc 自身に答えさせる。
+ * multilib のディレクトリ名を決め打ちすると、--with-cpu=m68000 でビルドした
+ * gcc(既定 multilib が m68000)では見つからない。実際に一度そうなった。
+ */
+function libgccFileName(gcc: string): string {
+  return capture(gcc, ['-m68000', '-print-libgcc-file-name']);
+}
+
 /** X68KDEV_TOOLCHAIN 未指定時は、従来どおり PATH 上の Homebrew ツールを使う。 */
 export function resolveNativeToolchain(): NativeToolchain {
   const rootValue = process.env.X68KDEV_TOOLCHAIN;
@@ -35,7 +44,7 @@ export function resolveNativeToolchain(): NativeToolchain {
       ld: capture('which', ['m68k-elf-ld']),
       objcopy: capture('which', ['m68k-elf-objcopy']),
       nm: capture('which', ['m68k-elf-nm']),
-      libgcc: requireFile('libgcc', join(prefix, 'lib/gcc/m68k-elf', version, 'm68000/libgcc.a')),
+      libgcc: requireFile('libgcc', libgccFileName(join(prefix, 'bin/m68k-elf-gcc'))),
     };
   }
 
@@ -54,7 +63,7 @@ export function resolveNativeToolchain(): NativeToolchain {
     ld: requireFile('ld', join(root, 'bin/m68k-elf-ld')),
     objcopy: requireFile('objcopy', join(root, 'bin/m68k-elf-objcopy')),
     nm: requireFile('nm', join(root, 'bin/m68k-elf-nm')),
-    libgcc: requireFile('libgcc', join(root, 'lib/gcc/m68k-elf', version, 'm68000/libgcc.a')),
+    libgcc: requireFile('libgcc', libgccFileName(join(root, 'bin/m68k-elf-gcc'))),
   };
 }
 

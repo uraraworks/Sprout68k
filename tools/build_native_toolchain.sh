@@ -198,11 +198,12 @@ make -C "$GCC_BUILD" install-target-libgcc
 echo '== 完了確認 =='
 "$PREFIX/bin/m68k-elf-gcc" --version
 MULTILIB_OUTPUT="$("$PREFIX/bin/m68k-elf-gcc" -print-multi-lib)"
-printf '%s\n' "$MULTILIB_OUTPUT"
-if ! printf '%s\n' "$MULTILIB_OUTPUT" | awk -F';' '$1 == "m68000" { found=1 } END { exit !found }'; then
-  echo 'ERROR: -m68000 用 multilib が生成されていません' >&2
-  exit 1
-fi
+echo "$MULTILIB_OUTPUT"
+# --with-cpu=m68000 でビルドしているため、-m68000 は既定 multilib(".")が選ばれる。
+# 「m68000 という名前のディレクトリがあるか」で判定すると常に落ちる(実際に落ちた)。
+# 名前ではなく「-m68000 が実際に選ぶ multilib」を gcc 自身に答えさせる。
+MULTI_DIR="$("$PREFIX/bin/m68k-elf-gcc" -m68000 -print-multi-directory)"
+echo "-m68000 が選ぶ multilib: $MULTI_DIR"
 LIBGCC_PATH="$("$PREFIX/bin/m68k-elf-gcc" -m68000 -print-libgcc-file-name)"
 [ -f "$LIBGCC_PATH" ] || { echo "ERROR: -m68000 用 libgcc がありません: $LIBGCC_PATH" >&2; exit 1; }
 echo "-m68000 libgcc: $LIBGCC_PATH"

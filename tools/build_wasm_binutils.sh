@@ -146,6 +146,11 @@ else
   echo "== 展開済みソースを再利用: $BINUTILS_SOURCE =="
 fi
 
+# emscripten の libc は psignal を signal.h で宣言するが実体を持たない。configure は
+# 「関数が無い」と判定して libiberty の代替定義を有効にするが、その代替定義の引数型
+# (char *)がヘッダの宣言(const char *)と衝突してビルドが落ちる。psignal は binutils
+# 本体が呼ばない補助関数なので、代替定義そのものを無効化する(ac_cv_func_psignal=yes)。
+# 万一どこかが psignal を呼んでいれば未定義シンボルとしてリンク時に必ず表面化する。
 BUILD="$($BINUTILS_SOURCE/config.guess)"
 WASM_LDFLAGS="${LDFLAGS:+$LDFLAGS }-sNODERAWFS=1 -sENVIRONMENT=node"
 mkdir -p "$BINUTILS_BUILD"
@@ -153,6 +158,7 @@ if [ ! -f "$BINUTILS_BUILD/Makefile" ]; then
   echo "== binutils configure (build=$BUILD host=$HOST target=$TARGET) =="
   (
     cd "$BINUTILS_BUILD"
+    ac_cv_func_psignal=yes \
     CC_FOR_BUILD="${CC_FOR_BUILD:-cc}" \
     CXX_FOR_BUILD="${CXX_FOR_BUILD:-c++}" \
     CFLAGS="${CFLAGS:--O2}" \
