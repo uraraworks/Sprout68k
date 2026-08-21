@@ -1,8 +1,9 @@
 import { createHash } from 'node:crypto';
+import { execFileSync } from 'node:child_process';
 import { cpSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { gzipSync } from 'node:zlib';
 import { homedir } from 'node:os';
-import { dirname, relative, resolve, sep } from 'node:path';
+import { dirname, extname, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 interface ManifestFile {
@@ -20,6 +21,7 @@ interface Manifest {
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(HERE, '..');
 const OUTPUT = resolve(ROOT, 'build/web-assets');
+const REFERENCE_OUTPUT = resolve(ROOT, 'build/web-assets-reference');
 const TOOLCHAIN = resolve(process.env.X68KDEV_TOOLCHAIN ?? resolve(homedir(), 'x68kdev-toolchain'));
 const GCC_ROOT = resolve(TOOLCHAIN, 'lib/gcc');
 
@@ -50,7 +52,9 @@ function copy(source: string, assetPath: string): void {
 }
 
 rmSync(OUTPUT, { recursive: true, force: true });
+rmSync(REFERENCE_OUTPUT, { recursive: true, force: true });
 mkdirSync(OUTPUT, { recursive: true });
+mkdirSync(REFERENCE_OUTPUT, { recursive: true });
 
 for (const directory of ['stage_c', 'stage_d', 'lib', 'samples/breakout']) {
   const sourceRoot = resolve(ROOT, directory);
@@ -63,7 +67,9 @@ for (const directory of ['stage_c', 'stage_d', 'lib', 'samples/breakout']) {
 const gccVersion = gccVersionRoot();
 for (const directory of ['include', 'include-fixed']) {
   const sourceRoot = resolve(gccVersion, directory);
-  for (const source of filesBelow(sourceRoot)) {
+  // README等を「今回参照されないから」ではなく、コンパイル入力となるヘッダでは
+  // ないから除外する。将来追加される文書類も同じ役割基準で束へ入れない。
+  for (const source of filesBelow(sourceRoot).filter((file) => extname(file) === '.h')) {
     const name = posix(relative(gccVersion, source));
     copy(source, posix(`toolchain/lib/gcc/${relative(GCC_ROOT, gccVersion)}/${name}`));
   }
@@ -78,6 +84,14 @@ const files: ManifestFile[] = filesBelow(OUTPUT).map((file) => {
     sha256: createHash('sha256').update(data).digest('hex'),
   };
 });
+const unsafeFetchPaths = files
+  .map((file) => file.path)
+  // ViteのSPA fallbackで200のindex.htmlへ化け得る、拡張子なし（末尾dotも含む）の
+  // 配信パスを生成段階で拒否する。manifest検査まで不正応答を持ち越さない。
+  .filter((path) => !extname(path) || extname(path) === '.');
+if (unsafeFetchPaths.length > 0) {
+  throw new Error(`dev server のfallback対象になり得る配信パスがあります: ${unsafeFetchPaths.join(', ')}`);
+}
 const manifest: Manifest = {
   version: 1,
   files,
@@ -88,4 +102,27 @@ const manifest: Manifest = {
   },
 };
 writeFileSync(resolve(OUTPUT, 'manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`);
+
+// ブラウザ側の判定値は生成物から独立したネイティブ gcc driver 正典で毎回作る。
+// ハッシュをページやこのスクリプトへ固定値として埋め込まない。
+const referenceOutputs = {
+  stage_c: resolve(REFERENCE_OUTPUT, 'stage_c.xdf'),
+  breakout: resolve(REFERENCE_OUTPUT, 'breakout.xdf'),
+};
+const nativeEnv = { ...process.env, PATH: `${resolve(TOOLCHAIN, 'bin')}:${process.env.PATH ?? ''}` };
+execFileSync(resolve(ROOT, 'tools/build_stage_c.sh'), ['0xFFFF', referenceOutputs.stage_c], {
+  cwd: ROOT, stdio: 'inherit', env: nativeEnv,
+});
+execFileSync(resolve(ROOT, 'tools/build_breakout_plain.sh'), [referenceOutputs.breakout], {
+  cwd: ROOT, stdio: 'inherit', env: nativeEnv,
+});
+const expected = {
+  version: 1,
+  targets: Object.fromEntries(Object.entries(referenceOutputs).map(([target, file]) => {
+    const data = readFileSync(file);
+    return [target, { sha256: createHash('sha256').update(data).digest('hex'), size: data.length }];
+  })),
+};
+writeFileSync(resolve(OUTPUT, 'expected.json'), `${JSON.stringify(expected, null, 2)}\n`);
 console.log(`web assets: ${manifest.totals.files} files, ${manifest.totals.size} bytes, gzip ${manifest.totals.gzipSize} bytes`);
+console.log(`expected SHA-256: stage_c=${expected.targets.stage_c.sha256}, breakout=${expected.targets.breakout.sha256}`);

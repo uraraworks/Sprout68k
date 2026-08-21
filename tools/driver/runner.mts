@@ -67,6 +67,8 @@ export interface MemfsRunnerOptions {
   loadFactory: MemfsFactoryLoader;
   defaultCwd: string;
   cc1ExecPrefix?: string;
+  /** Emscripten が補助ファイルを探す場合の場所。ブラウザでは絶対 URL を返す。 */
+  locateFile?: (name: string, modulePath: string) => string;
 }
 
 /** MODULARIZE + MEMFS 版を HostFs 上の入出力で実行する。 */
@@ -95,7 +97,9 @@ export class MemfsWasmToolRunner implements ToolRunner {
     const module = await factory({
       // ブラウザでも Emscripten 自身にホストファイルを読ませない。
       wasmBinary: hostFs.readFile(wasmPath),
-      locateFile: (name: string) => name.endsWith('.wasm') ? wasmPath : resolvePath(dirnamePath(absoluteModulePath), name),
+      locateFile: (name: string) => this.options.locateFile
+        ? this.options.locateFile(name, absoluteModulePath)
+        : (name.endsWith('.wasm') ? wasmPath : resolvePath(dirnamePath(absoluteModulePath), name)),
       preRun: [(preRunModule: EmscriptenMemfsModule) => {
         if (!preRunModule.FS) throw new Error(`${tool}=memfs の preRun に FS export がありません: ${absoluteModulePath}`);
         mkdirMemfs(preRunModule, cwd);

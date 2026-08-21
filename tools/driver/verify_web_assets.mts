@@ -3,7 +3,7 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { gzipSync } from 'node:zlib';
 import { homedir } from 'node:os';
-import { dirname, resolve } from 'node:path';
+import { dirname, extname, resolve } from 'node:path';
 import { pathToFileURL, fileURLToPath } from 'node:url';
 import { build } from './builder.mts';
 import type { BuildTarget, BuildToolchain } from './builder.mts';
@@ -19,6 +19,10 @@ interface Manifest {
   version: number;
   files: ManifestFile[];
   totals: { files: number; size: number; gzipSize: number };
+}
+interface Expected {
+  version: number;
+  targets: Record<BuildTarget, { sha256: string; size: number }>;
 }
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -131,7 +135,11 @@ execFileSync(process.execPath, [resolve(ROOT, 'tools/build_web_assets.mts')], {
   cwd: ROOT, stdio: 'inherit', env: { ...process.env, X68KDEV_TOOLCHAIN: TOOLCHAIN },
 });
 const manifest = loadManifest();
+const expected = JSON.parse(readFileSync(resolve(ASSET_DIR, 'expected.json'), 'utf8')) as Expected;
+if (expected.version !== 1) throw new Error('expected.json の版が不正です');
 if (manifest.version !== 1 || manifest.files.length !== manifest.totals.files) throw new Error('manifest 構造が不正です');
+const unsafeFetchPath = manifest.files.find((entry) => !extname(entry.path) || extname(entry.path) === '.');
+if (unsafeFetchPath) throw new Error(`manifest にdev serverのfallback対象になり得るパスがあります: ${unsafeFetchPath.path}`);
 const rawSize = manifest.files.reduce((sum, entry) => sum + entry.size, 0);
 const gzipSize = manifest.files.reduce((sum, entry) => sum + gzipSync(readFileSync(resolve(ASSET_DIR, entry.path))).length, 0);
 if (rawSize !== manifest.totals.size || gzipSize !== manifest.totals.gzipSize) throw new Error('manifest totals が実体と一致しません');
@@ -144,7 +152,13 @@ else process.env.X68KDEV_TOOLCHAIN = previousToolchain;
 for (const target of ['stage_c', 'breakout'] as const) {
   const bundled = await bundledBuild(target, manifest);
   if (target === 'stage_c' && process.env.X68KDEV_VERIFY_WEB_ASSETS_CORRUPT_XDF === '1') bundled[0] ^= 1;
-  same(`${target}: bundle memfs 対 all-native`, await nativeReference(target, nativeTools), bundled);
+  const native = await nativeReference(target, nativeTools);
+  same(`${target}: bundle memfs 対 all-native`, native, bundled);
+  const nativeSha256 = createHash('sha256').update(native).digest('hex');
+  if (expected.targets[target]?.sha256 !== nativeSha256 || expected.targets[target]?.size !== native.length) {
+    throw new Error(`${target}: expected.json が native 正典と一致しません`);
+  }
+  console.log(`${target}: expected.json SHA-256 PASS(${nativeSha256})`);
 }
 
 const omitted = manifest.files.find((entry) => entry.path.endsWith('/include/stdarg.h'))?.path;
