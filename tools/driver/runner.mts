@@ -1,4 +1,4 @@
-import { dirnamePath, resolvePath } from './hostfs.mts';
+import { basenamePath, dirnamePath, resolvePath } from './hostfs.mts';
 import type { HostFs } from './hostfs.mts';
 
 export type ToolName = 'cc1' | 'as' | 'ld' | 'objcopy';
@@ -80,7 +80,7 @@ export class MemfsWasmToolRunner implements ToolRunner {
 
   constructor(options: MemfsRunnerOptions) { this.options = options; }
 
-  async run({ tool, args, cwd = this.options.defaultCwd }: ToolInvocation): Promise<void> {
+  async run({ tool, program, args, cwd = this.options.defaultCwd }: ToolInvocation): Promise<void> {
     const { modulePath, hostFs, loadFactory } = this.options;
     if (!modulePath) throw new Error(`${tool}=memfs の Emscripten factory JS が指定されていません`);
     const absoluteModulePath = resolvePath(modulePath);
@@ -97,6 +97,8 @@ export class MemfsWasmToolRunner implements ToolRunner {
     const factory = await loadFactory(absoluteModulePath);
     if (typeof factory !== 'function') throw new Error(`${tool}=memfs が Emscripten factory を export していません: ${absoluteModulePath}`);
     const factoryOptions: Record<string, unknown> = {
+      // Emscripten glue の既定値 ./this.program を、実際に駆動しているツール名へ置換する。
+      thisProgram: basenamePath(program),
       // ブラウザでも Emscripten 自身にホストファイルを読ませない。
       wasmBinary: hostFs.readFile(wasmPath),
       locateFile: (name: string) => this.options.locateFile

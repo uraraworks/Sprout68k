@@ -3,6 +3,7 @@ import { homedir } from 'node:os';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { build } from './builder.mts';
+import { rewriteBuildDiagnostic } from './diagnostics.mts';
 import { NodeHostFs } from './node_hostfs.mts';
 import { createNodeToolExecutors } from './node_runner.mts';
 import { resolveNativeToolchain } from './toolchain.mts';
@@ -65,6 +66,7 @@ const memfsExecutors = createNodeToolExecutors({
   onStderr: (text) => diagnostics.push(text),
 });
 const exitCodeBeforeDiagnostic = process.exitCode;
+let diagnosticFailure: unknown;
 try {
   await build({
     target: 'user', output: resolve(RESULT, 'invalid.xdf'), root: ROOT, hostFs, tools,
@@ -74,10 +76,59 @@ try {
   throw new Error('診断検証FAIL: 不正な C が成功しました');
 } catch (error) {
   if (error instanceof Error && error.message === '診断検証FAIL: 不正な C が成功しました') throw error;
+  diagnosticFailure = error;
 } finally {
   process.exitCode = exitCodeBeforeDiagnostic;
 }
 const rawDiagnostic = diagnostics.find((line) => /main\.c:\d+:\d+: error:/.test(line));
-if (!rawDiagnostic) throw new Error(`診断検証FAIL: 行・桁付き原文を捕捉できませんでした: ${diagnostics.join('\n')}`);
-console.log(`PASS(診断捕捉): ${rawDiagnostic}`);
+if (!rawDiagnostic) throw new Error(`診断検証FAIL: 行・桁付き原文を捕捉できませんでした: ${diagnostics.join('\n')}`, { cause: diagnosticFailure });
+const rawText = diagnostics.join('\n');
+const internalSourcePath = resolve(RESULT, 'diagnostic_objects/user/source/main.c');
+if (!rawText.includes(internalSourcePath)) throw new Error('診断書換検証FAIL: 本物の診断に内部ソースパスがありません');
+const rewriteOptions = { workspaceRoot: ROOT, internalSourcePath, displaySourcePath: 'main.c' };
+// 検査系の陽性対照用。製品コードでは無効化できない。
+const rewritten = process.env.X68KDEV_DIAGNOSTIC_REWRITE_FAULT === '1'
+  ? rawText
+  : rewriteBuildDiagnostic(rawText, rewriteOptions);
+if (rewritten.includes(ROOT) || rewritten.includes('/workspace') || rewritten.includes('objects/user')) {
+  throw new Error('診断書換検証FAIL: 内部パスが残っています');
+}
+
+const escapedSource = internalSourcePath.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const location = rawText.match(new RegExp(`${escapedSource}:(\\d+):(\\d+): ((?:fatal )?error: .+)`));
+if (!location) throw new Error('診断書換検証FAIL: 行・桁・本文を原文から抽出できません');
+if (!rewritten.includes(`main.c:${location[1]}:${location[2]}: ${location[3]}`)) {
+  throw new Error('診断書換検証FAIL: 行・桁・メッセージ本文が保たれていません');
+}
+const rawLines = rawText.split('\n');
+const rewrittenLines = rewritten.split('\n');
+for (let index = 0; index < rawLines.length; index++) {
+  if (rawLines[index].includes(internalSourcePath)) {
+    const expected = rawLines[index].split(internalSourcePath).join('main.c');
+    if (rewrittenLines[index] !== expected) {
+      throw new Error(`診断書換検証FAIL: パス以外の文脈を変更しました: ${rawLines[index]}`);
+    }
+  }
+}
+const caretLine = rawLines.find((line) => /^\s*\|\s*\^~*\s*$/.test(line));
+if (!caretLine || !rewrittenLines.includes(caretLine)) throw new Error('診断書換検証FAIL: キャレット行が保たれていません');
+for (let index = 0; index < rawLines.length; index++) {
+  if (!rawLines[index].includes(ROOT) && rawLines[index] !== rewrittenLines[index]) {
+    throw new Error(`診断書換検証FAIL: 内部パスを含まない行を変更しました: ${rawLines[index]}`);
+  }
+}
+console.log(`PASS(診断書換): 内部パス0件、行=${location[1]}、桁=${location[2]}、本文・キャレット保持`);
+console.log('PASS(素通し): 内部パスを含まない診断行は全行バイト一致');
+
+diagnostics.length = 0;
+await build({
+  target: 'user', output: resolve(RESULT, 'memfs_hello.xdf'), root: ROOT, hostFs, tools,
+  executors: memfsExecutors, buildRoot: resolve(RESULT, 'tool_name_objects'),
+  userSource: { path: 'hello.c', content: hello },
+});
+const linkerWarning = diagnostics.find((line) => /m68k-elf-ld: warning:/.test(line));
+if (!linkerWarning || diagnostics.some((line) => line.includes('this.program'))) {
+  throw new Error(`ツール名検証FAIL: ${diagnostics.join('\n')}`);
+}
+console.log(`PASS(ツール名): ${linkerWarning}`);
 console.log('利用者ターゲット検証 PASS');

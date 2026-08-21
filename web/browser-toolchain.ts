@@ -101,7 +101,11 @@ async function createExecutors(hostFs: MemoryHostFs, onStderr?: (text: string) =
   }
   return {
     executors: new ToolExecutors(runners),
-    toolchain: { cc1: '/tools/cc1', as: '/tools/as', ld: '/tools/ld', objcopy: '/tools/objcopy', libgcc: findLibgcc(hostFs) },
+    toolchain: {
+      cc1: '/tools/m68k-elf-cc1', as: '/tools/m68k-elf-as',
+      ld: '/tools/m68k-elf-ld', objcopy: '/tools/m68k-elf-objcopy',
+      libgcc: findLibgcc(hostFs),
+    },
   };
 }
 

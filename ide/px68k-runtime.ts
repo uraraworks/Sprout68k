@@ -12,6 +12,7 @@ export interface EmulatorProbe {
   readTextScreen(): string;
   getFrameCount(): number;
   getState(): EmulatorState;
+  runFrames(count: number): number;
 }
 
 declare global {
@@ -73,6 +74,7 @@ export class X68kRuntime {
       readTextScreen: () => this.readTextScreen(),
       getFrameCount: () => this.frameCount,
       getState: () => this.state,
+      runFrames: (count) => this.runFrames(count),
     });
   }
 
@@ -122,14 +124,14 @@ export class X68kRuntime {
   }
 
   private schedule(generation: number): void {
+    if (this.animationFrame !== null) return;
     const tick = () => {
+      this.animationFrame = null;
       if (generation !== this.generation || this.state !== 'running' || !this.host) return;
       try {
         // 起動待ちを短縮しつつUIを占有しすぎないよう、1描画周期に2フレーム進める。
-        this.host.runFrame();
-        this.host.runFrame();
-        this.frameCount += 2;
-        this.animationFrame = requestAnimationFrame(tick);
+        this.advanceFrames(2);
+        this.schedule(generation);
       } catch (error) {
         this.state = 'error';
         const message = error instanceof Error ? error.message : String(error);
@@ -137,6 +139,33 @@ export class X68kRuntime {
       }
     };
     this.animationFrame = requestAnimationFrame(tick);
+  }
+
+  private advanceFrames(count: number): void {
+    if (!this.host) throw new Error('X68000 は未実行です');
+    for (let index = 0; index < count; index++) {
+      this.host.runFrame();
+      this.frameCount++;
+    }
+  }
+
+  /** 検証専用。保留中のrAFを取消し、同期実行後に通常ループを1本だけ再開する。 */
+  runFrames(count: number): number {
+    if (!Number.isSafeInteger(count) || count < 0) throw new RangeError('フレーム数は0以上の整数で指定してください');
+    if (this.state !== 'running' || !this.host) throw new Error('X68000 は実行中ではありません');
+    const generation = this.generation;
+    if (this.animationFrame !== null) cancelAnimationFrame(this.animationFrame);
+    this.animationFrame = null;
+    try {
+      this.advanceFrames(count);
+    } catch (error) {
+      this.state = 'error';
+      const message = error instanceof Error ? error.message : String(error);
+      this.report(`実行エラー: ${message}`, true);
+      throw error;
+    }
+    if (generation === this.generation && this.state === 'running') this.schedule(generation);
+    return this.frameCount;
   }
 
   readTextScreen(): string {

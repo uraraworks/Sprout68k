@@ -13,7 +13,7 @@ const required = [
   'core/px68k_libretro.js', 'core/px68k_libretro.wasm',
   'system/iplrom.dat', 'system/cgrom.dat',
   'system/IPLROM-LICENSE.txt', 'system/CGROM-NOTICE.md',
-  '../web/browser-toolchain.ts', '../tools/driver/builder.mts',
+  '../web/browser-toolchain.ts', '../tools/driver/builder.mts', '../tools/driver/diagnostics.mts',
   '../verify/verify_ide_boot.mts', '../COPYING', '../README.md',
   'vendor/codemirror/codemirror.js', 'vendor/codemirror/LICENSE.CodeMirror',
 ];
@@ -73,8 +73,11 @@ if (!adapterSource.includes('../web/browser-toolchain.ts')) throw new Error('共
 if (!adapterSource.includes("./px68k-runtime.ts") || !adapterSource.includes('runtime.runXdf(xdf)')) {
   throw new Error('px68k 実行アダプタ参照がありません');
 }
+for (const boundary of ['rewriteBuildDiagnostic', 'コンパイルでエラーが出ました', 'console.error']) {
+  if (!adapterSource.includes(boundary)) throw new Error(`診断境界がありません: ${boundary}`);
+}
 const runtimeSource = await readFile(resolve(root, 'px68k-runtime.ts'), 'utf8');
-for (const member of ['window.x68kdevEmulatorProbe', 'readTextScreen', 'getFrameCount', 'getState']) {
+for (const member of ['window.x68kdevEmulatorProbe', 'readTextScreen', 'getFrameCount', 'getState', 'runFrames']) {
   if (!runtimeSource.includes(member)) throw new Error(`ブラウザプローブがありません: ${member}`);
 }
 for (const reference of ['../COPYING', './system/IPLROM-LICENSE.txt', './system/CGROM-NOTICE.md']) {
