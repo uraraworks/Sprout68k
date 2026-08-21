@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>X68kDev - X68000 Programming Environment</title>
+  <link rel="stylesheet" href="./workbench.css">
+</head>
+<body>
+  <header class="app-header">
+    <div class="app-title-row"><span class="app-icon" aria-hidden="true">X</span><h1>X68kDev</h1></div>
+    <p class="app-tagline">ブラウザで学ぶ X68000 C プログラミング</p>
+  </header>
+  <main class="workspace-grid">
+    <aside class="sidebar" aria-label="エクスプローラー">
+      <div class="sidebar-heading">エクスプローラー</div>
+      <div class="sidebar-actions">
+        <button id="new-file" title="新規ファイル" aria-label="新規ファイル">＋</button>
+        <button id="save-file" title="保存 (Ctrl+S)" aria-label="保存">保存</button>
+        <button id="download-file" title="ダウンロード" aria-label="ダウンロード">↓</button>
+        <div id="new-file-popup" class="new-file-popup" role="dialog" aria-label="新規ファイル" hidden>
+          <input id="new-path" aria-label="新規ファイル名" placeholder="main.c">
+          <div id="new-file-error" class="popup-error" role="alert"></div>
+        </div>
+      </div>
+      <div id="file-tree" role="tree" aria-label="ファイル"></div>
+    </aside>
+    <section class="editor-card" aria-labelledby="editor-heading">
+      <div class="panel-heading"><h2 id="editor-heading">エディタ</h2></div>
+      <div class="tab-strip" id="tab-strip" role="tablist" aria-label="開いているファイル"></div>
+      <div id="editor" aria-label="C ソースエディタ"></div>
+      <div class="editor-toolbar">
+        <button id="build" type="button">ビルド</button>
+        <button id="run" type="button">実行</button>
+      </div>
+      <div id="build-status" role="status">準備中…</div>
+    </section>
+    <section class="machine-card" aria-labelledby="machine-heading">
+      <div class="panel-heading"><h2 id="machine-heading">X68000 実行画面</h2></div>
+      <div id="machine-status" role="status">実行アダプタは次の段で接続します</div>
+      <div class="screen-placeholder" aria-label="実行画面プレースホルダー">
+        <span>X68000</span>
+        <small>px68k 接続予定</small>
+      </div>
+    </section>
+  </main>
+  <footer class="app-footer">
+    <div class="status-left"><span id="save-state">未保存の変更なし</span><span id="current-path"></span></div>
+    <div class="status-links">
+      <a href="https://www.urara-works.jp/" target="_blank" rel="noopener noreferrer">© URARA-works</a> ･
+      <a href="./vendor/codemirror/LICENSE.CodeMirror" target="_blank" rel="noopener noreferrer">CodeMirror (MIT)</a>
+    </div>
+  </footer>
+  <script type="module" src="./workbench.js"></script>
+</body>
+</html>

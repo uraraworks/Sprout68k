@@ -7,6 +7,11 @@ export default {
   build: {
     outDir: 'build/web-page',
     emptyOutDir: true,
-    rollupOptions: { input: resolve(__dirname, 'web/index.html') },
+    rollupOptions: {
+      input: {
+        web: resolve(__dirname, 'web/index.html'),
+        ide: resolve(__dirname, 'ide/index.html'),
+      },
+    },
   },
 };
