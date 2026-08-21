@@ -241,11 +241,15 @@ async function verifyMemfsCallMainAndFreshInstances(): Promise<void> {
     hostFs: new NodeHostFs(), root: ROOT, memfsModules: MEMFS_MODULES,
   });
   let invalidRejected = false;
+  const exitCodeBeforeFault = process.exitCode;
   try {
     await runner.run({ tool: 'as', program: '', cwd: ROOT, args: ['--x68kdev-invalid-option'] });
   } catch (error) {
     invalidRejected = error instanceof Error && error.message.includes('callMain が失敗しました')
       && String(error.cause).includes('終了コード 1');
+  } finally {
+    // 意図的な callMain 失敗で Emscripten が設定した終了コードを持ち越さない。
+    process.exitCode = exitCodeBeforeFault;
   }
   if (!invalidRejected) throw new Error('memfs callMain 故障検査FAIL: 不正引数の非0終了を捕捉できませんでした');
 
