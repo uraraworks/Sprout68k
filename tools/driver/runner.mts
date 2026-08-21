@@ -1,12 +1,9 @@
-import { spawnSync } from 'node:child_process';
-import {
-  existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync,
-} from 'node:fs';
-import { dirname, resolve } from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { dirnamePath, resolvePath } from './hostfs.mts';
+import type { HostFs } from './hostfs.mts';
 
 export type ToolName = 'cc1' | 'as' | 'ld' | 'objcopy';
 export type ToolMode = 'native' | 'wasm' | 'memfs';
+export type ModeMap = Record<ToolName, ToolMode>;
 
 export interface ToolInvocation {
   tool: ToolName;
@@ -15,58 +12,12 @@ export interface ToolInvocation {
   cwd?: string;
 }
 
-/** 1本のツールを実行する共通抽象。native/wasm の選択はツールごとに行う。 */
 export interface ToolRunner {
   readonly mode: ToolMode;
   run(invocation: ToolInvocation): void | Promise<void>;
 }
 
-export class NativeToolRunner implements ToolRunner {
-  readonly mode = 'native' as const;
-
-  run({ program, args, cwd }: ToolInvocation): void {
-    const result = spawnSync(program, [...args], { cwd, stdio: 'inherit' });
-    if (result.error) throw result.error;
-    if (result.status !== 0) {
-      throw new Error(`${program} が終了コード ${result.status ?? '不明'} で失敗しました`);
-    }
-  }
-}
-
-/**
- * NODERAWFS 付き Emscripten CLI を独立した Node プロセスで実行する。
- * 生成 JS は読み込み時に process.argv から main を自動実行する非 factory 型なので、
- * 1プロセス内でのモジュール再利用は行わない。
- */
-export class WasmToolRunner implements ToolRunner {
-  readonly mode = 'wasm' as const;
-  private readonly modulePath: string | undefined;
-
-  constructor(modulePath: string | undefined) {
-    this.modulePath = modulePath;
-  }
-
-  run({ tool, args, cwd }: ToolInvocation): void {
-    if (!this.modulePath) {
-      throw new Error(`${tool}=wasm の Emscripten JS が指定されていません`);
-    }
-    const modulePath = resolve(this.modulePath);
-    if (!existsSync(modulePath)) {
-      throw new Error(`${tool}=wasm の Emscripten JS が見つかりません: ${modulePath}`);
-    }
-    const cc1ExecPrefix = process.env.X68KDEV_CC1_GCC_EXEC_PREFIX;
-    const env = tool === 'cc1' && cc1ExecPrefix
-      ? { ...process.env, GCC_EXEC_PREFIX: cc1ExecPrefix }
-      : process.env;
-    const result = spawnSync(process.execPath, [modulePath, ...args], { cwd, stdio: 'inherit', env });
-    if (result.error) throw result.error;
-    if (result.status !== 0) {
-      throw new Error(`${tool}=wasm (${modulePath}) が終了コード ${result.status ?? '不明'} で失敗しました`);
-    }
-  }
-}
-
-interface EmscriptenMemfsModule {
+export interface EmscriptenMemfsModule {
   FS: {
     analyzePath(path: string): { exists: boolean };
     chdir(path: string): void;
@@ -78,143 +29,105 @@ interface EmscriptenMemfsModule {
   callMain(args: readonly string[]): number | void;
 }
 
-type EmscriptenFactory = (options?: Record<string, unknown>) => Promise<EmscriptenMemfsModule>;
+export type EmscriptenFactory = (options?: Record<string, unknown>) => Promise<EmscriptenMemfsModule>;
+export type MemfsFactoryLoader = (modulePath: string) => Promise<EmscriptenFactory>;
 
 function mkdirMemfs(module: EmscriptenMemfsModule, path: string): void {
-  const absolute = resolve('/', path);
   let current = '/';
-  for (const part of absolute.split('/').filter(Boolean)) {
-    current = resolve(current, part);
+  for (const part of resolvePath(path).split('/').filter(Boolean)) {
+    current = resolvePath(current, part);
     if (!module.FS.analyzePath(current).exists) module.FS.mkdir(current);
   }
 }
 
-function copyHostInput(module: EmscriptenMemfsModule, hostPath: string): void {
-  const path = resolve(hostPath);
-  const stat = statSync(path);
-  if (stat.isDirectory()) {
+function copyHostInput(module: EmscriptenMemfsModule, hostFs: HostFs, hostPath: string): void {
+  const path = resolvePath(hostPath);
+  if (hostFs.isDirectory(path)) {
     mkdirMemfs(module, path);
-    for (const entry of readdirSync(path)) copyHostInput(module, resolve(path, entry));
+    for (const entry of hostFs.readdir(path)) copyHostInput(module, hostFs, resolvePath(path, entry));
     return;
   }
-  if (!stat.isFile()) return;
-  mkdirMemfs(module, dirname(path));
-  module.FS.writeFile(path, readFileSync(path));
+  mkdirMemfs(module, dirnamePath(path));
+  module.FS.writeFile(path, hostFs.readFile(path));
 }
 
 function outputPaths(tool: ToolName, args: readonly string[], cwd: string): Set<string> {
   const outputs = new Set<string>();
   for (let index = 0; index < args.length - 1; index += 1) {
-    if (args[index] === '-o') outputs.add(resolve(cwd, args[index + 1]));
+    if (args[index] === '-o') outputs.add(resolvePath(cwd, args[index + 1]));
   }
-  if (tool === 'objcopy' && args.length > 0) outputs.add(resolve(cwd, args.at(-1)!));
+  if (tool === 'objcopy' && args.length > 0) outputs.add(resolvePath(cwd, args.at(-1)!));
   return outputs;
 }
 
-/**
- * MODULARIZE + MEMFS 版を Node 上で検証する runner。
- * 引数に現れる既存ファイル/ディレクトリを同じ絶対パスで MEMFS へ複製し、-o（および
- * objcopy の最終引数）の生成物をホストへ回収する。ブラウザ UI では同じ FS 境界へ
- * File/Uint8Array を渡すが、その結線は F-4 の範囲とする。
- * 終了後の同一モジュールを再度 callMain すると binutils の内部状態が壊れるため、
- * run ごとに factory から新しいインスタンスを生成する。
- */
+export interface MemfsRunnerOptions {
+  modulePath?: string;
+  hostFs: HostFs;
+  loadFactory: MemfsFactoryLoader;
+  defaultCwd: string;
+  cc1ExecPrefix?: string;
+}
+
+/** MODULARIZE + MEMFS 版を HostFs 上の入出力で実行する。 */
 export class MemfsWasmToolRunner implements ToolRunner {
   readonly mode = 'memfs' as const;
-  private readonly modulePath: string | undefined;
+  private readonly options: MemfsRunnerOptions;
 
-  constructor(modulePath: string | undefined) {
-    this.modulePath = modulePath;
-  }
+  constructor(options: MemfsRunnerOptions) { this.options = options; }
 
-  async run({ tool, args, cwd = process.cwd() }: ToolInvocation): Promise<void> {
-    if (!this.modulePath) throw new Error(`${tool}=memfs の Emscripten factory JS が指定されていません`);
-    const modulePath = resolve(this.modulePath);
-    if (!existsSync(modulePath)) {
-      throw new Error(`${tool}=memfs の Emscripten factory JS が見つかりません（未ビルド）: ${modulePath}`);
+  async run({ tool, args, cwd = this.options.defaultCwd }: ToolInvocation): Promise<void> {
+    const { modulePath, hostFs, loadFactory } = this.options;
+    if (!modulePath) throw new Error(`${tool}=memfs の Emscripten factory JS が指定されていません`);
+    const absoluteModulePath = resolvePath(modulePath);
+    if (!hostFs.exists(absoluteModulePath)) {
+      throw new Error(`${tool}=memfs の Emscripten factory JS が見つかりません（未ビルド）: ${absoluteModulePath}`);
     }
-    const wasmPath = modulePath.replace(/\.js$/, '.wasm');
-    if (!existsSync(wasmPath)) {
-      throw new Error(`${tool}=memfs の wasm 本体が見つかりません（未ビルド）: ${wasmPath}`);
-    }
-
+    const wasmPath = absoluteModulePath.replace(/\.js$/, '.wasm');
+    if (!hostFs.exists(wasmPath)) throw new Error(`${tool}=memfs の wasm 本体が見つかりません（未ビルド）: ${wasmPath}`);
     const outputs = outputPaths(tool, args, cwd);
-    const cc1ExecPrefix = process.env.X68KDEV_CC1_GCC_EXEC_PREFIX;
-    if (tool === 'cc1' && cc1ExecPrefix) {
-      const prefix = resolve(cc1ExecPrefix);
-      if (!existsSync(prefix)) throw new Error(`cc1=memfs の GCC_EXEC_PREFIX が見つかりません: ${prefix}`);
-    }
+    const prefix = tool === 'cc1' && this.options.cc1ExecPrefix
+      ? resolvePath(this.options.cc1ExecPrefix) : undefined;
+    if (prefix && !hostFs.exists(prefix)) throw new Error(`cc1=memfs の GCC_EXEC_PREFIX が見つかりません: ${prefix}`);
 
-    const imported = await import(pathToFileURL(modulePath).href);
-    const factory = (imported.default ?? imported) as EmscriptenFactory;
-    if (typeof factory !== 'function') {
-      throw new Error(`${tool}=memfs が Emscripten factory を export していません: ${modulePath}`);
-    }
+    const factory = await loadFactory(absoluteModulePath);
+    if (typeof factory !== 'function') throw new Error(`${tool}=memfs が Emscripten factory を export していません: ${absoluteModulePath}`);
     const module = await factory({
-      locateFile: (name: string) => name.endsWith('.wasm') ? wasmPath : resolve(dirname(modulePath), name),
-      // GCC は初期化中にも環境変数を参照するため、factory 解決後では遅い。
-      // FS 入力と GCC_EXEC_PREFIX は initRuntime より前の preRun で用意する。
+      // ブラウザでも Emscripten 自身にホストファイルを読ませない。
+      wasmBinary: hostFs.readFile(wasmPath),
+      locateFile: (name: string) => name.endsWith('.wasm') ? wasmPath : resolvePath(dirnamePath(absoluteModulePath), name),
       preRun: [(preRunModule: EmscriptenMemfsModule) => {
-        if (!preRunModule.FS) throw new Error(`${tool}=memfs の preRun に FS export がありません: ${modulePath}`);
+        if (!preRunModule.FS) throw new Error(`${tool}=memfs の preRun に FS export がありません: ${absoluteModulePath}`);
         mkdirMemfs(preRunModule, cwd);
         for (const arg of args) {
-          const hostPath = resolve(cwd, arg);
-          if (!outputs.has(hostPath) && existsSync(hostPath)) copyHostInput(preRunModule, hostPath);
+          const hostPath = resolvePath(cwd, arg);
+          if (!outputs.has(hostPath) && hostFs.exists(hostPath)) copyHostInput(preRunModule, hostFs, hostPath);
         }
-        if (tool === 'cc1' && cc1ExecPrefix) {
-          const prefix = resolve(cc1ExecPrefix);
-          copyHostInput(preRunModule, prefix);
-          if (!preRunModule.ENV) throw new Error(`${tool}=memfs の preRun に ENV export がありません: ${modulePath}`);
+        if (prefix) {
+          copyHostInput(preRunModule, hostFs, prefix);
+          if (!preRunModule.ENV) throw new Error(`${tool}=memfs の preRun に ENV export がありません: ${absoluteModulePath}`);
           preRunModule.ENV.GCC_EXEC_PREFIX = `${prefix}/`;
         }
-        for (const output of outputs) mkdirMemfs(preRunModule, dirname(output));
+        for (const output of outputs) mkdirMemfs(preRunModule, dirnamePath(output));
         preRunModule.FS.chdir(cwd);
       }],
     });
-    if (!module.FS || typeof module.callMain !== 'function') {
-      throw new Error(`${tool}=memfs に FS/callMain export がありません: ${modulePath}`);
-    }
-
+    if (!module.FS || typeof module.callMain !== 'function') throw new Error(`${tool}=memfs に FS/callMain export がありません: ${absoluteModulePath}`);
     try {
       const status = module.callMain(args);
-      if (typeof status === 'number' && status !== 0) {
-        throw new Error(`終了コード ${status}`);
-      }
+      if (typeof status === 'number' && status !== 0) throw new Error(`終了コード ${status}`);
     } catch (error) {
-      throw new Error(`${tool}=memfs (${modulePath}) の callMain が失敗しました`, { cause: error });
+      throw new Error(`${tool}=memfs (${absoluteModulePath}) の callMain が失敗しました`, { cause: error });
     }
     for (const output of outputs) {
-      if (!module.FS.analyzePath(output).exists) {
-        throw new Error(`${tool}=memfs が出力ファイルを生成しませんでした: ${output}`);
-      }
-      mkdirSync(dirname(output), { recursive: true });
-      writeFileSync(output, module.FS.readFile(output));
+      if (!module.FS.analyzePath(output).exists) throw new Error(`${tool}=memfs が出力ファイルを生成しませんでした: ${output}`);
+      hostFs.mkdirp(dirnamePath(output));
+      hostFs.writeFile(output, module.FS.readFile(output));
     }
   }
-
 }
-
-export type ModeMap = Record<ToolName, ToolMode>;
 
 export class ToolExecutors {
   private readonly runners: Record<ToolName, ToolRunner>;
-
-  constructor(
-    modes: ModeMap,
-    wasmModules: Partial<Record<ToolName, string>> = {},
-    memfsModules: Partial<Record<ToolName, string>> = {},
-  ) {
-    this.runners = Object.fromEntries(
-      (Object.keys(modes) as ToolName[]).map((tool) => [
-        tool,
-        modes[tool] === 'native' ? new NativeToolRunner()
-          : modes[tool] === 'wasm' ? new WasmToolRunner(wasmModules[tool])
-            : new MemfsWasmToolRunner(memfsModules[tool]),
-      ]),
-    ) as Record<ToolName, ToolRunner>;
-  }
-
-  async run(invocation: ToolInvocation): Promise<void> {
-    await this.runners[invocation.tool].run(invocation);
-  }
+  constructor(runners: Record<ToolName, ToolRunner>) { this.runners = runners; }
+  async run(invocation: ToolInvocation): Promise<void> { await this.runners[invocation.tool].run(invocation); }
 }

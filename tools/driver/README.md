@@ -2,6 +2,8 @@
 
 `build.mts` が cc1 → as → ld → objcopy のコマンド列の正典です。
 従来の `tools/build_via_cc1.sh` もこのモジュールを呼ぶため、二重管理しません。
+ブラウザから再利用する中核は `builder.mts` / `runner.mts` / `hostfs.mts` で、Node
+専用のファイルシステム・子プロセス・環境変数依存は CLI と `node_*` に分離しています。
 
 ```sh
 node tools/driver/build.mts stage_c build/stage_c_driver.xdf
@@ -48,4 +50,11 @@ node tools/driver/verify.mts
 
 ```sh
 node tools/driver/verify_wasm.mts
+```
+
+`MemoryHostFs` 上だけで両ターゲットを memfs ビルドし、全 native とバイト比較する検証は次です。
+入力1バイト変更の陽性対照も同時に実行します。
+
+```sh
+node tools/driver/verify_hostfs.mts
 ```

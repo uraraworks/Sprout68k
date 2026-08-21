@@ -3,7 +3,8 @@ import { chmodSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, st
 import { homedir } from 'node:os';
 import { dirname, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { MemfsWasmToolRunner } from './runner.mts';
+import { NodeHostFs } from './node_hostfs.mts';
+import { createNodeToolExecutors } from './node_runner.mts';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(HERE, '../..');
@@ -235,7 +236,10 @@ function verifyMemfsFaultInjection(): void {
 async function verifyMemfsCallMainAndFreshInstances(): Promise<void> {
   const probeDir = resolve(RESULT_DIR, 'memfs_runtime_probe');
   mkdirSync(probeDir, { recursive: true });
-  const runner = new MemfsWasmToolRunner(MEMFS_MODULES.as);
+  const runner = createNodeToolExecutors({
+    modes: { cc1: 'native', as: 'memfs', ld: 'native', objcopy: 'native' },
+    hostFs: new NodeHostFs(), root: ROOT, memfsModules: MEMFS_MODULES,
+  });
   let invalidRejected = false;
   try {
     await runner.run({ tool: 'as', program: '', cwd: ROOT, args: ['--x68kdev-invalid-option'] });
