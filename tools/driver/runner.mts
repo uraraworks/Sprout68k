@@ -69,6 +69,8 @@ export interface MemfsRunnerOptions {
   cc1ExecPrefix?: string;
   /** Emscripten が補助ファイルを探す場合の場所。ブラウザでは絶対 URL を返す。 */
   locateFile?: (name: string, modulePath: string) => string;
+  /** ツールの標準エラー出力を原文のまま受け取る。未指定時は既定の出力を保つ。 */
+  onStderr?: (text: string) => void;
 }
 
 /** MODULARIZE + MEMFS 版を HostFs 上の入出力で実行する。 */
@@ -94,7 +96,7 @@ export class MemfsWasmToolRunner implements ToolRunner {
 
     const factory = await loadFactory(absoluteModulePath);
     if (typeof factory !== 'function') throw new Error(`${tool}=memfs が Emscripten factory を export していません: ${absoluteModulePath}`);
-    const module = await factory({
+    const factoryOptions: Record<string, unknown> = {
       // ブラウザでも Emscripten 自身にホストファイルを読ませない。
       wasmBinary: hostFs.readFile(wasmPath),
       locateFile: (name: string) => this.options.locateFile
@@ -115,7 +117,11 @@ export class MemfsWasmToolRunner implements ToolRunner {
         for (const output of outputs) mkdirMemfs(preRunModule, dirnamePath(output));
         preRunModule.FS.chdir(cwd);
       }],
-    });
+    };
+    if (this.options.onStderr) factoryOptions.printErr = (...values: unknown[]) => {
+      this.options.onStderr!(values.map(String).join(' '));
+    };
+    const module = await factory(factoryOptions);
     if (!module.FS || typeof module.callMain !== 'function') throw new Error(`${tool}=memfs に FS/callMain export がありません: ${absoluteModulePath}`);
     try {
       const status = module.callMain(args);

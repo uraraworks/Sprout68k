@@ -8,8 +8,9 @@ const LOAD_ADDR = 0x3000;
 const STACK_MARGIN = 4096;
 const VALID_OPT_LEVELS = new Set(['-O0', '-O1', '-O2', '-O3', '-Os', '-Oz', '-Og', '-Ofast']);
 
-export type BuildTarget = 'stage_c' | 'breakout';
+export type BuildTarget = 'stage_c' | 'breakout' | 'user';
 export interface BuildToolchain { cc1: string; as: string; ld: string; objcopy: string; libgcc: string; }
+export interface UserSource { path: string; content: string | Uint8Array; }
 
 export interface BuildOptions {
   target: BuildTarget;
@@ -23,6 +24,8 @@ export interface BuildOptions {
   stackAddress?: string;
   ramSize?: string;
   buildRoot?: string;
+  /** user ターゲットでコンパイルする学習者の C ソース。 */
+  userSource?: UserSource;
 }
 
 export class Builder {
@@ -118,17 +121,27 @@ export class Builder {
     this.makeXdf(resolvePath(objdir, 'boot.bin'), bin, sectors);
   }
 
-  async buildBreakout(): Promise<void> {
-    const root = this.options.root; const objdir = resolvePath(this.buildRoot, `breakout${this.variantSuffix}`);
-    this.options.hostFs.mkdirp(objdir); console.log(`== breakout を駆動層でビルド(opt=${this.optLevel}) ==`);
+  /** breakout と user は、main.c の供給元以外を完全に同じ経路でビルドする。 */
+  private async buildLibraryProgram(target: 'breakout' | 'user'): Promise<void> {
+    const root = this.options.root; const objdir = resolvePath(this.buildRoot, `${target}${this.variantSuffix}`);
+    this.options.hostFs.mkdirp(objdir); console.log(`== ${target} を駆動層でビルド(opt=${this.optLevel}) ==`);
     const include = ['-I', resolvePath(root, 'lib/include')];
     for (const name of ['x68_std', 'x68_l0', 'x68_l1', 'x68_panic', 'x68_input']) await this.compileC(resolvePath(root, `lib/src/${name}.c`), resolvePath(objdir, `${name}.o`), include);
-    await this.compileC(resolvePath(root, 'samples/breakout/main.c'), resolvePath(objdir, 'main.o'), include);
+    let mainSource = resolvePath(root, 'samples/breakout/main.c');
+    if (target === 'user') {
+      const source = this.options.userSource;
+      if (!source || typeof source.path !== 'string' || !source.path.trim()) throw new Error('user ターゲットには C ソースが必要です');
+      if (!/\.c$/i.test(source.path)) throw new Error('利用者ソースは .c ファイルで指定してください');
+      mainSource = resolvePath(objdir, 'source', basenamePath(source.path));
+      this.options.hostFs.mkdirp(dirnamePath(mainSource));
+      this.options.hostFs.writeFile(mainSource, source.content);
+    }
+    await this.compileC(mainSource, resolvePath(objdir, 'main.o'), include);
     await this.assembleCpp('68000', resolvePath(root, 'lib/asm/x68_iocs.S'), resolvePath(objdir, 'x68_iocs.o'));
     await this.assembleCpp('68000', resolvePath(root, 'lib/asm/x68_gvram_copy.S'), resolvePath(objdir, 'x68_gvram_copy.o'));
     await this.assembleCpp('68020', resolvePath(root, 'lib/asm/x68_panic.S'), resolvePath(objdir, 'x68_panic_asm.o'));
     await this.assembleCpp('68000', resolvePath(root, 'stage_c/crt0/crt0.S'), resolvePath(objdir, 'crt0.o'), ['-D', `STACK_ADDR=${this.stackAddress}`]);
-    const elf = resolvePath(objdir, 'breakout.elf'); const bin = resolvePath(objdir, 'breakout.bin'); const map = resolvePath(objdir, 'breakout.map');
+    const elf = resolvePath(objdir, `${target}.elf`); const bin = resolvePath(objdir, `${target}.bin`); const map = resolvePath(objdir, `${target}.map`);
     await this.run('ld', ['-T', resolvePath(root, 'stage_c/crt0/linker.ld'), '-Map', map, '-o', elf, resolvePath(objdir, 'crt0.o'), resolvePath(objdir, 'main.o'), ...['x68_std', 'x68_l0', 'x68_l1', 'x68_panic', 'x68_input'].map((name) => resolvePath(objdir, `${name}.o`)), resolvePath(objdir, 'x68_iocs.o'), resolvePath(objdir, 'x68_gvram_copy.o'), resolvePath(objdir, 'x68_panic_asm.o'), this.options.tools.libgcc]);
     await this.run('objcopy', ['-O', 'binary', elf, bin]);
     const bodySize = this.options.hostFs.size(bin); const sectors = Math.max(1, Math.ceil(bodySize / SECTOR_SIZE));
@@ -138,9 +151,14 @@ export class Builder {
     await this.linkBoot(objdir, resolvePath(root, 'stage_d/boot/boot.S'), sectors);
     this.makeXdf(resolvePath(objdir, 'boot.bin'), bin, sectors);
   }
+
+  async buildBreakout(): Promise<void> { await this.buildLibraryProgram('breakout'); }
+  async buildUser(): Promise<void> { await this.buildLibraryProgram('user'); }
 }
 
 export async function build(options: BuildOptions): Promise<void> {
   const builder = new Builder(options);
-  if (options.target === 'stage_c') await builder.buildStageC(); else await builder.buildBreakout();
+  if (options.target === 'stage_c') await builder.buildStageC();
+  else if (options.target === 'breakout') await builder.buildBreakout();
+  else await builder.buildUser();
 }

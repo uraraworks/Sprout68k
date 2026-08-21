@@ -22,8 +22,10 @@ const nodes = {
   saveState: document.querySelector('#save-state'),
   currentPath: document.querySelector('#current-path'),
   build: document.querySelector('#build'),
+  downloadXdf: document.querySelector('#download-xdf'),
   run: document.querySelector('#run'),
   buildStatus: document.querySelector('#build-status'),
+  buildOutput: document.querySelector('#build-output'),
   machineStatus: document.querySelector('#machine-status'),
 };
 
@@ -70,7 +72,11 @@ const editor = new EditorView({
           tab.text = update.state.doc.toString();
           tab.cursor = update.state.selection.main.head;
         }
-        if (!loadingDocument && update.docChanged) updateSaveState();
+        if (!loadingDocument && update.docChanged) {
+          if (tab) tab.build = undefined;
+          renderBuildResult();
+          updateSaveState();
+        }
       }),
     ],
   }),
@@ -90,6 +96,16 @@ function updateSaveState() {
   nodes.saveState.textContent = dirty ? '未保存の変更あり' : '保存済み';
   nodes.saveState.classList.toggle('dirty', dirty);
   renderTabs();
+}
+
+function renderBuildResult() {
+  const result = activeTab()?.build;
+  nodes.downloadXdf.disabled = !result?.ok;
+  nodes.buildOutput.textContent = result?.diagnostics?.join('\n') ?? '';
+  nodes.buildStatus.classList.toggle('error', result?.ok === false);
+  if (result?.ok) nodes.buildStatus.textContent = `ビルド完了: ${result.filename} (${result.xdf.length} bytes)`;
+  else if (result?.ok === false) nodes.buildStatus.textContent = `ビルド失敗: ${result.message}`;
+  else nodes.buildStatus.textContent = '未ビルド';
 }
 
 function renderTabs() {
@@ -149,6 +165,7 @@ function activateTab(id) {
   nodes.currentPath.textContent = `${tab.origin === 'sample' ? 'サンプル' : 'このブラウザ'} / ${tab.path}`;
   try { localStorage.setItem(LAST_PATH_KEY, `${tab.origin}:${tab.path}`); } catch {}
   renderTabs();
+  renderBuildResult();
   updateSaveState();
   editor.focus();
   return true;
@@ -306,13 +323,31 @@ async function buildCurrent() {
   const tab = activeTab();
   if (!tab) throw new Error('ビルド対象がありません');
   nodes.build.disabled = true;
+  nodes.downloadXdf.disabled = true;
+  nodes.buildOutput.textContent = '';
+  nodes.buildStatus.classList.remove('error');
   try {
     await saveFile();
-    nodes.buildStatus.textContent = `${tab.path}: ビルドを要求しました`;
-    return await adapter.build({ path: tab.path, text: tab.text });
+    tab.build = undefined;
+    nodes.buildStatus.textContent = `${tab.path}: ビルド中…`;
+    const result = await adapter.build({ path: tab.path, text: tab.text });
+    tab.build = result;
+    renderBuildResult();
+    return result;
   } finally {
     nodes.build.disabled = false;
   }
+}
+
+function downloadBuiltXdf() {
+  const result = activeTab()?.build;
+  if (!result?.ok) return false;
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(new Blob([result.xdf], { type: 'application/octet-stream' }));
+  link.download = result.filename;
+  link.click();
+  URL.revokeObjectURL(link.href);
+  return true;
 }
 
 async function runCurrent() {
@@ -393,6 +428,7 @@ document.addEventListener('keydown', (event) => {
 });
 nodes.save.addEventListener('click', () => saveFile().catch(showError));
 nodes.download.addEventListener('click', downloadActiveFile);
+nodes.downloadXdf.addEventListener('click', downloadBuiltXdf);
 nodes.build.addEventListener('click', () => buildCurrent().catch(showError));
 nodes.run.addEventListener('click', () => runCurrent().catch(showError));
 
@@ -407,4 +443,5 @@ window.x68kdevWorkbench = {
   })),
   setConfirm: (callback) => { confirmAction = callback; },
   getStatus: () => ({ build: nodes.buildStatus.textContent, machine: nodes.machineStatus.textContent }),
+  getBuiltSize: () => activeTab()?.build?.xdf?.length ?? null,
 };

@@ -31,9 +31,11 @@
       <div id="editor" aria-label="C ソースエディタ"></div>
       <div class="editor-toolbar">
         <button id="build" type="button">ビルド</button>
+        <button id="download-xdf" type="button" disabled>XDFをダウンロード</button>
         <button id="run" type="button">実行</button>
       </div>
       <div id="build-status" role="status">準備中…</div>
+      <pre id="build-output" aria-label="コンパイル診断" tabindex="0"></pre>
     </section>
     <section class="machine-card" aria-labelledby="machine-heading">
       <div class="panel-heading"><h2 id="machine-heading">X68000 実行画面</h2></div>

@@ -44,6 +44,7 @@ export interface NodeToolExecutorOptions {
   wasmModules?: Partial<Record<ToolName, string>>;
   memfsModules?: Partial<Record<ToolName, string>>;
   cc1ExecPrefix?: string;
+  onStderr?: (text: string) => void;
 }
 
 export function createNodeToolExecutors(options: NodeToolExecutorOptions): ToolExecutors {
@@ -62,6 +63,7 @@ export function createNodeToolExecutors(options: NodeToolExecutorOptions): ToolE
           modulePath: options.memfsModules?.[tool] ? resolvePath(options.root, options.memfsModules[tool]!) : undefined,
           hostFs: options.hostFs, loadFactory, defaultCwd: options.root,
           cc1ExecPrefix: options.cc1ExecPrefix ? resolvePath(options.root, options.cc1ExecPrefix) : undefined,
+          onStderr: options.onStderr,
         }),
   ])) as Record<ToolName, ToolRunner>;
   return new ToolExecutors(runners);

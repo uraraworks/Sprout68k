@@ -8,6 +8,7 @@ const forbidden = ['pc' + '98', 'n' + 'p2', 'pc' + '-98', 'free' + 'dos', 'na' +
 const required = [
   'index.html', 'workbench.css', 'workbench.js', 'project-fs.mjs', 'source-view.mjs',
   'sample-manifest.mjs', 'x68k-adapter.mjs', 'samples/hello.c',
+  '../web/browser-toolchain.ts', '../tools/driver/builder.mts',
   'vendor/codemirror/codemirror.js', 'vendor/codemirror/LICENSE.CodeMirror',
 ];
 
@@ -44,6 +45,12 @@ if (!fsSource.includes("databaseName = 'X68kDevProjectFS'")) throw new Error('�
 const workbench = await readFile(resolve(root, 'workbench.js'), 'utf8');
 if (!workbench.includes('window.x68kdevWorkbench')) throw new Error('公開 API 名がありません');
 if (!workbench.includes('cpp()')) throw new Error('C 言語ハイライトがありません');
+for (const id of ['build-output', 'download-xdf']) {
+  if (!html.includes(`id="${id}"`)) throw new Error(`必要な DOM 要素がありません: ${id}`);
+  if (!workbench.includes(`#${id}`)) throw new Error(`DOM 要素の参照がありません: ${id}`);
+}
+const adapterSource = await readFile(resolve(root, 'x68k-adapter.mjs'), 'utf8');
+if (!adapterSource.includes('../web/browser-toolchain.ts')) throw new Error('共有ブラウザツールチェーン参照がありません');
 if (!html.includes('./samples/hello.c') && !(await readFile(resolve(root, 'sample-manifest.mjs'), 'utf8')).includes('./samples/hello.c')) {
   throw new Error('C サンプル参照がありません');
 }

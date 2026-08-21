@@ -58,3 +58,10 @@ node tools/driver/verify_wasm.mts
 ```sh
 node tools/driver/verify_hostfs.mts
 ```
+
+利用者 `main.c` の新ターゲットを既存 breakout 正典とバイト比較し、1バイト変更の
+陽性対照、IDE サンプル、MEMFS のコンパイル診断捕捉を検証するには次を実行します。
+
+```sh
+node tools/driver/verify_user_target.mts
+```

@@ -69,6 +69,8 @@ button:focus-visible, input:focus-visible { outline: 1px solid var(--vsc-focus);
 .editor-toolbar #run:hover { background: var(--vsc-accent-hover); }
 #build-status, #machine-status { min-height: 34px; padding: 8px 12px; color: var(--vsc-fg-dim); background: var(--vsc-ui-bg); font-size: 12px; }
 #build-status.error, #machine-status.error { color: #f14c4c; }
+#build-output { min-height: 54px; max-height: 150px; margin: 0; padding: 8px 12px; overflow: auto; border-top: 1px solid var(--vsc-border); color: #f1b7b7; background: #151515; font: 11px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre-wrap; }
+#build-output:empty::before { color: var(--vsc-fg-dim); content: "コンパイル診断はここに表示されます"; }
 .screen-placeholder { min-height: 360px; margin: 12px; display: grid; place-content: center; gap: 8px; border: 1px dashed #475569; border-radius: 5px; color: #64748b; background: #020617; text-align: center; }
 .screen-placeholder span { color: #94a3b8; font: 700 22px ui-monospace, monospace; letter-spacing: .12em; }
 .app-footer { min-height: 29px; display: flex; justify-content: space-between; gap: 12px; padding: 6px 16px; border-top: 1px solid var(--vsc-border); background: var(--vsc-chrome-bg); color: var(--vsc-fg-dim); font-size: 11px; }
