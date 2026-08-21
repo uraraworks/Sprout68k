@@ -1,9 +1,7 @@
-import { execFileSync } from 'node:child_process';
 import { homedir } from 'node:os';
 import { dirname, resolve } from 'node:path';
 import { pathToFileURL, fileURLToPath } from 'node:url';
 import { build } from './builder.mts';
-import type { BuildTarget } from './builder.mts';
 import { MemoryHostFs, dirnamePath, resolvePath } from './hostfs.mts';
 import type { HostFs } from './hostfs.mts';
 import { NodeHostFs } from './node_hostfs.mts';
@@ -70,26 +68,18 @@ function memoryExecutors(hostFs: MemoryHostFs): ToolExecutors {
   return new ToolExecutors(runners);
 }
 
-function inspectBssEnd(elf: string): number {
-  const output = execFileSync(tools.nm, [elf], { encoding: 'utf8' });
-  const match = output.match(/^([0-9a-fA-F]+)\s+\S\s+__bss_end$/m);
-  if (!match) throw new Error('__bss_end が見つかりません');
-  return Number.parseInt(match[1], 16);
-}
-
 nodeFs.mkdirp(RESULT);
-const nativeBss = new Map<BuildTarget, number>();
 for (const target of ['stage_c', 'breakout'] as const) {
   const output = resolve(RESULT, `native_${target}.xdf`);
   const buildRoot = resolve(RESULT, `native_${target}_objects`);
   await build({ target, output, root: ROOT, hostFs: nodeFs, tools,
     executors: createNodeToolExecutors({ modes: allNative, hostFs: nodeFs, root: ROOT }),
-    inspectBssEnd: (elf) => { const value = inspectBssEnd(elf); nativeBss.set(target, value); return value; }, buildRoot });
+    buildRoot });
 
   const memory = prepareMemoryFs();
   const memoryOutput = resolve(RESULT, `memory_${target}.xdf`);
   await build({ target, output: memoryOutput, root: ROOT, hostFs: memory, tools,
-    executors: memoryExecutors(memory), inspectBssEnd: () => nativeBss.get(target) ?? 0,
+    executors: memoryExecutors(memory),
     buildRoot: resolve(RESULT, `memory_${target}_objects`) });
   const expected = nodeFs.readFile(output); const actual = memory.readFile(memoryOutput);
   if (!same(expected, actual)) {
@@ -97,6 +87,17 @@ for (const target of ['stage_c', 'breakout'] as const) {
     throw new Error(`${target}: MemoryHostFs と全nativeが不一致(offset=${first}, native=${expected[first]}, memory=${actual[first]})`);
   }
   console.log(`PASS(バイト一致): ${target} (${actual.length} bytes)`);
+}
+
+const collisionFs = prepareMemoryFs();
+try {
+  await build({ target: 'breakout', output: resolve(RESULT, 'collision_breakout.xdf'), root: ROOT, hostFs: collisionFs, tools,
+    executors: memoryExecutors(collisionFs), stackAddress: '0x86000',
+    buildRoot: resolve(RESULT, 'collision_breakout_objects') });
+  throw new Error('故障注入FAIL: __bss_end の衝突を検出しませんでした');
+} catch (error) {
+  if (!(error instanceof Error) || error.message !== 'bss末尾がスタックまたは設定RAMサイズと衝突します') throw error;
+  console.log('PASS(故障注入): MemoryHostFs のリンクマップで __bss_end 衝突を検出(STACK_ADDR=0x86000)');
 }
 
 const faultFs = prepareMemoryFs();
@@ -112,7 +113,7 @@ changed[offset] ^= 1;
 faultFs.writeFile(source, changed);
 const faultOutput = resolve(RESULT, 'fault_stage_c.xdf');
 await build({ target: 'stage_c', output: faultOutput, root: ROOT, hostFs: faultFs, tools,
-  executors: memoryExecutors(faultFs), inspectBssEnd: () => 0,
+  executors: memoryExecutors(faultFs),
   buildRoot: resolve(RESULT, 'fault_stage_c_objects') });
 if (same(nodeFs.readFile(resolve(RESULT, 'native_stage_c.xdf')), faultFs.readFile(faultOutput))) throw new Error('故障注入FAIL: 1バイト変更後も一致');
 console.log('PASS(陽性対照は不一致): stage_c/src/main.c を1バイト変更');

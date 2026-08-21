@@ -7,7 +7,6 @@ export interface NativeToolchain {
   as: string;
   ld: string;
   objcopy: string;
-  nm: string;
   libgcc: string;
 }
 
@@ -43,7 +42,6 @@ export function resolveNativeToolchain(): NativeToolchain {
       as: capture('which', ['m68k-elf-as']),
       ld: capture('which', ['m68k-elf-ld']),
       objcopy: capture('which', ['m68k-elf-objcopy']),
-      nm: capture('which', ['m68k-elf-nm']),
       libgcc: requireFile('libgcc', libgccFileName(join(prefix, 'bin/m68k-elf-gcc'))),
     };
   }
@@ -62,8 +60,6 @@ export function resolveNativeToolchain(): NativeToolchain {
     as: requireFile('as', join(root, 'bin/m68k-elf-as')),
     ld: requireFile('ld', join(root, 'bin/m68k-elf-ld')),
     objcopy: requireFile('objcopy', join(root, 'bin/m68k-elf-objcopy')),
-    nm: requireFile('nm', join(root, 'bin/m68k-elf-nm')),
     libgcc: requireFile('libgcc', libgccFileName(join(root, 'bin/m68k-elf-gcc'))),
   };
 }
-

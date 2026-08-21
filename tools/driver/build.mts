@@ -1,4 +1,3 @@
-import { execFileSync } from 'node:child_process';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { build } from './builder.mts';
@@ -45,12 +44,6 @@ async function main(): Promise<void> {
   });
   await build({
     target: target as BuildTarget, output: resolve(output), root, hostFs, tools, executors,
-    inspectBssEnd: (elf) => {
-      const nmOutput = execFileSync(tools.nm, [elf], { encoding: 'utf8' });
-      const match = nmOutput.match(/^([0-9a-fA-F]+)\s+\S\s+__bss_end$/m);
-      if (!match) throw new Error('__bss_end シンボルが ELF に見つかりません');
-      return Number.parseInt(match[1], 16);
-    },
     optLevel: process.env.CC1_OPT_LEVEL, buildVariant: process.env.CC1_BUILD_VARIANT,
     stackAddress: process.env.STACK_ADDR, ramSize: process.env.RAM_SIZE,
     buildRoot: process.env.X68KDEV_DRIVER_BUILD_ROOT ? resolve(process.env.X68KDEV_DRIVER_BUILD_ROOT) : undefined,

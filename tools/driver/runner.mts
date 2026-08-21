@@ -55,6 +55,7 @@ function outputPaths(tool: ToolName, args: readonly string[], cwd: string): Set<
   const outputs = new Set<string>();
   for (let index = 0; index < args.length - 1; index += 1) {
     if (args[index] === '-o') outputs.add(resolvePath(cwd, args[index + 1]));
+    if (tool === 'ld' && args[index] === '-Map') outputs.add(resolvePath(cwd, args[index + 1]));
   }
   if (tool === 'objcopy' && args.length > 0) outputs.add(resolvePath(cwd, args.at(-1)!));
   return outputs;

@@ -18,7 +18,6 @@ export interface BuildOptions {
   hostFs: HostFs;
   tools: BuildToolchain;
   executors: ToolExecutors;
-  inspectBssEnd: (elfPath: string) => number | Promise<number>;
   optLevel?: string;
   buildVariant?: string;
   stackAddress?: string;
@@ -71,6 +70,15 @@ export class Builder {
     if (this.stackAddressNumber >= this.ramSizeNumber) throw new Error('STACK_ADDR が設定 RAM サイズ以上です');
   }
 
+  private readBssEnd(mapPath: string): number {
+    const map = new TextDecoder().decode(this.options.hostFs.readFile(mapPath));
+    const match = map.match(/^\s*(0x[0-9a-fA-F]+)\s+__bss_end\s*=.*$/m);
+    if (!match) throw new Error('__bss_end シンボルがリンクマップに見つかりません');
+    const value = Number.parseInt(match[1], 16);
+    if (!Number.isSafeInteger(value)) throw new Error('__bss_end のアドレスが整数として解釈できません');
+    return value;
+  }
+
   private async linkBoot(objdir: string, bootSrc: string, sectors: number): Promise<void> {
     await this.assembleCpp('68000', bootSrc, resolvePath(objdir, 'boot.o'), ['-D', `SECTOR_COUNT=${sectors}`, '-D', `STACK_ADDR=${this.stackAddress}`]);
     await this.assembleCpp('68020', resolvePath(this.options.root, 'stage_c/boot/cache_flush.S'), resolvePath(objdir, 'cache_flush.o'));
@@ -120,12 +128,12 @@ export class Builder {
     await this.assembleCpp('68000', resolvePath(root, 'lib/asm/x68_gvram_copy.S'), resolvePath(objdir, 'x68_gvram_copy.o'));
     await this.assembleCpp('68020', resolvePath(root, 'lib/asm/x68_panic.S'), resolvePath(objdir, 'x68_panic_asm.o'));
     await this.assembleCpp('68000', resolvePath(root, 'stage_c/crt0/crt0.S'), resolvePath(objdir, 'crt0.o'), ['-D', `STACK_ADDR=${this.stackAddress}`]);
-    const elf = resolvePath(objdir, 'breakout.elf'); const bin = resolvePath(objdir, 'breakout.bin');
-    await this.run('ld', ['-T', resolvePath(root, 'stage_c/crt0/linker.ld'), '-o', elf, resolvePath(objdir, 'crt0.o'), resolvePath(objdir, 'main.o'), ...['x68_std', 'x68_l0', 'x68_l1', 'x68_panic', 'x68_input'].map((name) => resolvePath(objdir, `${name}.o`)), resolvePath(objdir, 'x68_iocs.o'), resolvePath(objdir, 'x68_gvram_copy.o'), resolvePath(objdir, 'x68_panic_asm.o'), this.options.tools.libgcc]);
+    const elf = resolvePath(objdir, 'breakout.elf'); const bin = resolvePath(objdir, 'breakout.bin'); const map = resolvePath(objdir, 'breakout.map');
+    await this.run('ld', ['-T', resolvePath(root, 'stage_c/crt0/linker.ld'), '-Map', map, '-o', elf, resolvePath(objdir, 'crt0.o'), resolvePath(objdir, 'main.o'), ...['x68_std', 'x68_l0', 'x68_l1', 'x68_panic', 'x68_input'].map((name) => resolvePath(objdir, `${name}.o`)), resolvePath(objdir, 'x68_iocs.o'), resolvePath(objdir, 'x68_gvram_copy.o'), resolvePath(objdir, 'x68_panic_asm.o'), this.options.tools.libgcc]);
     await this.run('objcopy', ['-O', 'binary', elf, bin]);
     const bodySize = this.options.hostFs.size(bin); const sectors = Math.max(1, Math.ceil(bodySize / SECTOR_SIZE));
     this.checkMemoryLayout(bodySize);
-    const bssEnd = await this.options.inspectBssEnd(elf);
+    const bssEnd = this.readBssEnd(map);
     if (bssEnd + STACK_MARGIN > this.stackAddressNumber || bssEnd + STACK_MARGIN > this.ramSizeNumber) throw new Error('bss末尾がスタックまたは設定RAMサイズと衝突します');
     await this.linkBoot(objdir, resolvePath(root, 'stage_d/boot/boot.S'), sectors);
     this.makeXdf(resolvePath(objdir, 'boot.bin'), bin, sectors);
