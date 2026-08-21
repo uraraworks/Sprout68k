@@ -39,18 +39,18 @@
     </section>
     <section class="machine-card" aria-labelledby="machine-heading">
       <div class="panel-heading"><h2 id="machine-heading">X68000 実行画面</h2></div>
-      <div id="machine-status" role="status">実行アダプタは次の段で接続します</div>
-      <div class="screen-placeholder" aria-label="実行画面プレースホルダー">
-        <span>X68000</span>
-        <small>px68k 接続予定</small>
-      </div>
+      <div id="machine-status" role="status">未実行</div>
+      <div class="screen-shell"><canvas id="x68k-screen" width="768" height="512" aria-label="X68000画面"></canvas></div>
     </section>
   </main>
   <footer class="app-footer">
     <div class="status-left"><span id="save-state">未保存の変更なし</span><span id="current-path"></span></div>
     <div class="status-links">
       <a href="https://www.urara-works.jp/" target="_blank" rel="noopener noreferrer">© URARA-works</a> ･
-      <a href="./vendor/codemirror/LICENSE.CodeMirror" target="_blank" rel="noopener noreferrer">CodeMirror (MIT)</a>
+      <a id="license-gpl" href="../COPYING" target="_blank" rel="noopener noreferrer">X68kDev / px68k (GPLv2)</a> ･
+      <a id="license-codemirror" href="./vendor/codemirror/LICENSE.CodeMirror" target="_blank" rel="noopener noreferrer">CodeMirror (MIT)</a> ･
+      <a id="license-ipl" href="./system/IPLROM-LICENSE.txt" target="_blank" rel="noopener noreferrer">IPL ROM 許諾</a> ･
+      <a id="license-cgrom" href="./system/CGROM-NOTICE.md" target="_blank" rel="noopener noreferrer">文字 ROM 帰属</a>
     </div>
   </footer>
   <script type="module" src="./workbench.js"></script>

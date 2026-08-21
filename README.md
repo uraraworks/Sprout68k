@@ -3,6 +3,26 @@
 X68000 用の最小ブートセクタ(Human68k 不使用・生の 2HD イメージ)を自作し、
 px68k(WebX68k のコア)で実際に起動することを Node から直接コアを回して実測した。
 
+## ライセンスと由来
+
+X68kDev のソフトウェア全体は GNU GPL version 2 で公開する。ライセンス本文は
+[`COPYING`](COPYING)を参照。IDE に同梱する px68k-libretro コアとホスト層も GPLv2
+である。コアのビルド元は URARA-works の
+[`px68k-libretro` emscripten ブランチ](https://github.com/uraraworks/px68k-libretro/tree/emscripten)、
+上流は [`libretro/px68k-libretro`](https://github.com/libretro/px68k-libretro)であり、
+対応するソースはこれらのリポジトリから入手できる。同梱バイナリとホスト層は
+[`WebX68k`](https://github.com/uraraworks/WebX68k)から取り込んだ。コアの再ビルド
+手順は同リポジトリの
+[`scripts/build-core.sh`](https://github.com/uraraworks/WebX68k/blob/main/scripts/build-core.sh)にある。
+
+IDE シェルは同じ作者 URARA-works の MIT ライセンス作品
+[`WorkbenchNP2`](https://github.com/uraraworks/WorkbenchNP2)を基にしている。
+CodeMirror も MIT ライセンスで、本文は
+[`ide/vendor/codemirror/LICENSE.CodeMirror`](ide/vendor/codemirror/LICENSE.CodeMirror)にある。
+なお、同梱 IPL ROM と文字 ROM データにはそれぞれ別の許諾・帰属が適用されるため、
+[`IPLROM-LICENSE.txt`](ide/system/IPLROM-LICENSE.txt)と
+[`CGROM-NOTICE.md`](ide/system/CGROM-NOTICE.md)を参照。
+
 ## 実機互換の要件追加(2026-08-19)
 
 **実機(当時の X68000)で動くこと**を要件に加え、非互換2点(1MB機でのスタック

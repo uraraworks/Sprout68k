@@ -8,6 +8,10 @@ import { IndexedDbProjectFS, validatePath } from './project-fs.mjs';
 import { SAMPLE_FILES, loadSample } from './sample-manifest.mjs';
 import { basename, sourceLanguage } from './source-view.mjs';
 import { createX68kAdapter } from './x68k-adapter.mjs';
+import gplLicenseUrl from '../COPYING?url';
+import codeMirrorLicenseUrl from './vendor/codemirror/LICENSE.CodeMirror?url';
+import iplLicenseUrl from './system/IPLROM-LICENSE.txt?url';
+import cgromNoticeUrl from './system/CGROM-NOTICE.md?url';
 
 const nodes = {
   fileTree: document.querySelector('#file-tree'),
@@ -27,9 +31,16 @@ const nodes = {
   buildStatus: document.querySelector('#build-status'),
   buildOutput: document.querySelector('#build-output'),
   machineStatus: document.querySelector('#machine-status'),
+  screen: document.querySelector('#x68k-screen'),
 };
 
 const LAST_PATH_KEY = 'x68kdev:last-path';
+
+// 開発サーバーだけでなく production build にもライセンス本文を資産として含める。
+document.querySelector('#license-gpl').href = gplLicenseUrl;
+document.querySelector('#license-codemirror').href = codeMirrorLicenseUrl;
+document.querySelector('#license-ipl').href = iplLicenseUrl;
+document.querySelector('#license-cgrom').href = cgromNoticeUrl;
 const projectFS = new IndexedDbProjectFS({ databaseName: 'X68kDevProjectFS' });
 let tabs = [];
 let activeTabId;
@@ -43,7 +54,7 @@ function reportMachine(message, error = false) {
   nodes.machineStatus.classList.toggle('error', error);
 }
 
-const adapter = createX68kAdapter({ report: reportMachine });
+const adapter = createX68kAdapter({ report: reportMachine, canvas: nodes.screen });
 
 const darkHighlightStyle = HighlightStyle.define([
   { tag: [tags.comment, tags.lineComment, tags.blockComment], color: '#6a9955', fontStyle: 'italic' },
@@ -355,8 +366,9 @@ async function runCurrent() {
   if (!tab) throw new Error('実行対象がありません');
   nodes.run.disabled = true;
   try {
-    await saveFile();
-    return await adapter.run({ path: tab.path, text: tab.text });
+    const built = tab.build?.ok ? tab.build : await buildCurrent();
+    if (!built?.ok) return built;
+    return await adapter.run({ xdf: built.xdf, filename: built.filename });
   } finally {
     nodes.run.disabled = false;
   }

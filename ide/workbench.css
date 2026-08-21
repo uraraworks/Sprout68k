@@ -71,8 +71,8 @@ button:focus-visible, input:focus-visible { outline: 1px solid var(--vsc-focus);
 #build-status.error, #machine-status.error { color: #f14c4c; }
 #build-output { min-height: 54px; max-height: 150px; margin: 0; padding: 8px 12px; overflow: auto; border-top: 1px solid var(--vsc-border); color: #f1b7b7; background: #151515; font: 11px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre-wrap; }
 #build-output:empty::before { color: var(--vsc-fg-dim); content: "コンパイル診断はここに表示されます"; }
-.screen-placeholder { min-height: 360px; margin: 12px; display: grid; place-content: center; gap: 8px; border: 1px dashed #475569; border-radius: 5px; color: #64748b; background: #020617; text-align: center; }
-.screen-placeholder span { color: #94a3b8; font: 700 22px ui-monospace, monospace; letter-spacing: .12em; }
+.screen-shell { min-height: 360px; margin: 12px; display: grid; place-items: center; overflow: hidden; border: 1px solid #475569; border-radius: 5px; background: #000; }
+#x68k-screen { display: block; width: 100%; height: auto; max-height: 66vh; object-fit: contain; image-rendering: pixelated; }
 .app-footer { min-height: 29px; display: flex; justify-content: space-between; gap: 12px; padding: 6px 16px; border-top: 1px solid var(--vsc-border); background: var(--vsc-chrome-bg); color: var(--vsc-fg-dim); font-size: 11px; }
 .status-left { min-width: 0; display: flex; gap: 10px; }
 #save-state.dirty { color: var(--vsc-warning); }
@@ -84,6 +84,6 @@ button:focus-visible, input:focus-visible { outline: 1px solid var(--vsc-focus);
   .workspace-grid { grid-template-columns: 1fr; }
   .sidebar { max-height: 240px; }
   #editor { height: 430px; }
-  .screen-placeholder { min-height: 240px; }
+  .screen-shell { min-height: 240px; }
   .app-footer { flex-wrap: wrap; }
 }

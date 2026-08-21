@@ -1,14 +1,16 @@
 import { loadBrowserToolchain } from '../web/browser-toolchain.ts';
 import { resolvePath } from '../tools/driver/hostfs.mts';
+import { X68kRuntime } from './px68k-runtime.ts';
 
 /**
  * X68kDev の UI とツールチェーン／エミュレータを隔離する差し替え境界。
- * build() は共有ブラウザツールチェーンへ接続済み。次段では run() に、保持した
- * XDF と px68k の接続を実装する。UI は個別ツールやエミュレータ状態を持たない。
+ * build() は共有ブラウザツールチェーン、run() は同梱 px68k に接続する。
+ * UI は個別ツールやエミュレータの内部状態を持たない。
  */
-export function createX68kAdapter({ report }) {
+export function createX68kAdapter({ report, canvas }) {
   let toolchainPromise;
   let diagnostics = [];
+  const runtime = new X68kRuntime(canvas, report);
 
   const ensureToolchain = () => {
     if (!toolchainPromise) {
@@ -46,10 +48,6 @@ export function createX68kAdapter({ report }) {
       }
     },
 
-    run: async (_source) => {
-      const message = '実行アダプタは未実装です（次の段で接続します）';
-      report(message, false);
-      return { ok: false, unavailable: true, message };
-    },
+    run: async ({ xdf }) => runtime.runXdf(xdf),
   };
 }
