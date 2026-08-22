@@ -1,0 +1,1308 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#111827">
+  <link rel="icon" href="./icons/sprout68k.svg" type="image/svg+xml">
+  <title>Sprout68k 関数リファレンス</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --header: #111827; --background: #1f1f1f; --panel: #181818; --border: #334155;
+      --text: #d1d5db; --dim: #9ca3af; --accent: #38bdf8; --note: #172033; --code: #273244;
+    }
+    * { box-sizing: border-box; }
+    body { min-height: 100vh; margin: 0; display: flex; flex-direction: column; color: var(--text); background: var(--background); font: 14px/1.8 -apple-system, BlinkMacSystemFont, "Segoe UI", "Hiragino Sans", "Yu Gothic", sans-serif; }
+    .help-header { position: sticky; top: 0; z-index: 2; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 16px; background: var(--header); border-bottom: 1px solid var(--border); }
+    .help-title { display: flex; align-items: center; gap: 9px; }
+    .help-title img { width: 28px; height: 28px; }
+    .help-title h1 { margin: 0; color: #f8fafc; font-size: 16px; }
+    .help-actions { display: flex; align-items: center; gap: 8px; }
+    .help-actions a { padding: 5px 10px; border: 1px solid #475569; border-radius: 4px; color: var(--text); background: #253044; font: inherit; font-size: 12px; text-decoration: none; }
+    main { flex: 1; width: min(900px, 100%); margin: 0 auto; padding: 20px 16px 60px; }
+    section { margin: 0 0 34px; }
+    h2 { margin: 0 0 12px; padding-bottom: 6px; border-bottom: 2px solid var(--border); color: #f8fafc; font-size: 18px; }
+    h3 { margin: 20px 0 6px; color: #f8fafc; font-size: 15px; }
+    p, ul, ol { margin: 8px 0; }
+    ul, ol { padding-left: 24px; }
+    a { color: #7dd3fc; }
+    code { padding: 1px 5px; border: 1px solid #475569; border-radius: 4px; background: var(--code); font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; }
+    pre { margin: 10px 0; padding: 12px 14px; overflow-x: auto; border: 1px solid var(--border); border-radius: 6px; background: #16202e; font: 12px/1.65 ui-monospace, SFMono-Regular, Menlo, monospace; }
+    pre.signature { margin: 6px 0 10px; padding: 8px 12px; border-left: 4px solid var(--accent); background: #101a26; color: #e2e8f0; }
+    .note { margin: 12px 0; padding: 10px 14px; border-left: 4px solid var(--accent); background: var(--note); }
+    table { width: 100%; margin: 10px 0; border-collapse: collapse; font-size: 13px; }
+    th, td { padding: 6px 10px; border: 1px solid var(--border); text-align: left; vertical-align: top; }
+    th { background: #202b3c; color: #f8fafc; }
+    tr.group td { background: #1a2330; color: var(--dim); font-weight: bold; }
+    .toc { padding: 12px 16px; border: 1px solid var(--border); border-radius: 6px; background: var(--panel); }
+    .toc ul { margin: 4px 0; padding-left: 20px; }
+    .entry { margin: 0 0 26px; padding: 14px 16px 4px; border: 1px solid var(--border); border-radius: 6px; background: var(--panel); }
+    .entry h3 { margin: 0; display: flex; flex-wrap: wrap; align-items: baseline; gap: 10px; }
+    .entry h3 code { font-size: 14px; }
+    .entry-summary { color: var(--dim); font-size: 13px; font-weight: normal; }
+    .params { margin: 10px 0; padding: 0; }
+    .params dt { margin-top: 6px; }
+    .params dd { margin: 2px 0 0 20px; }
+    .label { display: inline-block; margin-right: 8px; padding: 1px 7px; border-radius: 3px; background: #253044; color: var(--dim); font-size: 11px; }
+    .example { margin: 12px 0 4px; }
+    .example-head { color: var(--dim); font-size: 12px; }
+    .example-caption { margin: 4px 0 0; color: var(--dim); font-size: 13px; }
+    .pitfalls { margin: 10px 0; padding-left: 20px; list-style: none; }
+    .pitfalls li { position: relative; margin: 4px 0; padding-left: 4px; }
+    .pitfalls li::before { position: absolute; left: -18px; content: "\26A0"; color: #fbbf24; }
+    .walk { padding-left: 20px; }
+    .walk li { margin: 6px 0; }
+    .cat-lead { color: var(--dim); }
+    .help-footer { padding: 9px 16px; border-top: 1px solid var(--border); background: var(--panel); text-align: center; font-size: 12px; }
+    @media (max-width: 520px) { .help-header { align-items: flex-start; } .help-actions { flex-direction: column; align-items: stretch; } }
+  </style>
+</head>
+<body>
+  <header class="help-header">
+    <div class="help-title">
+      <img src="./icons/sprout68k.svg" alt="">
+      <h1>Sprout68k 関数リファレンス</h1>
+    </div>
+    <div class="help-actions">
+      <a href="./help.html">使い方</a>
+      <a class="open-app" href="./index.html">アプリを開く</a>
+    </div>
+  </header>
+
+  <main>
+<nav class="toc">
+  <strong>もくじ</strong>
+  <ul>
+    <li><a href="#about">この本の使い方</a></li>
+    <li><a href="#index-by-goal">やりたいことから引く</a></li>
+    <li><a href="#first-program">いちばん短いプログラム</a></li>
+    <li><a href="#drawing">絵を描く — 3 つの決まりごと</a></li>
+    <li><a href="#game-loop">ゲームの形</a></li>
+    <li><a href="#cat-screen">画面を開く・絵を出す</a></li>
+    <li><a href="#cat-draw">図形を描く</a></li>
+    <li><a href="#cat-color">色を作る</a></li>
+    <li><a href="#cat-key">キーボードを読む</a></li>
+    <li><a href="#cat-text">文字を出す</a></li>
+    <li><a href="#cat-math">数と乱数</a></li>
+    <li><a href="#cat-mem">メモリと文字列</a></li>
+    <li><a href="#cat-raw">生の層（上級・X68000 を直接触る）</a></li>
+  </ul>
+</nav>
+
+<section id="about">
+  <h2>この本の使い方</h2>
+  <p>Sprout68k で書けるプログラムに出てくる関数を、目的から引けるようにまとめたものです。上から順に読むと一通り書けるようになり、後半の「関数図鑑」はコードを書きながら引くための一覧になっています。</p>
+  <p>できることは、いまのところこの3つです。</p>
+  <ul>
+    <li><strong>絵を描く</strong> — 512×512 ドット・65536 色の画面に、点・線・四角・円を描けます。</li>
+    <li><strong>キーを読む</strong> — カーソルキー、スペース、数字、アルファベットが読めます。</li>
+    <li><strong>文字を出す</strong> — <code>printf</code> で、絵の上に重ねて文字を出せます。</li>
+  </ul>
+  <p class="note">音を鳴らす関数はまだありません。マウスやジョイスティックも未対応です。増えたらこのページに追加します。</p>
+</section>
+
+<section id="index-by-goal">
+  <h2>やりたいことから引く</h2>
+  <table class="goal-table">
+    <thead><tr><th>やりたいこと</th><th>使う関数</th></tr></thead>
+    <tbody>
+      <tr><td>絵を描く準備をする</td><td><a href="#x68_screen_open"><code>x68_screen_open</code></a></td></tr>
+      <tr><td>描いた絵を画面に出す</td><td><a href="#x68_screen_flip"><code>x68_screen_flip</code></a></td></tr>
+      <tr><td>画面を消す・背景色を塗る</td><td><a href="#x68_cls"><code>x68_cls</code></a></td></tr>
+      <tr><td>点を打つ／その色を読む</td><td><a href="#x68_pset"><code>x68_pset</code></a> ／ <a href="#x68_pget"><code>x68_pget</code></a></td></tr>
+      <tr><td>線を引く</td><td><a href="#x68_line"><code>x68_line</code></a></td></tr>
+      <tr><td>四角を描く（枠・塗り）</td><td><a href="#x68_box"><code>x68_box</code></a> ／ <a href="#x68_box_fill"><code>x68_box_fill</code></a></td></tr>
+      <tr><td>円を描く</td><td><a href="#x68_circle"><code>x68_circle</code></a></td></tr>
+      <tr><td>色を作る</td><td><a href="#x68_rgb"><code>x68_rgb</code></a></td></tr>
+      <tr><td>キーが押されているか調べる</td><td><a href="#x68_key_down"><code>x68_key_down</code></a> ＋ <a href="#X68_KEY_LEFT"><code>X68_KEY_*</code></a></td></tr>
+      <tr><td>点数やメッセージを表示する</td><td><a href="#printf"><code>printf</code></a> ／ <a href="#puts"><code>puts</code></a></td></tr>
+      <tr><td>文字を出す位置を決める</td><td><a href="#x68_locate"><code>x68_locate</code></a></td></tr>
+      <tr><td>ランダムな値がほしい</td><td><a href="#x68_rand_int"><code>x68_rand_int</code></a>（＋<a href="#srand"><code>srand</code></a>）</td></tr>
+      <tr><td>距離を測る（符号を消す）</td><td><a href="#abs"><code>abs</code></a></td></tr>
+      <tr><td>配列を初期化する・複製する</td><td><a href="#memset"><code>memset</code></a> ／ <a href="#memcpy"><code>memcpy</code></a></td></tr>
+      <tr><td>速さを一定に揃える</td><td><a href="#x68_screen_flip"><code>x68_screen_flip</code></a>（絵を描かないなら <a href="#x68_vsync_wait"><code>x68_vsync_wait</code></a>）</td></tr>
+      <tr><td>ディスクからデータを読む</td><td><a href="#x68_iocs_disk_read"><code>x68_iocs_disk_read</code></a>（上級）</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section id="first-program">
+  <h2>いちばん短いプログラム</h2>
+  <p>まずはこれです。エディタに貼り付けて<strong data-ui-label>実行</strong>を押すと、X68000 の画面に文字が出ます。</p>
+  <pre class="listing" data-full="true">#include "x68.h"
+
+void main(void) {
+  printf("HELLO X68000");
+}</pre>
+  <ul class="walk">
+    <li><code>#include "x68.h"</code> — この 1 行で、このページに載っている関数がすべて使えるようになります。プログラムの先頭に必ず書きます。</li>
+    <li><code>void main(void)</code> — プログラムはここから始まります。この環境では戻り値を返す必要がないので <code>void</code> です。</li>
+    <li><code>printf(...)</code> — 文字を表示します。</li>
+  </ul>
+  <p class="note"><code>main</code> から抜けると、起動時のプログラムが停止して待ち続けます。表示するだけのプログラムに <code>for (;;)</code> を書く必要はありません。</p>
+</section>
+
+<section id="drawing">
+  <h2>絵を描く — 3 つの決まりごと</h2>
+  <p>絵を出すには、かならず次の 3 段が要ります。</p>
+  <ol>
+    <li><a href="#x68_screen_open"><code>x68_screen_open()</code></a> で画面を開く（最初に 1 回だけ）</li>
+    <li>描画関数で描く</li>
+    <li><a href="#x68_screen_flip"><code>x68_screen_flip()</code></a> で画面に出す</li>
+  </ol>
+  <p>描画関数が描いているのは画面そのものではなく、メモリの上の「下書き用紙」です。<code>x68_screen_flip()</code> を呼んだときに、そこから画面へまとめて送られます。この一手間があるおかげで、描いている途中の絵が表示されてチラつくことがありません。<strong>絵が出ないときは、まずこの 3 段のどれかが抜けていないかを確かめてください。</strong></p>
+  <pre class="listing" data-full="true">#include "x68.h"
+
+void main(void) {
+  int black = x68_rgb(0, 0, 0);
+
+  x68_screen_open();
+  x68_cls(black);
+  x68_box_fill(160, 160, 192, 192, x68_rgb(255, 128, 0));
+  x68_circle(256, 256, 120, x68_rgb(255, 255, 255));
+  x68_line(0, 0, 511, 511, x68_rgb(0, 255, 255));
+  x68_screen_flip();
+}</pre>
+  <h3>座標</h3>
+  <p>左上が (0, 0)、右下が (511, 511) です。y は下へ行くほど大きくなります（算数のグラフとは上下が逆です）。画面からはみ出した部分は自動的に切り取られるので、はみ出しを自分で計算する必要はありません。</p>
+  <h3>色</h3>
+  <p>色は <a href="#x68_rgb"><code>x68_rgb(赤, 緑, 青)</code></a> で作ります。それぞれ 0〜255 で、0 が暗く 255 が明るい値です。よく使う色は変数に入れて名前を付けておくと、あとで読み返したときに分かりやすくなります。</p>
+  <pre class="listing">int black = x68_rgb(0, 0, 0);
+int white = x68_rgb(255, 255, 255);
+int red   = x68_rgb(255, 0, 0);
+
+x68_screen_open();
+x68_cls(black);
+x68_box_fill(180, 180, 152, 152, red);
+x68_box(180, 180, 152, 152, white);
+x68_screen_flip();</pre>
+</section>
+
+<section id="game-loop">
+  <h2>ゲームの形</h2>
+  <p>動くものを作るときは、次の 1 周をずっと繰り返します。この形はどのゲームでも変わりません。</p>
+  <pre class="listing">x68_screen_open();
+for (;;) {
+  /* 1. 画面を消す   */
+  /* 2. キーを読む   */
+  /* 3. 位置を計算する */
+  /* 4. 描く         */
+  /* 5. 画面に出す   */
+}</pre>
+  <p>「5. 画面に出す」の <code>x68_screen_flip()</code> が画面の書き換えを待つので、この 1 周は毎秒およそ 55〜60 回になります。速さを自分で調整する必要はありません。</p>
+  <p>下は、この形をそのまま使った短いゲームです。落ちてくる四角を、左右に動く棒で受け止めます。</p>
+  <pre class="listing" data-full="true">#include "x68.h"
+
+enum {
+  kPlayerW = 48,
+  kPlayerH = 12,
+  kPlayerY = 460,
+  kItemSize = 16,
+  kSpeed = 6,
+};
+
+static int player_x = 232;
+static int item_x = 100;
+static int item_y = 0;
+static int score = 0;
+
+/* 1 キーを読んで棒を動かす */
+static void ReadInput(void) {
+  if (x68_key_down(X68_KEY_LEFT)) player_x -= kSpeed;
+  if (x68_key_down(X68_KEY_RIGHT)) player_x += kSpeed;
+  if (player_x &lt; 0) player_x = 0;
+  if (player_x + kPlayerW &gt; X68_SCREEN_W) player_x = X68_SCREEN_W - kPlayerW;
+}
+
+/* 2 四角を落として、受け止めたかどうかを見る */
+static void UpdateItem(void) {
+  int caught;
+
+  item_y += 4;
+  caught = (item_y + kItemSize &gt;= kPlayerY) &amp;&amp;
+           (item_x + kItemSize &gt; player_x) &amp;&amp;
+           (item_x &lt; player_x + kPlayerW);
+  if (caught) score++;
+  if (caught || item_y &gt; X68_SCREEN_H) {
+    item_y = 0;
+    item_x = x68_rand_int(X68_SCREEN_W - kItemSize);
+  }
+}
+
+/* 3 描く */
+static void Draw(void) {
+  x68_cls(x68_rgb(0, 0, 48));
+  x68_box_fill(player_x, kPlayerY, kPlayerW, kPlayerH, x68_rgb(0, 255, 255));
+  x68_box_fill(item_x, item_y, kItemSize, kItemSize, x68_rgb(255, 224, 0));
+  x68_locate(0, 0);
+  printf("SCORE %d  ", score);
+}
+
+void main(void) {
+  x68_screen_open();
+  for (;;) {
+    ReadInput();
+    UpdateItem();
+    Draw();
+    x68_screen_flip();
+  }
+}</pre>
+  <ul class="walk">
+    <li><strong>1 キーを読んで棒を動かす</strong> — <code>x68_key_down()</code> は押されている間ずっと真になるので、押しっぱなしで動き続けます。動かしたあとで画面の端をはみ出していないか直しています。</li>
+    <li><strong>2 四角を落として、受け止めたかどうかを見る</strong> — 当たり判定は「4 辺が重なっているか」を <code>&amp;&amp;</code> で並べるだけです。受け止めたときと、下まで落ちきったときの両方で、上に戻して横位置を引き直しています。</li>
+    <li><strong>3 描く</strong> — <code>x68_cls()</code> で前の位置を消してから、棒・四角・点数の順に描いています。<code>printf</code> の末尾に空白を入れているのは、点数の桁が減ったときに前の数字が残らないようにするためです。</li>
+    <li><strong><code>main</code></strong> — 読む・計算する・描く・出す、を並べただけです。処理を小さな関数に分けておくと、あとから中身を差し替えやすくなります。</li>
+  </ul>
+  <p class="note">「押した瞬間だけ 1 回」にしたいときは、前のフレームの状態を変数に覚えておいて比べます。書き方は <a href="#X68_KEY_LEFT"><code>X68_KEY_*</code></a> の例にあります。</p>
+</section>
+
+<section id="cat-screen">
+  <h2>画面を開く・絵を出す</h2>
+  <p class="cat-lead">絵を描くには、まず画面を開きます。描画関数が描くのは画面そのものではなく「裏バッファ」という下書き用紙で、x68_screen_flip() を呼んだときに初めて画面へ出ます。この一手間があるおかげで、絵が描きかけのまま表示されてチラつくことがありません。</p>
+<article class="entry" id="x68_screen_open">
+  <h3><code>x68_screen_open</code><span class="entry-summary">グラフィック画面を使えるようにする</span></h3>
+  <pre class="signature">void x68_screen_open(void)</pre>
+  <p>512×512 ドット・65536 色のグラフィック画面に切り替え、絵を描くための裏バッファ（メインメモリ上の下書き用紙、512KB）を用意します。</p>
+  <p>プログラムの最初に 1 回だけ呼びます。以降の描画関数はすべてこの裏バッファに描きます。</p>
+  <div class="example">
+    <div class="example-head">例</div>
+    <pre class="listing">#include &quot;x68.h&quot;
+
+void main(void) {
+  x68_screen_open();
+  x68_cls(x68_rgb(0, 0, 0));
+  x68_box_fill(200, 200, 100, 100, x68_rgb(255, 255, 0));
+  x68_screen_flip();
+}</pre>
+    <p class="example-caption">画面を開いて、黄色い四角を 1 つ描くだけの最小の例です。<a href="#x68_screen_flip"><code>x68_screen_flip()</code></a> を呼んで初めて画面に出ます。</p>
+  </div>
+  <ul class="pitfalls">
+    <li>これを呼ぶ前に <a href="#x68_pset"><code>x68_pset()</code></a> などを呼んでも、何も起きません（エラーにはならないので、絵が出ないときは最初にこれを疑ってください）。</li>
+    <li>呼んだ直後の画面の中身は決まっていません。まず <a href="#x68_cls"><code>x68_cls()</code></a> で背景色を塗ってから描き始めます。</li>
+  </ul>
+  <p class="seealso"><span class="label">関連</span><a href="#x68_cls"><code>x68_cls</code></a>・<a href="#x68_screen_flip"><code>x68_screen_flip</code></a></p>
+</article>
+
+<article class="entry" id="x68_screen_flip">
+  <h3><code>x68_screen_flip</code><span class="entry-summary">描いた絵を画面に出す</span></h3>
+  <pre class="signature">void x68_screen_flip(void)</pre>
+  <p>裏バッファに描いた内容を、実際の画面へ送ります。1 フレームに 1 回呼びます。</p>
+  <p>送る前に垂直同期（画面の書き換えが一巡する瞬間）を待つので、絵が途中でちぎれて見えることがありません。ゲームの速さがこの待ち時間で決まります（毎秒およそ 55〜60 回）。</p>
+  <p>送るのは画面全部ではなく「前のフレームと今のフレームで描いた範囲」だけです。動く物が少ないほど速くなります。</p>
+  <div class="example">
+    <div class="example-head">例</div>
+    <pre class="listing">#include &quot;x68.h&quot;
+
+void main(void) {
+  int x = 0;
+
+  x68_screen_open();
+  for (;;) {
+    x68_cls(x68_rgb(0, 0, 32));
+    x68_box_fill(x, 240, 32, 32, x68_rgb(255, 128, 0));
+    x68_screen_flip();
+    x = (x + 1) % X68_SCREEN_W;
+  }
+}</pre>
+    <p class="example-caption">四角を 1 ドットずつ右へ動かします。<a href="#x68_cls"><code>x68_cls()</code></a> で前の位置を消し、描いて、flip で出す——これがゲームの基本の 1 周です。</p>
+  </div>
+  <ul class="pitfalls">
+    <li>呼び忘れると、いくら描いても画面は変わりません。</li>
+    <li>1 フレームに 2 回以上呼ぶと、そのたびに垂直同期を待つので単純に遅くなります。</li>
+  </ul>
+  <p class="seealso"><span class="label">関連</span><a href="#x68_screen_open"><code>x68_screen_open</code></a>・<a href="#x68_cls"><code>x68_cls</code></a>・<a href="#x68_frame_begin"><code>x68_frame_begin</code></a></p>
+</article>
+
+<article class="entry" id="x68_cls">
+  <h3><code>x68_cls</code><span class="entry-summary">前のフレームに描いた絵を消す</span></h3>
+  <pre class="signature">void x68_cls(int color)</pre>
+  <p>名前は clear screen（画面消去）ですが、毎回画面全部を塗り直すわけではありません。前のフレームで描いた場所だけを背景色で塗り戻します。動く物が少ないゲームほど速くなる仕組みです。</p>
+  <p>見た目は「背景色で画面を消した」のと同じになります。全画面を塗り直すのは、最初の 1 回と、前回と違う色を渡したときだけです。</p>
+  <dl class="params">
+    <dt><code>color</code></dt><dd>背景の色。<a href="#x68_rgb"><code>x68_rgb()</code></a> で作った値を渡します。</dd>
+  </dl>
+  <div class="example">
+    <div class="example-head">例</div>
+    <pre class="listing">#include &quot;x68.h&quot;
+
+void main(void) {
+  x68_screen_open();
+  for (;;) {
+    x68_cls(x68_rgb(0, 0, 64));
+    x68_pset(x68_rand_int(X68_SCREEN_W), x68_rand_int(X68_SCREEN_H), x68_rgb(255, 255, 255));
+    x68_screen_flip();
+  }
+}</pre>
+    <p class="example-caption">毎フレーム、濃い青で消してから点を打ち直しています。</p>
+  </div>
+  <ul class="pitfalls">
+    <li>引数は「消す量」ではなく背景の色です。</li>
+    <li>毎フレーム違う色を渡すと、そのたびに全画面を塗り直すことになって遅くなります。背景色は固定にしておくのが無難です。</li>
+  </ul>
+  <p class="seealso"><span class="label">関連</span><a href="#x68_frame_begin"><code>x68_frame_begin</code></a>・<a href="#x68_rgb"><code>x68_rgb</code></a></p>
+</article>
+
+<article class="entry" id="x68_frame_begin">
+  <h3><code>x68_frame_begin</code><span class="entry-summary">画面は消さずに、描画の記録だけ新しくする</span></h3>
+  <pre class="signature">void x68_frame_begin(void)</pre>
+  <p><a href="#x68_cls"><code>x68_cls()</code></a> の代わりに呼びます。裏バッファの絵はそのまま残し、「今のフレームでどこを描いたか」の記録だけを空にします。</p>
+  <p>背景の絵（地面や星空など）を一度描いたら消したくない、動く物だけ描き替えたい、という場合に使います。前の位置を消す作業は自分で行います（そこに背景色の四角を描くなど）。</p>
+  <div class="example">
+    <div class="example-head">例</div>
+    <pre class="listing">#include &quot;x68.h&quot;
+
+void main(void) {
+  int x = 0;
+  int i;
+
+  x68_screen_open();
+  x68_cls(x68_rgb(0, 0, 0));
+  for (i = 0; i &lt; 200; i++) {
+    x68_pset(x68_rand_int(X68_SCREEN_W), x68_rand_int(X68_SCREEN_H), x68_rgb(255, 255, 255));
+  }
+  for (;;) {
+    x68_frame_begin();
+    x68_box_fill(x, 240, 32, 32, x68_rgb(0, 0, 0));
+    x = (x + 1) % X68_SCREEN_W;
+    x68_box_fill(x, 240, 32, 32, x68_rgb(0, 255, 128));
+    x68_screen_flip();
+  }
+}</pre>
+    <p class="example-caption">星空は最初に 1 回だけ描き、以降は消しません。四角の前の位置だけを自分で黒く塗って消しています。</p>
+  </div>
+  <ul class="pitfalls">
+    <li>消す処理を自分で書かないと、動いた跡がそのまま残り続けます（それを狙って線を引く使い方もできます）。</li>
+  </ul>
+  <p class="seealso"><span class="label">関連</span><a href="#x68_cls"><code>x68_cls</code></a>・<a href="#x68_screen_flip"><code>x68_screen_flip</code></a></p>
+</article>
+</section>
+
+<section id="cat-draw">
+  <h2>図形を描く</h2>
+  <p class="cat-lead">座標は左上が (0, 0)、右下が (511, 511) です。画面からはみ出した部分は自動的に切り取られるので、はみ出しを気にせず書けます（プログラムが落ちることはありません）。</p>
+<article class="entry" id="x68_pset">
+  <h3><code>x68_pset</code><span class="entry-summary">点を 1 つ打つ</span></h3>
+  <pre class="signature">void x68_pset(int x, int y, int color)</pre>
+  <p>指定した座標に 1 ドットだけ色を置きます。いちばん基本の描画です。</p>
+  <dl class="params">
+    <dt><code>x</code></dt><dd>横位置。0 が左端、511 が右端。</dd>
+    <dt><code>y</code></dt><dd>縦位置。0 が上端、511 が下端。</dd>
+    <dt><code>color</code></dt><dd>点の色。<a href="#x68_rgb"><code>x68_rgb()</code></a> で作った値。</dd>
+  </dl>
+  <div class="example">
+    <div class="example-head">例</div>
+    <pre class="listing">#include &quot;x68.h&quot;
+
+void main(void) {
+  int i;
+
+  x68_screen_open();
+  x68_cls(x68_rgb(0, 0, 0));
+  for (i = 0; i &lt; 512; i++) {
+    x68_pset(i, i, x68_rgb(255, 255, 255));
+  }
+  x68_screen_flip();
+}</pre>
+    <p class="example-caption">斜めの線を点で描いています。画面外に出た分は自動的に無視されます。</p>
+  </div>
+  <ul class="pitfalls">
+    <li>画面の外の座標を渡しても何も起きません（落ちません）。</li>
+    <li>点を何万個も打つのは遅いので、まとまった面は <a href="#x68_box_fill"><code>x68_box_fill()</code></a> を使ってください。</li>
+  </ul>
+  <p class="seealso"><span class="label">関連</span><a href="#x68_pget"><code>x68_pget</code></a>・<a href="#x68_line"><code>x68_line</code></a></p>
+</article>
+
+<article class="entry" id="x68_pget">
+  <h3><code>x68_pget</code><span class="entry-summary">その点に今ある色を読む</span></h3>
+  <pre class="signature">int x68_pget(int x, int y)</pre>
+  <p>指定した座標の色を読みます。読むのは裏バッファなので、まだ <a href="#x68_screen_flip"><code>x68_screen_flip()</code></a> していない、今のフレームで描いたばかりの色も見えます。</p>
+  <p>「そこに壁があるか」を色で判定する、といった当たり判定に使えます。</p>
+  <dl class="params">
+    <dt><code>x</code></dt><dd>横位置。</dd>
+    <dt><code>y</code></dt><dd>縦位置。</dd>
+  </dl>
+  <p class="returns"><span class="label">返り値</span>その点の色。画面の外を指定した場合は 0。</p>
+  <div class="example">
+    <div class="example-head">例</div>
+    <pre class="listing">#include &quot;x68.h&quot;
+
+void main(void) {
+  int wall = x68_rgb(255, 0, 0);
+
+  x68_screen_open();
+  x68_cls(x68_rgb(0, 0, 0));
+  x68_box_fill(240, 0, 32, 512, wall);
+  if (x68_pget(250, 100) == wall) {
+    printf(&quot;HIT WALL&quot;);
+  }
+  x68_screen_flip();
+}</pre>
+    <p class="example-caption">画面の中央に壁を描き、その色と読み取った色が同じかどうかで当たりを判定しています。</p>
+  </div>
+  <ul class="pitfalls">
+    <li>0 は「黒」でもあり「画面の外」でもあります。端をまたぐ判定では、座標のほうを先に確かめてください。</li>
+  </ul>
+  <p class="seealso"><span class="label">関連</span><a href="#x68_pset"><code>x68_pset</code></a></p>
+</article>
+
+<article class="entry" id="x68_line">
+  <h3><code>x68_line</code><span class="entry-summary">2 点を結ぶ直線を引く</span></h3>
+  <pre class="signature">void x68_line(int x1, int y1, int x2, int y2, int color)</pre>
+  <p>(x1, y1) から (x2, y2) まで、太さ 1 ドットの線を引きます。</p>
+  <dl class="params">
+    <dt><code>x1</code></dt><dd>始点の横位置。</dd>
+    <dt><code>y1</code></dt><dd>始点の縦位置。</dd>
+    <dt><code>x2</code></dt><dd>終点の横位置。</dd>
+    <dt><code>y2</code></dt><dd>終点の縦位置。</dd>
+    <dt><code>color</code></dt><dd>線の色。</dd>
+  </dl>
+  <div class="example">
+    <div class="example-head">例</div>
+    <pre class="listing">#include &quot;x68.h&quot;
+
+void main(void) {
+  int i;
+
+  x68_screen_open();
+  x68_cls(x68_rgb(0, 0, 0));
+  for (i = 0; i &lt; 512; i += 32) {
+    x68_line(256, 256, i, 0, x68_rgb(0, 255, 255));
+  }
+  x68_screen_flip();
+}</pre>
+    <p class="example-caption">画面の中心から放射状に線を引いています。両端が画面の外でも落ちません。</p>
+  </div>
+  <ul class="pitfalls">
+    <li>太い線は引けません。太くしたいときは少しずらして何本か引きます。</li>
+  </ul>
+  <p class="seealso"><span class="label">関連</span><a href="#x68_pset"><code>x68_pset</code></a>・<a href="#x68_box"><code>x68_box</code></a></p>
+</article>
+
+<article class="entry" id="x68_box">
+  <h3><code>x68_box</code><span class="entry-summary">四角の枠を描く</span></h3>
+  <pre class="signature">void x68_box(int x, int y, int w, int h, int color)</pre>
+  <p>左上が (x, y)、幅 w、高さ h の四角形の枠（太さ 1 ドット）を描きます。中は塗りません。</p>
+  <dl class="params">
+    <dt><code>x</code></dt><dd>左上の横位置。</dd>
+    <dt><code>y</code></dt><dd>左上の縦位置。</dd>
+    <dt><code>w</code></dt><dd>幅（ドット）。0 以下なら何も描きません。</dd>
+    <dt><code>h</code></dt><dd>高さ（ドット）。0 以下なら何も描きません。</dd>
+    <dt><code>color</code></dt><dd>枠の色。</dd>
+  </dl>
+  <div class="example">
+    <div class="example-head">例</div>
+    <pre class="listing">#include &quot;x68.h&quot;
+
+void main(void) {
+  int i;
+
+  x68_screen_open();
+  x68_cls(x68_rgb(0, 0, 0));
+  for (i = 0; i &lt; 8; i++) {
+    x68_box(i * 16, i * 16, 512 - i * 32, 512 - i * 32, x68_rgb(255, 255 - i * 30, 0));
+  }
+  x68_screen_flip();
+}</pre>
+    <p class="example-caption">入れ子の枠を描いています。</p>
+  </div>
+  <ul class="pitfalls">
+    <li>w と h は「右端・下端の座標」ではなく「幅・高さ」です。</li>
+  </ul>
+  <p class="seealso"><span class="label">関連</span><a href="#x68_box_fill"><code>x68_box_fill</code></a></p>
+</article>
+
+<article class="entry" id="x68_box_fill">
+  <h3><code>x68_box_fill</code><span class="entry-summary">四角を塗りつぶす</span></h3>
+  <pre class="signature">void x68_box_fill(int x, int y, int w, int h, int color)</pre>
+  <p>左上が (x, y)、幅 w、高さ h の四角形を塗りつぶします。</p>
+  <p>この環境でいちばん速い描画です。自機・敵・ブロック・棒グラフなど、たいていの物はこれで作れます。</p>
+  <dl class="params">
+    <dt><code>x</code></dt><dd>左上の横位置。</dd>
+    <dt><code>y</code></dt><dd>左上の縦位置。</dd>
+    <dt><code>w</code></dt><dd>幅（ドット）。0 以下なら何も描きません。</dd>
+    <dt><code>h</code></dt><dd>高さ（ドット）。0 以下なら何も描きません。</dd>
+    <dt><code>color</code></dt><dd>塗る色。</dd>
+  </dl>
+  <div class="example">
+    <div class="example-head">例</div>
+    <pre class="listing">#include &quot;x68.h&quot;
+
+void main(void) {
+  int i;
+
+  x68_screen_open();
+  x68_cls(x68_rgb(0, 0, 0));
+  for (i = 0; i &lt; 16; i++) {
+    x68_box_fill(i * 32, 100, 32, 300, x68_rgb(i * 16, 0, 255 - i * 16));
+  }
+  x68_screen_flip();
+}</pre>
+    <p class="example-caption">色の帯を 16 本並べています。</p>
+  </div>
+  <ul class="pitfalls">
+    <li>画面からはみ出す分は切り取られます。はみ出しを自分で計算する必要はありません。</li>
+  </ul>
+  <p class="seealso"><span class="label">関連</span><a href="#x68_box"><code>x68_box</code></a>・<a href="#x68_cls"><code>x68_cls</code></a></p>
+</article>
+
+<article class="entry" id="x68_circle">
+  <h3><code>x68_circle</code><span class="entry-summary">円の輪郭を描く</span></h3>
+  <pre class="signature">void x68_circle(int x, int y, int r, int color)</pre>
+  <p>中心 (x, y)、半径 r の円を、太さ 1 ドットの輪郭で描きます。中は塗りません。</p>
+  <dl class="params">
+    <dt><code>x</code></dt><dd>中心の横位置。</dd>
+    <dt><code>y</code></dt><dd>中心の縦位置。</dd>
+    <dt><code>r</code></dt><dd>半径（ドット）。0 以下なら何も描きません。</dd>
+    <dt><code>color</code></dt><dd>線の色。</dd>
+  </dl>
+  <div class="example">
+    <div class="example-head">例</div>
+    <pre class="listing">#include &quot;x68.h&quot;
+
+void main(void) {
+  int r;
+
+  x68_screen_open();
+  x68_cls(x68_rgb(0, 0, 0));
+  for (r = 16; r &lt; 256; r += 16) {
+    x68_circle(256, 256, r, x68_rgb(0, 255, 128));
+  }
+  x68_screen_flip();
+}</pre>
+    <p class="example-caption">同心円を描いています。</p>
+  </div>
+  <ul class="pitfalls">
+    <li>塗りつぶした円を描く関数はありません。半径を 1 ずつ変えて何重にも描くと塗りつぶせます（少し遅くなります）。</li>
+  </ul>
+  <p class="seealso"><span class="label">関連</span><a href="#x68_box_fill"><code>x68_box_fill</code></a></p>
+</article>
+</section>
+
+<section id="cat-color">
+  <h2>色を作る</h2>
+  <p class="cat-lead">色は赤・緑・青の3つの強さ（0〜255）から作ります。作った色の値を、描画関数の color に渡します。</p>
+<article class="entry" id="x68_rgb">
+  <h3><code>x68_rgb</code><span class="entry-summary">赤・緑・青の強さから色を作る</span></h3>
+  <pre class="signature">int x68_rgb(int r, int g, int b)</pre>
+  <p>赤・緑・青をそれぞれ 0〜255 の強さで指定して、描画関数に渡せる色の値を作ります。0 が最も暗く、255 が最も明るい値です。</p>
+  <p>画面が実際に区別できるのは各色 32 段階なので、たとえば 100 と 103 のような近い値は同じ色になります。</p>
+  <dl class="params">
+    <dt><code>r</code></dt><dd>赤の強さ（0〜255）。範囲外は 0 か 255 に丸められます。</dd>
+    <dt><code>g</code></dt><dd>緑の強さ（0〜255）。</dd>
+    <dt><code>b</code></dt><dd>青の強さ（0〜255）。</dd>
+  </dl>
+  <p class="returns"><span class="label">返り値</span>描画関数の color に渡す色の値。</p>
+  <div class="example">
+    <div class="example-head">例</div>
+    <pre class="listing">#include &quot;x68.h&quot;
+
+void main(void) {
+  int black = x68_rgb(0, 0, 0);
+  int white = x68_rgb(255, 255, 255);
+  int red = x68_rgb(255, 0, 0);
+
+  x68_screen_open();
+  x68_cls(black);
+  x68_box_fill(100, 100, 300, 100, red);
+  x68_box_fill(100, 300, 300, 100, white);
+  x68_screen_flip();
+}</pre>
+    <p class="example-caption">よく使う色をあらかじめ変数に入れておくと読みやすくなります。毎フレーム呼んでも構いませんが、名前が付くぶん変数にする利点が大きいです。</p>
+  </div>
+  <ul class="pitfalls">
+    <li>色の値をそのまま数字で書く（0xF81F など）こともできますが、並び順が独特なので <a href="#x68_rgb"><code>x68_rgb()</code></a> を使うのが安全です。</li>
+  </ul>
+  <p class="seealso"><span class="label">関連</span><a href="#X68_SCREEN_W"><code>X68_SCREEN_W</code></a></p>
+</article>
+
+<article class="entry" id="X68_SCREEN_W">
+  <h3><code>X68_SCREEN_W</code><span class="entry-summary">画面の幅（512）</span></h3>
+  <pre class="signature">#define X68_SCREEN_W 512</pre>
+  <p>画面の横のドット数です。使える x 座標は 0 〜 <a href="#X68_SCREEN_W"><code>X68_SCREEN_W</code></a> - 1（0〜511）。</p>
+  <p>画面の端を扱うときは 512 と直接書かず、この名前を使っておくと後で見返したときに意図が分かります。</p>
+  <div class="example">
+    <div class="example-head">例</div>
+    <pre class="listing">#include &quot;x68.h&quot;
+
+void main(void) {
+  int x = 0;
+  int dx = 3;
+  int w = 32;
+
+  x68_screen_open();
+  for (;;) {
+    x68_cls(x68_rgb(0, 0, 0));
+    x += dx;
+    if (x &lt; 0 || x + w &gt; X68_SCREEN_W) dx = -dx;
+    x68_box_fill(x, 240, w, 32, x68_rgb(255, 255, 0));
+    x68_screen_flip();
+  }
+}</pre>
+    <p class="example-caption">画面の右端で跳ね返る処理です。</p>
+  </div>
+  <p class="seealso"><span class="label">関連</span><a href="#X68_SCREEN_H"><code>X68_SCREEN_H</code></a></p>
+</article>
+
+<article class="entry" id="X68_SCREEN_H">
+  <h3><code>X68_SCREEN_H</code><span class="entry-summary">画面の高さ（512）</span></h3>
+  <pre class="signature">#define X68_SCREEN_H 512</pre>
+  <p>画面の縦のドット数です。使える y 座標は 0 〜 <a href="#X68_SCREEN_H"><code>X68_SCREEN_H</code></a> - 1（0〜511）。</p>
+  <p>X68000 の画面は横長ですが、このライブラリが使うモードでは縦横とも 512 ドットの正方形です。</p>
+  <div class="example">
+    <div class="example-head">例</div>
+    <pre class="listing">#include &quot;x68.h&quot;
+
+void main(void) {
+  x68_screen_open();
+  x68_cls(x68_rgb(0, 0, 0));
+  x68_line(X68_SCREEN_W / 2, 0, X68_SCREEN_W / 2, X68_SCREEN_H - 1, x68_rgb(64, 64, 64));
+  x68_line(0, X68_SCREEN_H / 2, X68_SCREEN_W - 1, X68_SCREEN_H / 2, x68_rgb(64, 64, 64));
+  x68_screen_flip();
+}</pre>
+    <p class="example-caption">画面のちょうど真ん中に印を描きます。</p>
+  </div>
+  <p class="seealso"><span class="label">関連</span><a href="#X68_SCREEN_W"><code>X68_SCREEN_W</code></a></p>
+</article>
+</section>
+
+<section id="cat-key">
+  <h2>キーボードを読む</h2>
+  <p class="cat-lead">キーボードは「今このキーが押されているか」を聞く形で読みます。押した瞬間だけ反応させたいときは、前のフレームの状態を自分で覚えておいて比べます。</p>
+<article class="entry" id="x68_key_down">
+  <h3><code>x68_key_down</code><span class="entry-summary">そのキーが今押されているかを調べる</span></h3>
+  <pre class="signature">int x68_key_down(int key)</pre>
+  <p>キーが押されている「間ずっと」真を返します。押した瞬間だけ・離した瞬間だけを取りたい場合は、前のフレームの状態を変数に覚えておいて、変わったかどうかを自分で比べます。</p>
+  <p>複数のキーを同時に調べられるので、斜め移動もそのまま書けます。</p>
+  <dl class="params">
+    <dt><code>key</code></dt><dd>調べたいキー。X68_KEY_ で始まる定数（下の表）を渡します。</dd>
+  </dl>
+  <p class="returns"><span class="label">返り値</span>押されていれば 0 以外、押されていなければ 0。知らないキー番号を渡しても落ちず、0 を返します。</p>
+  <div class="example">
+    <div class="example-head">例</div>
+    <pre class="listing">#include &quot;x68.h&quot;
+
+void main(void) {
+  int x = 240;
+  int y = 240;
+
+  x68_screen_open();
+  for (;;) {
+    x68_cls(x68_rgb(0, 0, 0));
+    if (x68_key_down(X68_KEY_LEFT)) x -= 4;
+    if (x68_key_down(X68_KEY_RIGHT)) x += 4;
+    if (x68_key_down(X68_KEY_UP)) y -= 4;
+    if (x68_key_down(X68_KEY_DOWN)) y += 4;
+    x68_box_fill(x, y, 32, 32, x68_rgb(0, 255, 255));
+    x68_screen_flip();
+  }
+}</pre>
+    <p class="example-caption">カーソルキーで四角を動かします。上下左右を別々に調べているので、斜めにも動きます。</p>
+  </div>
+  <ul class="pitfalls">
+    <li>押しっぱなしでも毎フレーム真になります。「1 回押したら 1 回だけ」にしたいときは前回の状態と比べてください。</li>
+    <li>この関数を呼んでもキー入力は溜まりません。<a href="#x68_screen_flip"><code>x68_screen_flip()</code></a> のタイミングで 1 回読む、という書き方が基本です。</li>
+  </ul>
+  <p class="seealso"><span class="label">関連</span><a href="#X68_KEY_LEFT"><code>X68_KEY_LEFT</code></a></p>
+</article>
+
+<article class="entry" id="X68_KEY_LEFT">
+  <h3><code>X68_KEY_LEFT</code><span class="entry-summary">キーを表す定数の一覧</span></h3>
+  <pre class="signature">#define X68_KEY_LEFT 0x3b  /* ほか X68_KEY_* 定数 */</pre>
+  <p><a href="#x68_key_down"><code>x68_key_down()</code></a> に渡す定数です。値は X68000 のキーボードが実際に送るコード（スキャンコード）で、実測して確かめたものです。</p>
+  <p>ここに無いキーも、コードさえ分かれば数値を直接渡せば読めます。</p>
+  <table class="ref-table"><thead><tr><th>定数</th><th>キー</th></tr></thead><tbody>
+        <tr class="group"><td colspan="2">移動・操作</td></tr>
+        <tr><td><code>X68_KEY_LEFT</code></td><td>← カーソル左</td></tr>
+        <tr><td><code>X68_KEY_UP</code></td><td>↑ カーソル上</td></tr>
+        <tr><td><code>X68_KEY_RIGHT</code></td><td>→ カーソル右</td></tr>
+        <tr><td><code>X68_KEY_DOWN</code></td><td>↓ カーソル下</td></tr>
+        <tr><td><code>X68_KEY_SPACE</code></td><td>スペース</td></tr>
+        <tr><td><code>X68_KEY_ENTER</code></td><td>リターン</td></tr>
+        <tr><td><code>X68_KEY_ESC</code></td><td>ESC</td></tr>
+        <tr class="group"><td colspan="2">数字</td></tr>
+        <tr><td><code>X68_KEY_0 〜 X68_KEY_9</code></td><td>0 〜 9（最上段の数字キー）</td></tr>
+        <tr class="group"><td colspan="2">アルファベット</td></tr>
+        <tr><td><code>X68_KEY_A 〜 X68_KEY_Z</code></td><td>A 〜 Z</td></tr>
+      </tbody></table>
+  <div class="example">
+    <div class="example-head">例</div>
+    <pre class="listing">#include &quot;x68.h&quot;
+
+void main(void) {
+  int previous = 0;
+  int count = 0;
+
+  x68_screen_open();
+  for (;;) {
+    int current = x68_key_down(X68_KEY_SPACE);
+    if (current &amp;&amp; !previous) {
+      count++;
+      x68_locate(0, 0);
+      printf(&quot;COUNT=%d&quot;, count);
+    }
+    previous = current;
+    x68_screen_flip();
+  }
+}</pre>
+    <p class="example-caption">スペースキーを「押した瞬間」だけ拾う書き方です。押しっぱなしでは 1 回しか数えません。</p>
+  </div>
+  <p class="seealso"><span class="label">関連</span><a href="#x68_key_down"><code>x68_key_down</code></a></p>
+</article>
+</section>
+
+<section id="cat-text">
+  <h2>文字を出す</h2>
+  <p class="cat-lead">文字はグラフィック画面とは別の「テキスト画面」に出ます。絵の上に重ねて出るので、点数やデバッグ表示にそのまま使えます。</p>
+<article class="entry" id="printf">
+  <h3><code>printf</code><span class="entry-summary">書式を指定して文字を出す</span></h3>
+  <pre class="signature">int printf(const char *fmt, ...)</pre>
+  <p>C でおなじみの printf です。文字列の中の %d などの場所に、後ろに並べた値が埋め込まれて表示されます。</p>
+  <p>この環境の printf は自前の小さな実装なので、使える書式は下の表のものだけです。表に無い書式を書くと、その場所に [BADFMT] と表示されます（黙って無視したり、変な値を出したりはしません）。</p>
+  <p>1 回の出力は 256 バイトまでです。超えた分は切り捨てられます（落ちはしません）。</p>
+  <dl class="params">
+    <dt><code>fmt</code></dt><dd>書式を含む文字列。改行したいところには \n を書きます。</dd>
+    <dt><code>...</code></dt><dd>書式に埋め込む値。左から順に対応します。</dd>
+  </dl>
+  <p class="returns"><span class="label">返り値</span>出力した文字数。</p>
+  <table class="ref-table"><thead><tr><th>書式</th><th>意味</th></tr></thead><tbody>
+        <tr class="group"><td colspan="2">使える書式</td></tr>
+        <tr><td><code>%d</code></td><td>int を 10 進数で（符号つき）</td></tr>
+        <tr><td><code>%u</code></td><td>unsigned int を 10 進数で（符号なし）</td></tr>
+        <tr><td><code>%x</code></td><td>unsigned int を 16 進数で（小文字 a〜f）</td></tr>
+        <tr><td><code>%c</code></td><td>1 文字として</td></tr>
+        <tr><td><code>%s</code></td><td>文字列として</td></tr>
+        <tr><td><code>%%</code></td><td>% の文字そのもの</td></tr>
+        <tr class="group"><td colspan="2">使えない書式（[BADFMT] と表示されます）</td></tr>
+        <tr><td><code>%f %e %g</code></td><td>小数。この環境に小数の表示はありません</td></tr>
+        <tr><td><code>%3d %02x %.2s</code></td><td>桁数・0 埋め・精度の指定</td></tr>
+        <tr><td><code>%ld %lu</code></td><td>long などの長さ指定</td></tr>
+        <tr><td><code>%q など</code></td><td>上に無い文字</td></tr>
+      </tbody></table>
+  <div class="example">
+    <div class="example-head">例</div>
+    <pre class="listing">#include &quot;x68.h&quot;
+
+void main(void) {
+  int score = 1200;
+  int x = 100;
+
+  x68_screen_open();
+  x68_locate(0, 0);
+  printf(&quot;SCORE=%d\n&quot;, score);
+  printf(&quot;X=%d HEX=%x\n&quot;, x, x);
+  x68_screen_flip();
+}</pre>
+    <p class="example-caption">点数と座標を表示しています。%d が 2 つあるので、値も 2 つ渡します。</p>
+  </div>
+  <ul class="pitfalls">
+    <li>%3d のような桁揃えは使えません。桁を揃えたいときは、自分で空白を足すか <a href="#x68_locate"><code>x68_locate()</code></a> で位置を決めてください。</li>
+    <li>小数は扱えません。1.5 倍したいときは 10 倍した整数で計算する、といった工夫をします。</li>
+  </ul>
+  <p class="seealso"><span class="label">関連</span><a href="#puts"><code>puts</code></a>・<a href="#x68_locate"><code>x68_locate</code></a></p>
+</article>
+
+<article class="entry" id="puts">
+  <h3><code>puts</code><span class="entry-summary">文字列を出して改行する</span></h3>
+  <pre class="signature">int puts(const char *s)</pre>
+  <p>文字列をそのまま表示し、最後に必ず改行を 1 つ足します（本物の C の puts と同じ動きです）。</p>
+  <p>書式が要らないときは printf より短く書けます。</p>
+  <dl class="params">
+    <dt><code>s</code></dt><dd>表示する文字列。</dd>
+  </dl>
+  <p class="returns"><span class="label">返り値</span>常に 0。</p>
+  <div class="example">
+    <div class="example-head">例</div>
+    <pre class="listing">#include &quot;x68.h&quot;
+
+void main(void) {
+  x68_screen_open();
+  puts(&quot;SPROUT68K&quot;);
+  puts(&quot;READY.&quot;);
+  puts(&quot;PRESS SPACE&quot;);
+  x68_screen_flip();
+}</pre>
+    <p class="example-caption">3 行表示します。改行は puts が自動で入れるので \n は書きません。</p>
+  </div>
+  <ul class="pitfalls">
+    <li>改行が必ず付きます。付けたくない場合は printf(&quot;%s&quot;, s) を使ってください。</li>
+  </ul>
+  <p class="seealso"><span class="label">関連</span><a href="#printf"><code>printf</code></a></p>
+</article>
+
+<article class="entry" id="x68_locate">
+  <h3><code>x68_locate</code><span class="entry-summary">次に文字を出す位置を決める</span></h3>
+  <pre class="signature">void x68_locate(int col, int row)</pre>
+  <p>printf や puts が次に文字を出す位置を指定します。文字の画面は横 96 桁 × 縦 32 行です（グラフィックの座標とは別の数え方です）。</p>
+  <p>毎フレーム同じ場所に点数を出したいときは、描く前にここで位置を戻します。</p>
+  <dl class="params">
+    <dt><code>col</code></dt><dd>桁（横位置）。0 が左端、95 が右端。</dd>
+    <dt><code>row</code></dt><dd>行（縦位置）。0 が最上段、31 が最下段。</dd>
+  </dl>
+  <div class="example">
+    <div class="example-head">例</div>
+    <pre class="listing">#include &quot;x68.h&quot;
+
+void main(void) {
+  int score = 0;
+
+  x68_screen_open();
+  for (;;) {
+    x68_cls(x68_rgb(0, 0, 48));
+    score++;
+    x68_locate(70, 1);
+    printf(&quot;SCORE %d&quot;, score);
+    x68_screen_flip();
+  }
+}</pre>
+    <p class="example-caption">画面の右上に点数を出し続けます。毎フレーム同じ位置に戻すので、行が流れていきません。</p>
+  </div>
+  <ul class="pitfalls">
+    <li>画面の外の位置を渡しても何も起きません（落ちません）。</li>
+    <li>文字はグラフィックの上に重なって出ます。<a href="#x68_cls"><code>x68_cls()</code></a> では消えないので、上書きするか同じ位置に出し直します。</li>
+  </ul>
+  <p class="seealso"><span class="label">関連</span><a href="#printf"><code>printf</code></a>・<a href="#puts"><code>puts</code></a></p>
+</article>
+</section>
+
+<section id="cat-math">
+  <h2>数と乱数</h2>
+  <p class="cat-lead">計算まわりの小さな道具です。敵の出現位置をばらけさせたいときなどに乱数を使います。</p>
+<article class="entry" id="srand">
+  <h3><code>srand</code><span class="entry-summary">乱数の出方を決める</span></h3>
+  <pre class="signature">void srand(unsigned int seed)</pre>
+  <p>乱数の並びの出発点を決めます。同じ seed を渡せば、毎回まったく同じ順番の乱数が出ます。</p>
+  <p>そのため、テスト中は固定の値を渡して「毎回同じ動き」にしておくと、不具合を追いやすくなります。</p>
+  <dl class="params">
+    <dt><code>seed</code></dt><dd>乱数の出発点となる数。</dd>
+  </dl>
+  <div class="example">
+    <div class="example-head">例</div>
+    <pre class="listing">#include &quot;x68.h&quot;
+
+void main(void) {
+  int i;
+
+  x68_screen_open();
+  srand(1234);
+  for (i = 0; i &lt; 5; i++) {
+    printf(&quot;%d &quot;, x68_rand_int(100));
+  }
+  x68_screen_flip();
+}</pre>
+    <p class="example-caption">同じ seed からは同じ並びが出ます。この例は実行のたびに同じ 5 つの数を表示します。</p>
+  </div>
+  <ul class="pitfalls">
+    <li>呼ばなくても乱数は使えますが、その場合は毎回同じ並びになります。</li>
+    <li>この環境には時計がありません。「毎回違う」にしたいときは、タイトル画面でキーが押されるまでに回った回数を seed にする、といった工夫をします。</li>
+  </ul>
+  <p class="seealso"><span class="label">関連</span><a href="#rand"><code>rand</code></a>・<a href="#x68_rand_int"><code>x68_rand_int</code></a></p>
+</article>
+
+<article class="entry" id="rand">
+  <h3><code>rand</code><span class="entry-summary">乱数を 1 つ取り出す</span></h3>
+  <pre class="signature">int rand(void)</pre>
+  <p>0 〜 <a href="#X68_RAND_MAX"><code>X68_RAND_MAX</code></a>（32767）の範囲の値を返します。範囲を決めたい場合は、割り算をするより <a href="#x68_rand_int"><code>x68_rand_int()</code></a> のほうが安全で読みやすいです。</p>
+  <p class="returns"><span class="label">返り値</span>0 〜 <a href="#X68_RAND_MAX"><code>X68_RAND_MAX</code></a> の値。</p>
+  <div class="example">
+    <div class="example-head">例</div>
+    <pre class="listing">#include &quot;x68.h&quot;
+
+void main(void) {
+  x68_screen_open();
+  printf(&quot;%d\n&quot;, rand());
+  printf(&quot;MAX=%d\n&quot;, X68_RAND_MAX);
+  x68_screen_flip();
+}</pre>
+    <p class="example-caption">そのままの乱数を表示します。範囲を絞りたいときは <a href="#x68_rand_int"><code>x68_rand_int()</code></a> を使ってください。</p>
+  </div>
+  <ul class="pitfalls">
+    <li>暗号やくじ引きのような、予測されて困る用途には使えない簡単な方式です。</li>
+  </ul>
+  <p class="seealso"><span class="label">関連</span><a href="#x68_rand_int"><code>x68_rand_int</code></a>・<a href="#srand"><code>srand</code></a></p>
+</article>
+
+<article class="entry" id="x68_rand_int">
+  <h3><code>x68_rand_int</code><span class="entry-summary">0 〜 n-1 の乱数を取り出す</span></h3>
+  <pre class="signature">int x68_rand_int(int n)</pre>
+  <p>欲しい範囲を直接指定できる乱数です。たとえば <a href="#x68_rand_int"><code>x68_rand_int</code></a>(512) なら、画面のどこかの座標として使える 0〜511 が返ります。</p>
+  <dl class="params">
+    <dt><code>n</code></dt><dd>欲しい範囲の大きさ。0 以下を渡した場合は 0 を返します（0 で割って落ちることはありません）。</dd>
+  </dl>
+  <p class="returns"><span class="label">返り値</span>0 以上 n 未満の値。</p>
+  <div class="example">
+    <div class="example-head">例</div>
+    <pre class="listing">#include &quot;x68.h&quot;
+
+void main(void) {
+  int i;
+
+  x68_screen_open();
+  x68_cls(x68_rgb(0, 0, 0));
+  for (i = 0; i &lt; 50; i++) {
+    x68_box_fill(x68_rand_int(X68_SCREEN_W), x68_rand_int(X68_SCREEN_H), 24, 24,
+                 x68_rgb(x68_rand_int(256), x68_rand_int(256), x68_rand_int(256)));
+  }
+  x68_screen_flip();
+}</pre>
+    <p class="example-caption">ランダムな位置・ランダムな色の四角を 50 個ばらまきます。</p>
+  </div>
+  <ul class="pitfalls">
+    <li>n は「最大値」ではなく「個数」です。1〜6 のサイコロは <a href="#x68_rand_int"><code>x68_rand_int</code></a>(6) + 1 と書きます。</li>
+  </ul>
+  <p class="seealso"><span class="label">関連</span><a href="#rand"><code>rand</code></a>・<a href="#srand"><code>srand</code></a></p>
+</article>
+
+<article class="entry" id="X68_RAND_MAX">
+  <h3><code>X68_RAND_MAX</code><span class="entry-summary">rand() が返す最大値（32767）</span></h3>
+  <pre class="signature">#define X68_RAND_MAX 0x7fff</pre>
+  <p>rand() が返しうるいちばん大きい値です。</p>
+  <div class="example">
+    <div class="example-head">例</div>
+    <pre class="listing">#include &quot;x68.h&quot;
+
+void main(void) {
+  int value = rand() * 100 / (X68_RAND_MAX + 1);
+
+  x68_screen_open();
+  printf(&quot;%d&quot;, value);
+  x68_screen_flip();
+}</pre>
+    <p class="example-caption">乱数を 0〜99 の範囲に直しています（この計算をしてくれるのが <a href="#x68_rand_int"><code>x68_rand_int()</code></a> です）。</p>
+  </div>
+  <p class="seealso"><span class="label">関連</span><a href="#rand"><code>rand</code></a></p>
+</article>
+
+<article class="entry" id="abs">
+  <h3><code>abs</code><span class="entry-summary">符号を取って絶対値にする</span></h3>
+  <pre class="signature">int abs(int n)</pre>
+  <p>負の数なら正にして返します。2 点の距離を測るときなどに使います。</p>
+  <dl class="params">
+    <dt><code>n</code></dt><dd>対象の値。</dd>
+  </dl>
+  <p class="returns"><span class="label">返り値</span>n の絶対値。</p>
+  <div class="example">
+    <div class="example-head">例</div>
+    <pre class="listing">#include &quot;x68.h&quot;
+
+void main(void) {
+  int ax = 100;
+  int bx = 130;
+
+  x68_screen_open();
+  if (abs(ax - bx) &lt; 40) {
+    printf(&quot;NEAR&quot;);
+  } else {
+    printf(&quot;FAR&quot;);
+  }
+  x68_screen_flip();
+}</pre>
+    <p class="example-caption">2 つの四角が近づいたかどうかを、中心の距離で判定しています。</p>
+  </div>
+</article>
+</section>
+
+<section id="cat-mem">
+  <h2>メモリと文字列</h2>
+  <p class="cat-lead">C の標準ライブラリでおなじみの関数のうち、この環境で使えるものです。名前と使い方は本物の C と同じです。</p>
+<article class="entry" id="memcpy">
+  <h3><code>memcpy</code><span class="entry-summary">メモリの内容をまとめて複製する</span></h3>
+  <pre class="signature">void *memcpy(void *dst, const void *src, unsigned long n)</pre>
+  <p>src から dst へ n バイトぶんそのまま複製します。配列まるごとのコピーに使います。</p>
+  <dl class="params">
+    <dt><code>dst</code></dt><dd>複製先。</dd>
+    <dt><code>src</code></dt><dd>複製元。</dd>
+    <dt><code>n</code></dt><dd>複製するバイト数。</dd>
+  </dl>
+  <p class="returns"><span class="label">返り値</span>dst をそのまま返します。</p>
+  <div class="example">
+    <div class="example-head">例</div>
+    <pre class="listing">#include &quot;x68.h&quot;
+
+void main(void) {
+  int source[4];
+  int copy[4];
+  int i;
+
+  for (i = 0; i &lt; 4; i++) source[i] = i * 10;
+  memcpy(copy, source, sizeof(source));
+
+  x68_screen_open();
+  printf(&quot;%d %d&quot;, copy[0], copy[3]);
+  x68_screen_flip();
+}</pre>
+    <p class="example-caption">配列を丸ごと複製しています。sizeof を使うと、要素数を変えても書き直さずに済みます。</p>
+  </div>
+  <ul class="pitfalls">
+    <li>複製元と複製先が重なっている場合の動きは保証しません（重なるときは自分でループを書いてください）。</li>
+  </ul>
+  <p class="seealso"><span class="label">関連</span><a href="#memset"><code>memset</code></a></p>
+</article>
+
+<article class="entry" id="memset">
+  <h3><code>memset</code><span class="entry-summary">メモリを同じ値で埋める</span></h3>
+  <pre class="signature">void *memset(void *dst, int c, unsigned long n)</pre>
+  <p>dst から n バイトぶんを、値 c で埋めます。配列を 0 で初期化するのに使うのが定番です。</p>
+  <dl class="params">
+    <dt><code>dst</code></dt><dd>埋める先。</dd>
+    <dt><code>c</code></dt><dd>埋める値（1 バイトぶんだけ使われます）。</dd>
+    <dt><code>n</code></dt><dd>埋めるバイト数。</dd>
+  </dl>
+  <p class="returns"><span class="label">返り値</span>dst をそのまま返します。</p>
+  <div class="example">
+    <div class="example-head">例</div>
+    <pre class="listing">#include &quot;x68.h&quot;
+
+void main(void) {
+  char alive[40];
+
+  memset(alive, 0, sizeof(alive));
+
+  x68_screen_open();
+  printf(&quot;%d&quot;, alive[10]);
+  x68_screen_flip();
+}</pre>
+    <p class="example-caption">ブロックの生存フラグをまとめて 0 に戻しています。ゲームをやり直すときの初期化に便利です。</p>
+  </div>
+  <ul class="pitfalls">
+    <li>int の配列を 1 で埋めると、各要素は 1 ではなく 0x01010101 になります。0 埋め以外は 1 バイトの配列に使うのが安全です。</li>
+  </ul>
+  <p class="seealso"><span class="label">関連</span><a href="#memcpy"><code>memcpy</code></a></p>
+</article>
+
+<article class="entry" id="strlen">
+  <h3><code>strlen</code><span class="entry-summary">文字列の長さを数える</span></h3>
+  <pre class="signature">unsigned long strlen(const char *s)</pre>
+  <p>文字列の文字数を返します（終端の 0 は数えません）。</p>
+  <dl class="params">
+    <dt><code>s</code></dt><dd>対象の文字列。</dd>
+  </dl>
+  <p class="returns"><span class="label">返り値</span>文字数。</p>
+  <div class="example">
+    <div class="example-head">例</div>
+    <pre class="listing">#include &quot;x68.h&quot;
+
+void main(void) {
+  const char *title = &quot;SPROUT68K&quot;;
+  int col = (96 - (int)strlen(title)) / 2;
+
+  x68_screen_open();
+  x68_locate(col, 10);
+  puts(title);
+  x68_screen_flip();
+}</pre>
+    <p class="example-caption">文字列の長さから、画面の中央に来る桁位置を計算しています。</p>
+  </div>
+  <ul class="pitfalls">
+    <li>返り値は unsigned long です。引き算に使うときは (int) を付けて int にしておくと、負の数になったときの事故を防げます。</li>
+  </ul>
+  <p class="seealso"><span class="label">関連</span><a href="#printf"><code>printf</code></a></p>
+</article>
+</section>
+
+<section id="cat-raw">
+  <h2>生の層（上級・X68000 を直接触る）</h2>
+  <p class="cat-lead">ここから下は、X68000 のハードウェアや IOCS（本体 ROM の機能）をそのまま呼ぶ関数です。上の関数と違って、範囲チェックも安全策もありません。渡す値を間違えるとプログラムが止まります。最初のうちは読み飛ばして構いません。</p>
+<article class="entry" id="x68_vsync_wait">
+  <h3><code>x68_vsync_wait</code><span class="entry-summary">画面の書き換えが一巡するまで待つ</span></h3>
+  <pre class="signature">void x68_vsync_wait(void)</pre>
+  <p>垂直同期（表示期間から帰線期間へ移る瞬間）を 1 回待ちます。<a href="#x68_screen_flip"><code>x68_screen_flip()</code></a> が内部で呼んでいるのと同じものです。</p>
+  <p>グラフィック画面を使わず、文字だけのプログラムで速度を揃えたいときに使えます。</p>
+  <div class="example">
+    <div class="example-head">例</div>
+    <pre class="listing">#include &quot;x68.h&quot;
+
+void main(void) {
+  int i;
+
+  for (i = 0; i &lt; 60; i++) {
+    x68_vsync_wait();
+    x68_locate(0, 0);
+    printf(&quot;FRAME %d  &quot;, i);
+  }
+}</pre>
+    <p class="example-caption">1 秒あたりおよそ 55〜60 回のペースで数字を数えます。</p>
+  </div>
+  <p class="seealso"><span class="label">関連</span><a href="#x68_screen_flip"><code>x68_screen_flip</code></a></p>
+</article>
+
+<article class="entry" id="x68_iocs_print">
+  <h3><code>x68_iocs_print</code><span class="entry-summary">IOCS を直接呼んで文字列を出す</span></h3>
+  <pre class="signature">void x68_iocs_print(const char *msg)</pre>
+  <p>本体 ROM の機能（IOCS $21）をそのまま呼びます。printf や puts はこの上に作られています。</p>
+  <p>書式の解釈も改行の追加もしません。渡した文字列をそのまま出します。</p>
+  <dl class="params">
+    <dt><code>msg</code></dt><dd>0 で終わる文字列。</dd>
+  </dl>
+  <div class="example">
+    <div class="example-head">例</div>
+    <pre class="listing">#include &quot;x68.h&quot;
+
+void main(void) {
+  x68_iocs_print(&quot;RAW OUTPUT&quot;);
+}</pre>
+    <p class="example-caption">printf を通さずに直接出しています。</p>
+  </div>
+  <p class="seealso"><span class="label">関連</span><a href="#puts"><code>puts</code></a></p>
+</article>
+
+<article class="entry" id="x68_iocs_locate">
+  <h3><code>x68_iocs_locate</code><span class="entry-summary">IOCS を直接呼んで表示位置を決める</span></h3>
+  <pre class="signature">void x68_iocs_locate(int col, int row)</pre>
+  <p>本体 ROM の機能（IOCS $23）をそのまま呼びます。<a href="#x68_locate"><code>x68_locate()</code></a> はこれをそのまま呼び直しているだけなので、動きは同じです。</p>
+  <dl class="params">
+    <dt><code>col</code></dt><dd>桁（0〜95）。</dd>
+    <dt><code>row</code></dt><dd>行（0〜31）。</dd>
+  </dl>
+  <div class="example">
+    <div class="example-head">例</div>
+    <pre class="listing">#include &quot;x68.h&quot;
+
+void main(void) {
+  x68_iocs_locate(10, 5);
+  x68_iocs_print(&quot;HERE&quot;);
+}</pre>
+    <p class="example-caption">位置を決めてから直接出力しています。</p>
+  </div>
+  <p class="seealso"><span class="label">関連</span><a href="#x68_locate"><code>x68_locate</code></a></p>
+</article>
+
+<article class="entry" id="x68_iocs_bitsns">
+  <h3><code>x68_iocs_bitsns</code><span class="entry-summary">キーボードの押下状態を 8 キーまとめて読む</span></h3>
+  <pre class="signature">unsigned char x68_iocs_bitsns(unsigned long group)</pre>
+  <p>本体 ROM の機能（IOCS $04）をそのまま呼びます。キーは 8 個ずつの組に分かれていて、組の番号（0〜15）を渡すと、その 8 個ぶんの押下状態がビットで返ります。</p>
+  <p><a href="#x68_key_down"><code>x68_key_down()</code></a> はこれを使って 1 キーぶんだけ取り出しています。同時押しを大量に調べるときは、こちらのほうが呼び出し回数を減らせます。</p>
+  <dl class="params">
+    <dt><code>group</code></dt><dd>キーの組の番号（0〜15）。スキャンコードを 8 で割った商が組の番号です。</dd>
+  </dl>
+  <p class="returns"><span class="label">返り値</span>8 キーぶんの押下ビット（1 が押されている状態）。</p>
+  <div class="example">
+    <div class="example-head">例</div>
+    <pre class="listing">#include &quot;x68.h&quot;
+
+void main(void) {
+  for (;;) {
+    x68_locate(0, 0);
+    printf(&quot;GROUP7=%x  &quot;, x68_iocs_bitsns(X68_KEY_LEFT / 8));
+    x68_vsync_wait();
+  }
+}</pre>
+    <p class="example-caption">カーソルキーが含まれる組を丸ごと読み、16 進数で表示しています。</p>
+  </div>
+  <ul class="pitfalls">
+    <li>どのビットがどのキーかは、スキャンコードを 8 で割った余りで決まります。</li>
+  </ul>
+  <p class="seealso"><span class="label">関連</span><a href="#x68_key_down"><code>x68_key_down</code></a></p>
+</article>
+
+<article class="entry" id="x68_gvram_mode_65536_1page">
+  <h3><code>x68_gvram_mode_65536_1page</code><span class="entry-summary">65536 色 1 ページのグラフィック画面に切り替える</span></h3>
+  <pre class="signature">void x68_gvram_mode_65536_1page(void)</pre>
+  <p>画面のモードだけを切り替えます。裏バッファの用意はしません（それをするのが <a href="#x68_screen_open"><code>x68_screen_open()</code></a> です）。</p>
+  <p>自分で GVRAM（$00C00000 から、1 ライン 512 ワード）を直接書きたい場合に使います。</p>
+  <div class="example">
+    <div class="example-head">例</div>
+    <pre class="listing">#include &quot;x68.h&quot;
+
+void main(void) {
+  x68_vu16 *gvram = (x68_vu16 *)0x00C00000UL;
+  int i;
+
+  x68_gvram_mode_65536_1page();
+  for (i = 0; i &lt; 512; i++) {
+    gvram[i * 512 + i] = 0xFFFF;
+  }
+}</pre>
+    <p class="example-caption">モードだけ切り替えて、GVRAM に直接書き込んでいます。裏バッファも範囲チェックもありません。</p>
+  </div>
+  <ul class="pitfalls">
+    <li><a href="#x68_screen_open"><code>x68_screen_open()</code></a> を使う場合、この関数を自分で呼ぶ必要はありません。</li>
+  </ul>
+  <p class="seealso"><span class="label">関連</span><a href="#x68_screen_open"><code>x68_screen_open</code></a></p>
+</article>
+
+<article class="entry" id="x68_gvram_copy_movem">
+  <h3><code>x68_gvram_copy_movem</code><span class="entry-summary">メインメモリから GVRAM へ高速に転送する</span></h3>
+  <pre class="signature">void x68_gvram_copy_movem(void *dst, const void *src, unsigned long batch_count)</pre>
+  <p>MOVEM 命令を使った、この環境でいちばん速い転送です。<a href="#x68_screen_flip"><code>x68_screen_flip()</code></a> が内部で使っています。</p>
+  <p>転送量の単位はバイトではなく「32 バイトのまとまりの個数」です。</p>
+  <dl class="params">
+    <dt><code>dst</code></dt><dd>転送先（GVRAM など）。</dd>
+    <dt><code>src</code></dt><dd>転送元（メインメモリ）。</dd>
+    <dt><code>batch_count</code></dt><dd>32 バイト単位の個数。バイト数ではありません。</dd>
+  </dl>
+  <div class="example">
+    <div class="example-head">例</div>
+    <pre class="listing">#include &quot;x68.h&quot;
+
+void main(void) {
+  static unsigned short pattern[512];
+  int i;
+
+  for (i = 0; i &lt; 512; i++) pattern[i] = 0x07E0;
+  x68_gvram_mode_65536_1page();
+  x68_gvram_copy_movem((void *)0x00C00000UL, pattern, 1024 / 32);
+}</pre>
+    <p class="example-caption">1024 バイト（32 バイト × 32 個）を GVRAM の先頭へ転送しています。</p>
+  </div>
+  <ul class="pitfalls">
+    <li>バイト数を渡すと 32 倍の量を転送してしまい、画面の外まで壊します。</li>
+    <li>転送先・転送元とも 4 バイト境界に揃っている必要があります。</li>
+  </ul>
+  <p class="seealso"><span class="label">関連</span><a href="#x68_screen_flip"><code>x68_screen_flip</code></a></p>
+</article>
+
+<article class="entry" id="x68_iocs_disk_read">
+  <h3><code>x68_iocs_disk_read</code><span class="entry-summary">フロッピーディスクから直接読み込む</span></h3>
+  <pre class="signature">long x68_iocs_disk_read(unsigned long d1, unsigned long d2, unsigned long byte_count, void *dst)</pre>
+  <p>本体 ROM の機能（IOCS $46）をそのまま呼びます。プログラム本体より後ろのセクタに置いた画像や面データを、実行中に読み込むために使います。</p>
+  <p>引数はレジスタに入る値そのままの形です。d1 は装置とモード、d2 はトラック・面・セクタの位置を 1 つの数に詰めた値です。</p>
+  <dl class="params">
+    <dt><code>d1</code></dt><dd>装置番号 &lt;&lt; 8 | モード。1 台目のフロッピーからの通常読み込みは 0x00009070。</dd>
+    <dt><code>d2</code></dt><dd>セクタ長 &lt;&lt; 24 | トラック &lt;&lt; 16 | 面 &lt;&lt; 8 | セクタ。セクタ長 3 が 1024 バイト。トラックと面は 0 から、セクタは 1 から数えます。</dd>
+    <dt><code>byte_count</code></dt><dd>読み込むバイト数。</dd>
+    <dt><code>dst</code></dt><dd>読み込み先のメモリ。</dd>
+  </dl>
+  <p class="returns"><span class="label">返り値</span>IOCS の戻り値。成功していても 0 以外が返ることがあるので、-1（0xFFFFFFFF）のときだけ失敗と判定してください。</p>
+  <div class="example">
+    <div class="example-head">例</div>
+    <pre class="listing">#include &quot;x68.h&quot;
+
+void main(void) {
+  static unsigned char buffer[1024];
+  long result = x68_iocs_disk_read(0x00009070UL, (3UL &lt;&lt; 24) | (30UL &lt;&lt; 16) | (0UL &lt;&lt; 8) | 1UL,
+                                   sizeof(buffer), buffer);
+
+  x68_screen_open();
+  if (result == -1) {
+    puts(&quot;DISK ERROR&quot;);
+  } else {
+    printf(&quot;FIRST=%x&quot;, buffer[0]);
+  }
+  x68_screen_flip();
+}</pre>
+    <p class="example-caption">トラック 30・面 0・セクタ 1 から 1024 バイト読み込みます。判定は「-1 のときだけ失敗」です。</p>
+  </div>
+  <ul class="pitfalls">
+    <li>戻り値が 0 以外でも成功していることがあります。0 かどうかで判定すると、正常なのに失敗として扱ってしまいます。</li>
+    <li>プログラム本体が置かれているセクタを読み書きしないよう、置き場所には十分な余裕を取ってください。</li>
+  </ul>
+</article>
+</section>
+  </main>
+
+  <footer class="help-footer">
+    このページは lib/include/x68.h（学習用ライブラリ 第一版） から作られています。
+    <a class="open-app" href="./index.html">アプリを開く</a>
+  </footer>
+
+  <script>
+    (function () {
+      if (new URLSearchParams(location.search).get('from') === 'app') {
+        var links = document.querySelectorAll('.open-app');
+        for (var i = 0; i < links.length; i++) links[i].hidden = true;
+      }
+    })();
+  </script>
+</body>
+</html>

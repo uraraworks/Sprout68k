@@ -18,7 +18,7 @@ import { offlineStartupMode, offlineStatusPresentation } from './offline-support
 const root = dirname(fileURLToPath(import.meta.url));
 const forbidden = ['pc' + '98', 'n' + 'p2', 'pc' + '-98', 'free' + 'dos', 'na' + 'sm', 'smaller' + 'c', '98' + '01', '98' + '21'];
 const required = [
-  'index.html', 'help.html', 'workbench.css', 'workbench.js', 'project-fs.mjs', 'source-view.mjs',
+  'index.html', 'help.html', 'reference.html', 'api/reference.json', 'workbench.css', 'workbench.js', 'project-fs.mjs', 'source-view.mjs',
   'sample-manifest.mjs', 'split-layout.mjs', 'run-toggle.mjs', 'offline-support.mjs', 'browser-ui-verifier.mjs', 'x68k-adapter.mjs', 'samples/hello.c', 'samples/keyboard-input.c',
   'recovery-controller.mjs',
   'px68k-runtime.ts', 'px68k/libretro-host.ts', 'px68k/text-screen.ts',
@@ -32,6 +32,7 @@ const required = [
   '../verify/verify_ide_keyboard.mts',
   '../samples/breakout/block.c', '../docs/IDEキーボード入力_20260822.md', '../lib/include/x68.h', '../COPYING', '../CONTRIBUTING.md', '../README.md',
   '../tools/distribution.mts', '../tools/html_url_verifier.mts',
+  '../tools/build_reference.mts', '../tools/verify_reference.mts', '../tools/reference/guide.html',
   'vendor/codemirror/codemirror.js', 'vendor/codemirror/LICENSE.CodeMirror',
 ];
 

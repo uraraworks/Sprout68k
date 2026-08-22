@@ -6,6 +6,7 @@ export const APP_PATH = '/Sprout68k/';
 export const CACHE_PREFIX = 'sprout68k-precache-';
 export const IDE_STATIC_FILES = [
   'help.html',
+  'reference.html',
   'manifest.webmanifest',
   'icons/sprout68k.svg',
   'icons/sprout68k-16.png',

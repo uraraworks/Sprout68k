@@ -66,6 +66,10 @@ button:focus-visible, input:focus-visible { outline: 1px solid var(--vsc-focus);
 .header-help-btn { position: absolute; top: var(--help-header-offset); right: var(--help-header-right); width: var(--help-control-size); height: var(--help-control-size); display: grid; place-items: center; border: 1px solid #475569; border-radius: 50%; color: var(--x68-header-text); background: #172033; font-size: 17px; font-weight: 700; line-height: 1; text-decoration: none; }
 .header-help-btn:hover { border-color: var(--vsc-focus); background: #253044; }
 .header-help-btn:focus-visible { outline: 1px solid var(--vsc-focus); outline-offset: 2px; }
+/* 関数リファレンスへの入口。?ボタンの左に並べる(重ならないよう?の幅ぶん右端をずらす)。 */
+.header-ref-btn { position: absolute; top: var(--help-header-offset); right: calc(var(--help-header-right) + var(--help-control-size) + 6px); height: var(--help-control-size); display: grid; place-items: center; padding: 0 10px; border: 1px solid #475569; border-radius: calc(var(--help-control-size) / 2); color: var(--x68-header-text); background: #172033; font-size: 12px; font-weight: 700; line-height: 1; letter-spacing: 0.04em; text-decoration: none; }
+.header-ref-btn:hover { border-color: var(--vsc-focus); background: #253044; }
+.header-ref-btn:focus-visible { outline: 1px solid var(--vsc-focus); outline-offset: 2px; }
 .app-title-row { display: flex; justify-content: center; align-items: center; gap: 9px; }
 .app-icon { width: var(--app-title-height); height: var(--app-title-height); object-fit: contain; }
 .app-header h1 { margin: 0; font-size: 16px; }

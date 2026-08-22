@@ -1,0 +1,1170 @@
+{
+  "version": 1,
+  "title": "Sprout68k 関数リファレンス",
+  "source": "lib/include/x68.h（学習用ライブラリ 第一版）",
+  "note": "このファイルは手で書く。reference.html の図鑑部分と、将来のエディタ入力補完の両方がここを読む。tools/verify_reference.mts が x68.h の宣言との一致と、example が実際にコンパイルできることを検査する。",
+  "wrapper": {
+    "head": "#include \"x68.h\"\n\nvoid main(void) {\n",
+    "tail": "}\n",
+    "indent": "  "
+  },
+  "categories": [
+    {
+      "id": "screen",
+      "title": "画面を開く・絵を出す",
+      "lead": "絵を描くには、まず画面を開きます。描画関数が描くのは画面そのものではなく「裏バッファ」という下書き用紙で、x68_screen_flip() を呼んだときに初めて画面へ出ます。この一手間があるおかげで、絵が描きかけのまま表示されてチラつくことがありません。"
+    },
+    {
+      "id": "draw",
+      "title": "図形を描く",
+      "lead": "座標は左上が (0, 0)、右下が (511, 511) です。画面からはみ出した部分は自動的に切り取られるので、はみ出しを気にせず書けます（プログラムが落ちることはありません）。"
+    },
+    {
+      "id": "color",
+      "title": "色を作る",
+      "lead": "色は赤・緑・青の3つの強さ（0〜255）から作ります。作った色の値を、描画関数の color に渡します。"
+    },
+    {
+      "id": "key",
+      "title": "キーボードを読む",
+      "lead": "キーボードは「今このキーが押されているか」を聞く形で読みます。押した瞬間だけ反応させたいときは、前のフレームの状態を自分で覚えておいて比べます。"
+    },
+    {
+      "id": "text",
+      "title": "文字を出す",
+      "lead": "文字はグラフィック画面とは別の「テキスト画面」に出ます。絵の上に重ねて出るので、点数やデバッグ表示にそのまま使えます。"
+    },
+    {
+      "id": "math",
+      "title": "数と乱数",
+      "lead": "計算まわりの小さな道具です。敵の出現位置をばらけさせたいときなどに乱数を使います。"
+    },
+    {
+      "id": "mem",
+      "title": "メモリと文字列",
+      "lead": "C の標準ライブラリでおなじみの関数のうち、この環境で使えるものです。名前と使い方は本物の C と同じです。"
+    },
+    {
+      "id": "raw",
+      "title": "生の層（上級・X68000 を直接触る）",
+      "lead": "ここから下は、X68000 のハードウェアや IOCS（本体 ROM の機能）をそのまま呼ぶ関数です。上の関数と違って、範囲チェックも安全策もありません。渡す値を間違えるとプログラムが止まります。最初のうちは読み飛ばして構いません。"
+    }
+  ],
+  "entries": [
+    {
+      "name": "x68_screen_open",
+      "kind": "function",
+      "category": "screen",
+      "signature": "void x68_screen_open(void)",
+      "summary": "グラフィック画面を使えるようにする",
+      "description": [
+        "512×512 ドット・65536 色のグラフィック画面に切り替え、絵を描くための裏バッファ（メインメモリ上の下書き用紙、512KB）を用意します。",
+        "プログラムの最初に 1 回だけ呼びます。以降の描画関数はすべてこの裏バッファに描きます。"
+      ],
+      "params": [],
+      "returns": null,
+      "example": {
+        "caption": "画面を開いて、黄色い四角を 1 つ描くだけの最小の例です。x68_screen_flip() を呼んで初めて画面に出ます。",
+        "code": "x68_screen_open();\nx68_cls(x68_rgb(0, 0, 0));\nx68_box_fill(200, 200, 100, 100, x68_rgb(255, 255, 0));\nx68_screen_flip();"
+      },
+      "pitfalls": [
+        "これを呼ぶ前に x68_pset() などを呼んでも、何も起きません（エラーにはならないので、絵が出ないときは最初にこれを疑ってください）。",
+        "呼んだ直後の画面の中身は決まっていません。まず x68_cls() で背景色を塗ってから描き始めます。"
+      ],
+      "seealso": [
+        "x68_cls",
+        "x68_screen_flip"
+      ]
+    },
+    {
+      "name": "x68_screen_flip",
+      "kind": "function",
+      "category": "screen",
+      "signature": "void x68_screen_flip(void)",
+      "summary": "描いた絵を画面に出す",
+      "description": [
+        "裏バッファに描いた内容を、実際の画面へ送ります。1 フレームに 1 回呼びます。",
+        "送る前に垂直同期（画面の書き換えが一巡する瞬間）を待つので、絵が途中でちぎれて見えることがありません。ゲームの速さがこの待ち時間で決まります（毎秒およそ 55〜60 回）。",
+        "送るのは画面全部ではなく「前のフレームと今のフレームで描いた範囲」だけです。動く物が少ないほど速くなります。"
+      ],
+      "params": [],
+      "returns": null,
+      "example": {
+        "caption": "四角を 1 ドットずつ右へ動かします。x68_cls() で前の位置を消し、描いて、flip で出す——これがゲームの基本の 1 周です。",
+        "code": "int x = 0;\n\nx68_screen_open();\nfor (;;) {\n  x68_cls(x68_rgb(0, 0, 32));\n  x68_box_fill(x, 240, 32, 32, x68_rgb(255, 128, 0));\n  x68_screen_flip();\n  x = (x + 1) % X68_SCREEN_W;\n}"
+      },
+      "pitfalls": [
+        "呼び忘れると、いくら描いても画面は変わりません。",
+        "1 フレームに 2 回以上呼ぶと、そのたびに垂直同期を待つので単純に遅くなります。"
+      ],
+      "seealso": [
+        "x68_screen_open",
+        "x68_cls",
+        "x68_frame_begin"
+      ]
+    },
+    {
+      "name": "x68_cls",
+      "kind": "function",
+      "category": "screen",
+      "summary": "前のフレームに描いた絵を消す",
+      "signature": "void x68_cls(int color)",
+      "description": [
+        "名前は clear screen（画面消去）ですが、毎回画面全部を塗り直すわけではありません。前のフレームで描いた場所だけを背景色で塗り戻します。動く物が少ないゲームほど速くなる仕組みです。",
+        "見た目は「背景色で画面を消した」のと同じになります。全画面を塗り直すのは、最初の 1 回と、前回と違う色を渡したときだけです。"
+      ],
+      "params": [
+        {
+          "name": "color",
+          "desc": "背景の色。x68_rgb() で作った値を渡します。"
+        }
+      ],
+      "returns": null,
+      "example": {
+        "caption": "毎フレーム、濃い青で消してから点を打ち直しています。",
+        "code": "x68_screen_open();\nfor (;;) {\n  x68_cls(x68_rgb(0, 0, 64));\n  x68_pset(x68_rand_int(X68_SCREEN_W), x68_rand_int(X68_SCREEN_H), x68_rgb(255, 255, 255));\n  x68_screen_flip();\n}"
+      },
+      "pitfalls": [
+        "引数は「消す量」ではなく背景の色です。",
+        "毎フレーム違う色を渡すと、そのたびに全画面を塗り直すことになって遅くなります。背景色は固定にしておくのが無難です。"
+      ],
+      "seealso": [
+        "x68_frame_begin",
+        "x68_rgb"
+      ]
+    },
+    {
+      "name": "x68_frame_begin",
+      "kind": "function",
+      "category": "screen",
+      "signature": "void x68_frame_begin(void)",
+      "summary": "画面は消さずに、描画の記録だけ新しくする",
+      "description": [
+        "x68_cls() の代わりに呼びます。裏バッファの絵はそのまま残し、「今のフレームでどこを描いたか」の記録だけを空にします。",
+        "背景の絵（地面や星空など）を一度描いたら消したくない、動く物だけ描き替えたい、という場合に使います。前の位置を消す作業は自分で行います（そこに背景色の四角を描くなど）。"
+      ],
+      "params": [],
+      "returns": null,
+      "example": {
+        "caption": "星空は最初に 1 回だけ描き、以降は消しません。四角の前の位置だけを自分で黒く塗って消しています。",
+        "code": "int x = 0;\nint i;\n\nx68_screen_open();\nx68_cls(x68_rgb(0, 0, 0));\nfor (i = 0; i < 200; i++) {\n  x68_pset(x68_rand_int(X68_SCREEN_W), x68_rand_int(X68_SCREEN_H), x68_rgb(255, 255, 255));\n}\nfor (;;) {\n  x68_frame_begin();\n  x68_box_fill(x, 240, 32, 32, x68_rgb(0, 0, 0));\n  x = (x + 1) % X68_SCREEN_W;\n  x68_box_fill(x, 240, 32, 32, x68_rgb(0, 255, 128));\n  x68_screen_flip();\n}"
+      },
+      "pitfalls": [
+        "消す処理を自分で書かないと、動いた跡がそのまま残り続けます（それを狙って線を引く使い方もできます）。"
+      ],
+      "seealso": [
+        "x68_cls",
+        "x68_screen_flip"
+      ]
+    },
+    {
+      "name": "x68_pset",
+      "kind": "function",
+      "category": "draw",
+      "signature": "void x68_pset(int x, int y, int color)",
+      "summary": "点を 1 つ打つ",
+      "description": [
+        "指定した座標に 1 ドットだけ色を置きます。いちばん基本の描画です。"
+      ],
+      "params": [
+        {
+          "name": "x",
+          "desc": "横位置。0 が左端、511 が右端。"
+        },
+        {
+          "name": "y",
+          "desc": "縦位置。0 が上端、511 が下端。"
+        },
+        {
+          "name": "color",
+          "desc": "点の色。x68_rgb() で作った値。"
+        }
+      ],
+      "returns": null,
+      "example": {
+        "caption": "斜めの線を点で描いています。画面外に出た分は自動的に無視されます。",
+        "code": "int i;\n\nx68_screen_open();\nx68_cls(x68_rgb(0, 0, 0));\nfor (i = 0; i < 512; i++) {\n  x68_pset(i, i, x68_rgb(255, 255, 255));\n}\nx68_screen_flip();"
+      },
+      "pitfalls": [
+        "画面の外の座標を渡しても何も起きません（落ちません）。",
+        "点を何万個も打つのは遅いので、まとまった面は x68_box_fill() を使ってください。"
+      ],
+      "seealso": [
+        "x68_pget",
+        "x68_line"
+      ]
+    },
+    {
+      "name": "x68_pget",
+      "kind": "function",
+      "category": "draw",
+      "signature": "int x68_pget(int x, int y)",
+      "summary": "その点に今ある色を読む",
+      "description": [
+        "指定した座標の色を読みます。読むのは裏バッファなので、まだ x68_screen_flip() していない、今のフレームで描いたばかりの色も見えます。",
+        "「そこに壁があるか」を色で判定する、といった当たり判定に使えます。"
+      ],
+      "params": [
+        {
+          "name": "x",
+          "desc": "横位置。"
+        },
+        {
+          "name": "y",
+          "desc": "縦位置。"
+        }
+      ],
+      "returns": "その点の色。画面の外を指定した場合は 0。",
+      "example": {
+        "caption": "画面の中央に壁を描き、その色と読み取った色が同じかどうかで当たりを判定しています。",
+        "code": "int wall = x68_rgb(255, 0, 0);\n\nx68_screen_open();\nx68_cls(x68_rgb(0, 0, 0));\nx68_box_fill(240, 0, 32, 512, wall);\nif (x68_pget(250, 100) == wall) {\n  printf(\"HIT WALL\");\n}\nx68_screen_flip();"
+      },
+      "pitfalls": [
+        "0 は「黒」でもあり「画面の外」でもあります。端をまたぐ判定では、座標のほうを先に確かめてください。"
+      ],
+      "seealso": [
+        "x68_pset"
+      ]
+    },
+    {
+      "name": "x68_line",
+      "kind": "function",
+      "category": "draw",
+      "signature": "void x68_line(int x1, int y1, int x2, int y2, int color)",
+      "summary": "2 点を結ぶ直線を引く",
+      "description": [
+        "(x1, y1) から (x2, y2) まで、太さ 1 ドットの線を引きます。"
+      ],
+      "params": [
+        {
+          "name": "x1",
+          "desc": "始点の横位置。"
+        },
+        {
+          "name": "y1",
+          "desc": "始点の縦位置。"
+        },
+        {
+          "name": "x2",
+          "desc": "終点の横位置。"
+        },
+        {
+          "name": "y2",
+          "desc": "終点の縦位置。"
+        },
+        {
+          "name": "color",
+          "desc": "線の色。"
+        }
+      ],
+      "returns": null,
+      "example": {
+        "caption": "画面の中心から放射状に線を引いています。両端が画面の外でも落ちません。",
+        "code": "int i;\n\nx68_screen_open();\nx68_cls(x68_rgb(0, 0, 0));\nfor (i = 0; i < 512; i += 32) {\n  x68_line(256, 256, i, 0, x68_rgb(0, 255, 255));\n}\nx68_screen_flip();"
+      },
+      "pitfalls": [
+        "太い線は引けません。太くしたいときは少しずらして何本か引きます。"
+      ],
+      "seealso": [
+        "x68_pset",
+        "x68_box"
+      ]
+    },
+    {
+      "name": "x68_box",
+      "kind": "function",
+      "category": "draw",
+      "signature": "void x68_box(int x, int y, int w, int h, int color)",
+      "summary": "四角の枠を描く",
+      "description": [
+        "左上が (x, y)、幅 w、高さ h の四角形の枠（太さ 1 ドット）を描きます。中は塗りません。"
+      ],
+      "params": [
+        {
+          "name": "x",
+          "desc": "左上の横位置。"
+        },
+        {
+          "name": "y",
+          "desc": "左上の縦位置。"
+        },
+        {
+          "name": "w",
+          "desc": "幅（ドット）。0 以下なら何も描きません。"
+        },
+        {
+          "name": "h",
+          "desc": "高さ（ドット）。0 以下なら何も描きません。"
+        },
+        {
+          "name": "color",
+          "desc": "枠の色。"
+        }
+      ],
+      "returns": null,
+      "example": {
+        "caption": "入れ子の枠を描いています。",
+        "code": "int i;\n\nx68_screen_open();\nx68_cls(x68_rgb(0, 0, 0));\nfor (i = 0; i < 8; i++) {\n  x68_box(i * 16, i * 16, 512 - i * 32, 512 - i * 32, x68_rgb(255, 255 - i * 30, 0));\n}\nx68_screen_flip();"
+      },
+      "pitfalls": [
+        "w と h は「右端・下端の座標」ではなく「幅・高さ」です。"
+      ],
+      "seealso": [
+        "x68_box_fill"
+      ]
+    },
+    {
+      "name": "x68_box_fill",
+      "kind": "function",
+      "category": "draw",
+      "signature": "void x68_box_fill(int x, int y, int w, int h, int color)",
+      "summary": "四角を塗りつぶす",
+      "description": [
+        "左上が (x, y)、幅 w、高さ h の四角形を塗りつぶします。",
+        "この環境でいちばん速い描画です。自機・敵・ブロック・棒グラフなど、たいていの物はこれで作れます。"
+      ],
+      "params": [
+        {
+          "name": "x",
+          "desc": "左上の横位置。"
+        },
+        {
+          "name": "y",
+          "desc": "左上の縦位置。"
+        },
+        {
+          "name": "w",
+          "desc": "幅（ドット）。0 以下なら何も描きません。"
+        },
+        {
+          "name": "h",
+          "desc": "高さ（ドット）。0 以下なら何も描きません。"
+        },
+        {
+          "name": "color",
+          "desc": "塗る色。"
+        }
+      ],
+      "returns": null,
+      "example": {
+        "caption": "色の帯を 16 本並べています。",
+        "code": "int i;\n\nx68_screen_open();\nx68_cls(x68_rgb(0, 0, 0));\nfor (i = 0; i < 16; i++) {\n  x68_box_fill(i * 32, 100, 32, 300, x68_rgb(i * 16, 0, 255 - i * 16));\n}\nx68_screen_flip();"
+      },
+      "pitfalls": [
+        "画面からはみ出す分は切り取られます。はみ出しを自分で計算する必要はありません。"
+      ],
+      "seealso": [
+        "x68_box",
+        "x68_cls"
+      ]
+    },
+    {
+      "name": "x68_circle",
+      "kind": "function",
+      "category": "draw",
+      "signature": "void x68_circle(int x, int y, int r, int color)",
+      "summary": "円の輪郭を描く",
+      "description": [
+        "中心 (x, y)、半径 r の円を、太さ 1 ドットの輪郭で描きます。中は塗りません。"
+      ],
+      "params": [
+        {
+          "name": "x",
+          "desc": "中心の横位置。"
+        },
+        {
+          "name": "y",
+          "desc": "中心の縦位置。"
+        },
+        {
+          "name": "r",
+          "desc": "半径（ドット）。0 以下なら何も描きません。"
+        },
+        {
+          "name": "color",
+          "desc": "線の色。"
+        }
+      ],
+      "returns": null,
+      "example": {
+        "caption": "同心円を描いています。",
+        "code": "int r;\n\nx68_screen_open();\nx68_cls(x68_rgb(0, 0, 0));\nfor (r = 16; r < 256; r += 16) {\n  x68_circle(256, 256, r, x68_rgb(0, 255, 128));\n}\nx68_screen_flip();"
+      },
+      "pitfalls": [
+        "塗りつぶした円を描く関数はありません。半径を 1 ずつ変えて何重にも描くと塗りつぶせます（少し遅くなります）。"
+      ],
+      "seealso": [
+        "x68_box_fill"
+      ]
+    },
+    {
+      "name": "x68_rgb",
+      "kind": "function",
+      "category": "color",
+      "signature": "int x68_rgb(int r, int g, int b)",
+      "summary": "赤・緑・青の強さから色を作る",
+      "description": [
+        "赤・緑・青をそれぞれ 0〜255 の強さで指定して、描画関数に渡せる色の値を作ります。0 が最も暗く、255 が最も明るい値です。",
+        "画面が実際に区別できるのは各色 32 段階なので、たとえば 100 と 103 のような近い値は同じ色になります。"
+      ],
+      "params": [
+        {
+          "name": "r",
+          "desc": "赤の強さ（0〜255）。範囲外は 0 か 255 に丸められます。"
+        },
+        {
+          "name": "g",
+          "desc": "緑の強さ（0〜255）。"
+        },
+        {
+          "name": "b",
+          "desc": "青の強さ（0〜255）。"
+        }
+      ],
+      "returns": "描画関数の color に渡す色の値。",
+      "example": {
+        "caption": "よく使う色をあらかじめ変数に入れておくと読みやすくなります。毎フレーム呼んでも構いませんが、名前が付くぶん変数にする利点が大きいです。",
+        "code": "int black = x68_rgb(0, 0, 0);\nint white = x68_rgb(255, 255, 255);\nint red = x68_rgb(255, 0, 0);\n\nx68_screen_open();\nx68_cls(black);\nx68_box_fill(100, 100, 300, 100, red);\nx68_box_fill(100, 300, 300, 100, white);\nx68_screen_flip();"
+      },
+      "pitfalls": [
+        "色の値をそのまま数字で書く（0xF81F など）こともできますが、並び順が独特なので x68_rgb() を使うのが安全です。"
+      ],
+      "seealso": [
+        "X68_SCREEN_W"
+      ]
+    },
+    {
+      "name": "X68_SCREEN_W",
+      "kind": "constant",
+      "category": "color",
+      "signature": "#define X68_SCREEN_W 512",
+      "summary": "画面の幅（512）",
+      "description": [
+        "画面の横のドット数です。使える x 座標は 0 〜 X68_SCREEN_W - 1（0〜511）。",
+        "画面の端を扱うときは 512 と直接書かず、この名前を使っておくと後で見返したときに意図が分かります。"
+      ],
+      "params": [],
+      "returns": null,
+      "example": {
+        "caption": "画面の右端で跳ね返る処理です。",
+        "code": "int x = 0;\nint dx = 3;\nint w = 32;\n\nx68_screen_open();\nfor (;;) {\n  x68_cls(x68_rgb(0, 0, 0));\n  x += dx;\n  if (x < 0 || x + w > X68_SCREEN_W) dx = -dx;\n  x68_box_fill(x, 240, w, 32, x68_rgb(255, 255, 0));\n  x68_screen_flip();\n}"
+      },
+      "pitfalls": [],
+      "seealso": [
+        "X68_SCREEN_H"
+      ]
+    },
+    {
+      "name": "X68_SCREEN_H",
+      "kind": "constant",
+      "category": "color",
+      "signature": "#define X68_SCREEN_H 512",
+      "summary": "画面の高さ（512）",
+      "description": [
+        "画面の縦のドット数です。使える y 座標は 0 〜 X68_SCREEN_H - 1（0〜511）。",
+        "X68000 の画面は横長ですが、このライブラリが使うモードでは縦横とも 512 ドットの正方形です。"
+      ],
+      "params": [],
+      "returns": null,
+      "example": {
+        "caption": "画面のちょうど真ん中に印を描きます。",
+        "code": "x68_screen_open();\nx68_cls(x68_rgb(0, 0, 0));\nx68_line(X68_SCREEN_W / 2, 0, X68_SCREEN_W / 2, X68_SCREEN_H - 1, x68_rgb(64, 64, 64));\nx68_line(0, X68_SCREEN_H / 2, X68_SCREEN_W - 1, X68_SCREEN_H / 2, x68_rgb(64, 64, 64));\nx68_screen_flip();"
+      },
+      "pitfalls": [],
+      "seealso": [
+        "X68_SCREEN_W"
+      ]
+    },
+    {
+      "name": "x68_key_down",
+      "kind": "function",
+      "category": "key",
+      "signature": "int x68_key_down(int key)",
+      "summary": "そのキーが今押されているかを調べる",
+      "description": [
+        "キーが押されている「間ずっと」真を返します。押した瞬間だけ・離した瞬間だけを取りたい場合は、前のフレームの状態を変数に覚えておいて、変わったかどうかを自分で比べます。",
+        "複数のキーを同時に調べられるので、斜め移動もそのまま書けます。"
+      ],
+      "params": [
+        {
+          "name": "key",
+          "desc": "調べたいキー。X68_KEY_ で始まる定数（下の表）を渡します。"
+        }
+      ],
+      "returns": "押されていれば 0 以外、押されていなければ 0。知らないキー番号を渡しても落ちず、0 を返します。",
+      "example": {
+        "caption": "カーソルキーで四角を動かします。上下左右を別々に調べているので、斜めにも動きます。",
+        "code": "int x = 240;\nint y = 240;\n\nx68_screen_open();\nfor (;;) {\n  x68_cls(x68_rgb(0, 0, 0));\n  if (x68_key_down(X68_KEY_LEFT)) x -= 4;\n  if (x68_key_down(X68_KEY_RIGHT)) x += 4;\n  if (x68_key_down(X68_KEY_UP)) y -= 4;\n  if (x68_key_down(X68_KEY_DOWN)) y += 4;\n  x68_box_fill(x, y, 32, 32, x68_rgb(0, 255, 255));\n  x68_screen_flip();\n}"
+      },
+      "pitfalls": [
+        "押しっぱなしでも毎フレーム真になります。「1 回押したら 1 回だけ」にしたいときは前回の状態と比べてください。",
+        "この関数を呼んでもキー入力は溜まりません。x68_screen_flip() のタイミングで 1 回読む、という書き方が基本です。"
+      ],
+      "seealso": [
+        "X68_KEY_LEFT"
+      ]
+    },
+    {
+      "name": "X68_KEY_LEFT",
+      "kind": "constant-table",
+      "category": "key",
+      "signature": "#define X68_KEY_LEFT 0x3b  /* ほか X68_KEY_* 定数 */",
+      "summary": "キーを表す定数の一覧",
+      "description": [
+        "x68_key_down() に渡す定数です。値は X68000 のキーボードが実際に送るコード（スキャンコード）で、実測して確かめたものです。",
+        "ここに無いキーも、コードさえ分かれば数値を直接渡せば読めます。"
+      ],
+      "params": [],
+      "returns": null,
+      "table": {
+        "columns": [
+          "定数",
+          "キー"
+        ],
+        "groups": [
+          {
+            "title": "移動・操作",
+            "rows": [
+              [
+                "X68_KEY_LEFT",
+                "← カーソル左"
+              ],
+              [
+                "X68_KEY_UP",
+                "↑ カーソル上"
+              ],
+              [
+                "X68_KEY_RIGHT",
+                "→ カーソル右"
+              ],
+              [
+                "X68_KEY_DOWN",
+                "↓ カーソル下"
+              ],
+              [
+                "X68_KEY_SPACE",
+                "スペース"
+              ],
+              [
+                "X68_KEY_ENTER",
+                "リターン"
+              ],
+              [
+                "X68_KEY_ESC",
+                "ESC"
+              ]
+            ]
+          },
+          {
+            "title": "数字",
+            "rows": [
+              [
+                "X68_KEY_0 〜 X68_KEY_9",
+                "0 〜 9（最上段の数字キー）"
+              ]
+            ]
+          },
+          {
+            "title": "アルファベット",
+            "rows": [
+              [
+                "X68_KEY_A 〜 X68_KEY_Z",
+                "A 〜 Z"
+              ]
+            ]
+          }
+        ]
+      },
+      "example": {
+        "caption": "スペースキーを「押した瞬間」だけ拾う書き方です。押しっぱなしでは 1 回しか数えません。",
+        "code": "int previous = 0;\nint count = 0;\n\nx68_screen_open();\nfor (;;) {\n  int current = x68_key_down(X68_KEY_SPACE);\n  if (current && !previous) {\n    count++;\n    x68_locate(0, 0);\n    printf(\"COUNT=%d\", count);\n  }\n  previous = current;\n  x68_screen_flip();\n}"
+      },
+      "pitfalls": [],
+      "seealso": [
+        "x68_key_down"
+      ],
+      "covers": [
+        "X68_KEY_*"
+      ]
+    },
+    {
+      "name": "printf",
+      "kind": "function",
+      "category": "text",
+      "signature": "int printf(const char *fmt, ...)",
+      "summary": "書式を指定して文字を出す",
+      "description": [
+        "C でおなじみの printf です。文字列の中の %d などの場所に、後ろに並べた値が埋め込まれて表示されます。",
+        "この環境の printf は自前の小さな実装なので、使える書式は下の表のものだけです。表に無い書式を書くと、その場所に [BADFMT] と表示されます（黙って無視したり、変な値を出したりはしません）。",
+        "1 回の出力は 256 バイトまでです。超えた分は切り捨てられます（落ちはしません）。"
+      ],
+      "params": [
+        {
+          "name": "fmt",
+          "desc": "書式を含む文字列。改行したいところには \\n を書きます。"
+        },
+        {
+          "name": "...",
+          "desc": "書式に埋め込む値。左から順に対応します。"
+        }
+      ],
+      "returns": "出力した文字数。",
+      "table": {
+        "columns": [
+          "書式",
+          "意味"
+        ],
+        "groups": [
+          {
+            "title": "使える書式",
+            "rows": [
+              [
+                "%d",
+                "int を 10 進数で（符号つき）"
+              ],
+              [
+                "%u",
+                "unsigned int を 10 進数で（符号なし）"
+              ],
+              [
+                "%x",
+                "unsigned int を 16 進数で（小文字 a〜f）"
+              ],
+              [
+                "%c",
+                "1 文字として"
+              ],
+              [
+                "%s",
+                "文字列として"
+              ],
+              [
+                "%%",
+                "% の文字そのもの"
+              ]
+            ]
+          },
+          {
+            "title": "使えない書式（[BADFMT] と表示されます）",
+            "rows": [
+              [
+                "%f %e %g",
+                "小数。この環境に小数の表示はありません"
+              ],
+              [
+                "%3d %02x %.2s",
+                "桁数・0 埋め・精度の指定"
+              ],
+              [
+                "%ld %lu",
+                "long などの長さ指定"
+              ],
+              [
+                "%q など",
+                "上に無い文字"
+              ]
+            ]
+          }
+        ]
+      },
+      "example": {
+        "caption": "点数と座標を表示しています。%d が 2 つあるので、値も 2 つ渡します。",
+        "code": "int score = 1200;\nint x = 100;\n\nx68_screen_open();\nx68_locate(0, 0);\nprintf(\"SCORE=%d\\n\", score);\nprintf(\"X=%d HEX=%x\\n\", x, x);\nx68_screen_flip();"
+      },
+      "pitfalls": [
+        "%3d のような桁揃えは使えません。桁を揃えたいときは、自分で空白を足すか x68_locate() で位置を決めてください。",
+        "小数は扱えません。1.5 倍したいときは 10 倍した整数で計算する、といった工夫をします。"
+      ],
+      "seealso": [
+        "puts",
+        "x68_locate"
+      ]
+    },
+    {
+      "name": "puts",
+      "kind": "function",
+      "category": "text",
+      "signature": "int puts(const char *s)",
+      "summary": "文字列を出して改行する",
+      "description": [
+        "文字列をそのまま表示し、最後に必ず改行を 1 つ足します（本物の C の puts と同じ動きです）。",
+        "書式が要らないときは printf より短く書けます。"
+      ],
+      "params": [
+        {
+          "name": "s",
+          "desc": "表示する文字列。"
+        }
+      ],
+      "returns": "常に 0。",
+      "example": {
+        "caption": "3 行表示します。改行は puts が自動で入れるので \\n は書きません。",
+        "code": "x68_screen_open();\nputs(\"SPROUT68K\");\nputs(\"READY.\");\nputs(\"PRESS SPACE\");\nx68_screen_flip();"
+      },
+      "pitfalls": [
+        "改行が必ず付きます。付けたくない場合は printf(\"%s\", s) を使ってください。"
+      ],
+      "seealso": [
+        "printf"
+      ]
+    },
+    {
+      "name": "x68_locate",
+      "kind": "function",
+      "category": "text",
+      "signature": "void x68_locate(int col, int row)",
+      "summary": "次に文字を出す位置を決める",
+      "description": [
+        "printf や puts が次に文字を出す位置を指定します。文字の画面は横 96 桁 × 縦 32 行です（グラフィックの座標とは別の数え方です）。",
+        "毎フレーム同じ場所に点数を出したいときは、描く前にここで位置を戻します。"
+      ],
+      "params": [
+        {
+          "name": "col",
+          "desc": "桁（横位置）。0 が左端、95 が右端。"
+        },
+        {
+          "name": "row",
+          "desc": "行（縦位置）。0 が最上段、31 が最下段。"
+        }
+      ],
+      "returns": null,
+      "example": {
+        "caption": "画面の右上に点数を出し続けます。毎フレーム同じ位置に戻すので、行が流れていきません。",
+        "code": "int score = 0;\n\nx68_screen_open();\nfor (;;) {\n  x68_cls(x68_rgb(0, 0, 48));\n  score++;\n  x68_locate(70, 1);\n  printf(\"SCORE %d\", score);\n  x68_screen_flip();\n}"
+      },
+      "pitfalls": [
+        "画面の外の位置を渡しても何も起きません（落ちません）。",
+        "文字はグラフィックの上に重なって出ます。x68_cls() では消えないので、上書きするか同じ位置に出し直します。"
+      ],
+      "seealso": [
+        "printf",
+        "puts"
+      ]
+    },
+    {
+      "name": "srand",
+      "kind": "function",
+      "category": "math",
+      "signature": "void srand(unsigned int seed)",
+      "summary": "乱数の出方を決める",
+      "description": [
+        "乱数の並びの出発点を決めます。同じ seed を渡せば、毎回まったく同じ順番の乱数が出ます。",
+        "そのため、テスト中は固定の値を渡して「毎回同じ動き」にしておくと、不具合を追いやすくなります。"
+      ],
+      "params": [
+        {
+          "name": "seed",
+          "desc": "乱数の出発点となる数。"
+        }
+      ],
+      "returns": null,
+      "example": {
+        "caption": "同じ seed からは同じ並びが出ます。この例は実行のたびに同じ 5 つの数を表示します。",
+        "code": "int i;\n\nx68_screen_open();\nsrand(1234);\nfor (i = 0; i < 5; i++) {\n  printf(\"%d \", x68_rand_int(100));\n}\nx68_screen_flip();"
+      },
+      "pitfalls": [
+        "呼ばなくても乱数は使えますが、その場合は毎回同じ並びになります。",
+        "この環境には時計がありません。「毎回違う」にしたいときは、タイトル画面でキーが押されるまでに回った回数を seed にする、といった工夫をします。"
+      ],
+      "seealso": [
+        "rand",
+        "x68_rand_int"
+      ]
+    },
+    {
+      "name": "rand",
+      "kind": "function",
+      "category": "math",
+      "signature": "int rand(void)",
+      "summary": "乱数を 1 つ取り出す",
+      "description": [
+        "0 〜 X68_RAND_MAX（32767）の範囲の値を返します。範囲を決めたい場合は、割り算をするより x68_rand_int() のほうが安全で読みやすいです。"
+      ],
+      "params": [],
+      "returns": "0 〜 X68_RAND_MAX の値。",
+      "example": {
+        "caption": "そのままの乱数を表示します。範囲を絞りたいときは x68_rand_int() を使ってください。",
+        "code": "x68_screen_open();\nprintf(\"%d\\n\", rand());\nprintf(\"MAX=%d\\n\", X68_RAND_MAX);\nx68_screen_flip();"
+      },
+      "pitfalls": [
+        "暗号やくじ引きのような、予測されて困る用途には使えない簡単な方式です。"
+      ],
+      "seealso": [
+        "x68_rand_int",
+        "srand"
+      ]
+    },
+    {
+      "name": "x68_rand_int",
+      "kind": "function",
+      "category": "math",
+      "signature": "int x68_rand_int(int n)",
+      "summary": "0 〜 n-1 の乱数を取り出す",
+      "description": [
+        "欲しい範囲を直接指定できる乱数です。たとえば x68_rand_int(512) なら、画面のどこかの座標として使える 0〜511 が返ります。"
+      ],
+      "params": [
+        {
+          "name": "n",
+          "desc": "欲しい範囲の大きさ。0 以下を渡した場合は 0 を返します（0 で割って落ちることはありません）。"
+        }
+      ],
+      "returns": "0 以上 n 未満の値。",
+      "example": {
+        "caption": "ランダムな位置・ランダムな色の四角を 50 個ばらまきます。",
+        "code": "int i;\n\nx68_screen_open();\nx68_cls(x68_rgb(0, 0, 0));\nfor (i = 0; i < 50; i++) {\n  x68_box_fill(x68_rand_int(X68_SCREEN_W), x68_rand_int(X68_SCREEN_H), 24, 24,\n               x68_rgb(x68_rand_int(256), x68_rand_int(256), x68_rand_int(256)));\n}\nx68_screen_flip();"
+      },
+      "pitfalls": [
+        "n は「最大値」ではなく「個数」です。1〜6 のサイコロは x68_rand_int(6) + 1 と書きます。"
+      ],
+      "seealso": [
+        "rand",
+        "srand"
+      ]
+    },
+    {
+      "name": "X68_RAND_MAX",
+      "kind": "constant",
+      "category": "math",
+      "signature": "#define X68_RAND_MAX 0x7fff",
+      "summary": "rand() が返す最大値（32767）",
+      "description": [
+        "rand() が返しうるいちばん大きい値です。"
+      ],
+      "params": [],
+      "returns": null,
+      "example": {
+        "caption": "乱数を 0〜99 の範囲に直しています（この計算をしてくれるのが x68_rand_int() です）。",
+        "code": "int value = rand() * 100 / (X68_RAND_MAX + 1);\n\nx68_screen_open();\nprintf(\"%d\", value);\nx68_screen_flip();"
+      },
+      "pitfalls": [],
+      "seealso": [
+        "rand"
+      ]
+    },
+    {
+      "name": "abs",
+      "kind": "function",
+      "category": "math",
+      "signature": "int abs(int n)",
+      "summary": "符号を取って絶対値にする",
+      "description": [
+        "負の数なら正にして返します。2 点の距離を測るときなどに使います。"
+      ],
+      "params": [
+        {
+          "name": "n",
+          "desc": "対象の値。"
+        }
+      ],
+      "returns": "n の絶対値。",
+      "example": {
+        "caption": "2 つの四角が近づいたかどうかを、中心の距離で判定しています。",
+        "code": "int ax = 100;\nint bx = 130;\n\nx68_screen_open();\nif (abs(ax - bx) < 40) {\n  printf(\"NEAR\");\n} else {\n  printf(\"FAR\");\n}\nx68_screen_flip();"
+      },
+      "pitfalls": [],
+      "seealso": []
+    },
+    {
+      "name": "memcpy",
+      "kind": "function",
+      "category": "mem",
+      "signature": "void *memcpy(void *dst, const void *src, unsigned long n)",
+      "summary": "メモリの内容をまとめて複製する",
+      "description": [
+        "src から dst へ n バイトぶんそのまま複製します。配列まるごとのコピーに使います。"
+      ],
+      "params": [
+        {
+          "name": "dst",
+          "desc": "複製先。"
+        },
+        {
+          "name": "src",
+          "desc": "複製元。"
+        },
+        {
+          "name": "n",
+          "desc": "複製するバイト数。"
+        }
+      ],
+      "returns": "dst をそのまま返します。",
+      "example": {
+        "caption": "配列を丸ごと複製しています。sizeof を使うと、要素数を変えても書き直さずに済みます。",
+        "code": "int source[4];\nint copy[4];\nint i;\n\nfor (i = 0; i < 4; i++) source[i] = i * 10;\nmemcpy(copy, source, sizeof(source));\n\nx68_screen_open();\nprintf(\"%d %d\", copy[0], copy[3]);\nx68_screen_flip();"
+      },
+      "pitfalls": [
+        "複製元と複製先が重なっている場合の動きは保証しません（重なるときは自分でループを書いてください）。"
+      ],
+      "seealso": [
+        "memset"
+      ]
+    },
+    {
+      "name": "memset",
+      "kind": "function",
+      "category": "mem",
+      "signature": "void *memset(void *dst, int c, unsigned long n)",
+      "summary": "メモリを同じ値で埋める",
+      "description": [
+        "dst から n バイトぶんを、値 c で埋めます。配列を 0 で初期化するのに使うのが定番です。"
+      ],
+      "params": [
+        {
+          "name": "dst",
+          "desc": "埋める先。"
+        },
+        {
+          "name": "c",
+          "desc": "埋める値（1 バイトぶんだけ使われます）。"
+        },
+        {
+          "name": "n",
+          "desc": "埋めるバイト数。"
+        }
+      ],
+      "returns": "dst をそのまま返します。",
+      "example": {
+        "caption": "ブロックの生存フラグをまとめて 0 に戻しています。ゲームをやり直すときの初期化に便利です。",
+        "code": "char alive[40];\n\nmemset(alive, 0, sizeof(alive));\n\nx68_screen_open();\nprintf(\"%d\", alive[10]);\nx68_screen_flip();"
+      },
+      "pitfalls": [
+        "int の配列を 1 で埋めると、各要素は 1 ではなく 0x01010101 になります。0 埋め以外は 1 バイトの配列に使うのが安全です。"
+      ],
+      "seealso": [
+        "memcpy"
+      ]
+    },
+    {
+      "name": "strlen",
+      "kind": "function",
+      "category": "mem",
+      "signature": "unsigned long strlen(const char *s)",
+      "summary": "文字列の長さを数える",
+      "description": [
+        "文字列の文字数を返します（終端の 0 は数えません）。"
+      ],
+      "params": [
+        {
+          "name": "s",
+          "desc": "対象の文字列。"
+        }
+      ],
+      "returns": "文字数。",
+      "example": {
+        "caption": "文字列の長さから、画面の中央に来る桁位置を計算しています。",
+        "code": "const char *title = \"SPROUT68K\";\nint col = (96 - (int)strlen(title)) / 2;\n\nx68_screen_open();\nx68_locate(col, 10);\nputs(title);\nx68_screen_flip();"
+      },
+      "pitfalls": [
+        "返り値は unsigned long です。引き算に使うときは (int) を付けて int にしておくと、負の数になったときの事故を防げます。"
+      ],
+      "seealso": [
+        "printf"
+      ]
+    },
+    {
+      "name": "x68_vsync_wait",
+      "kind": "function",
+      "category": "raw",
+      "signature": "void x68_vsync_wait(void)",
+      "summary": "画面の書き換えが一巡するまで待つ",
+      "description": [
+        "垂直同期（表示期間から帰線期間へ移る瞬間）を 1 回待ちます。x68_screen_flip() が内部で呼んでいるのと同じものです。",
+        "グラフィック画面を使わず、文字だけのプログラムで速度を揃えたいときに使えます。"
+      ],
+      "params": [],
+      "returns": null,
+      "example": {
+        "caption": "1 秒あたりおよそ 55〜60 回のペースで数字を数えます。",
+        "code": "int i;\n\nfor (i = 0; i < 60; i++) {\n  x68_vsync_wait();\n  x68_locate(0, 0);\n  printf(\"FRAME %d  \", i);\n}"
+      },
+      "pitfalls": [],
+      "seealso": [
+        "x68_screen_flip"
+      ]
+    },
+    {
+      "name": "x68_iocs_print",
+      "kind": "function",
+      "category": "raw",
+      "signature": "void x68_iocs_print(const char *msg)",
+      "summary": "IOCS を直接呼んで文字列を出す",
+      "description": [
+        "本体 ROM の機能（IOCS $21）をそのまま呼びます。printf や puts はこの上に作られています。",
+        "書式の解釈も改行の追加もしません。渡した文字列をそのまま出します。"
+      ],
+      "params": [
+        {
+          "name": "msg",
+          "desc": "0 で終わる文字列。"
+        }
+      ],
+      "returns": null,
+      "example": {
+        "caption": "printf を通さずに直接出しています。",
+        "code": "x68_iocs_print(\"RAW OUTPUT\");"
+      },
+      "pitfalls": [],
+      "seealso": [
+        "puts"
+      ]
+    },
+    {
+      "name": "x68_iocs_locate",
+      "kind": "function",
+      "category": "raw",
+      "signature": "void x68_iocs_locate(int col, int row)",
+      "summary": "IOCS を直接呼んで表示位置を決める",
+      "description": [
+        "本体 ROM の機能（IOCS $23）をそのまま呼びます。x68_locate() はこれをそのまま呼び直しているだけなので、動きは同じです。"
+      ],
+      "params": [
+        {
+          "name": "col",
+          "desc": "桁（0〜95）。"
+        },
+        {
+          "name": "row",
+          "desc": "行（0〜31）。"
+        }
+      ],
+      "returns": null,
+      "example": {
+        "caption": "位置を決めてから直接出力しています。",
+        "code": "x68_iocs_locate(10, 5);\nx68_iocs_print(\"HERE\");"
+      },
+      "pitfalls": [],
+      "seealso": [
+        "x68_locate"
+      ]
+    },
+    {
+      "name": "x68_iocs_bitsns",
+      "kind": "function",
+      "category": "raw",
+      "signature": "unsigned char x68_iocs_bitsns(unsigned long group)",
+      "summary": "キーボードの押下状態を 8 キーまとめて読む",
+      "description": [
+        "本体 ROM の機能（IOCS $04）をそのまま呼びます。キーは 8 個ずつの組に分かれていて、組の番号（0〜15）を渡すと、その 8 個ぶんの押下状態がビットで返ります。",
+        "x68_key_down() はこれを使って 1 キーぶんだけ取り出しています。同時押しを大量に調べるときは、こちらのほうが呼び出し回数を減らせます。"
+      ],
+      "params": [
+        {
+          "name": "group",
+          "desc": "キーの組の番号（0〜15）。スキャンコードを 8 で割った商が組の番号です。"
+        }
+      ],
+      "returns": "8 キーぶんの押下ビット（1 が押されている状態）。",
+      "example": {
+        "caption": "カーソルキーが含まれる組を丸ごと読み、16 進数で表示しています。",
+        "code": "for (;;) {\n  x68_locate(0, 0);\n  printf(\"GROUP7=%x  \", x68_iocs_bitsns(X68_KEY_LEFT / 8));\n  x68_vsync_wait();\n}"
+      },
+      "pitfalls": [
+        "どのビットがどのキーかは、スキャンコードを 8 で割った余りで決まります。"
+      ],
+      "seealso": [
+        "x68_key_down"
+      ]
+    },
+    {
+      "name": "x68_gvram_mode_65536_1page",
+      "kind": "function",
+      "category": "raw",
+      "signature": "void x68_gvram_mode_65536_1page(void)",
+      "summary": "65536 色 1 ページのグラフィック画面に切り替える",
+      "description": [
+        "画面のモードだけを切り替えます。裏バッファの用意はしません（それをするのが x68_screen_open() です）。",
+        "自分で GVRAM（$00C00000 から、1 ライン 512 ワード）を直接書きたい場合に使います。"
+      ],
+      "params": [],
+      "returns": null,
+      "example": {
+        "caption": "モードだけ切り替えて、GVRAM に直接書き込んでいます。裏バッファも範囲チェックもありません。",
+        "code": "x68_vu16 *gvram = (x68_vu16 *)0x00C00000UL;\nint i;\n\nx68_gvram_mode_65536_1page();\nfor (i = 0; i < 512; i++) {\n  gvram[i * 512 + i] = 0xFFFF;\n}"
+      },
+      "pitfalls": [
+        "x68_screen_open() を使う場合、この関数を自分で呼ぶ必要はありません。"
+      ],
+      "seealso": [
+        "x68_screen_open"
+      ]
+    },
+    {
+      "name": "x68_gvram_copy_movem",
+      "kind": "function",
+      "category": "raw",
+      "signature": "void x68_gvram_copy_movem(void *dst, const void *src, unsigned long batch_count)",
+      "summary": "メインメモリから GVRAM へ高速に転送する",
+      "description": [
+        "MOVEM 命令を使った、この環境でいちばん速い転送です。x68_screen_flip() が内部で使っています。",
+        "転送量の単位はバイトではなく「32 バイトのまとまりの個数」です。"
+      ],
+      "params": [
+        {
+          "name": "dst",
+          "desc": "転送先（GVRAM など）。"
+        },
+        {
+          "name": "src",
+          "desc": "転送元（メインメモリ）。"
+        },
+        {
+          "name": "batch_count",
+          "desc": "32 バイト単位の個数。バイト数ではありません。"
+        }
+      ],
+      "returns": null,
+      "example": {
+        "caption": "1024 バイト（32 バイト × 32 個）を GVRAM の先頭へ転送しています。",
+        "code": "static unsigned short pattern[512];\nint i;\n\nfor (i = 0; i < 512; i++) pattern[i] = 0x07E0;\nx68_gvram_mode_65536_1page();\nx68_gvram_copy_movem((void *)0x00C00000UL, pattern, 1024 / 32);"
+      },
+      "pitfalls": [
+        "バイト数を渡すと 32 倍の量を転送してしまい、画面の外まで壊します。",
+        "転送先・転送元とも 4 バイト境界に揃っている必要があります。"
+      ],
+      "seealso": [
+        "x68_screen_flip"
+      ]
+    },
+    {
+      "name": "x68_iocs_disk_read",
+      "kind": "function",
+      "category": "raw",
+      "signature": "long x68_iocs_disk_read(unsigned long d1, unsigned long d2, unsigned long byte_count, void *dst)",
+      "summary": "フロッピーディスクから直接読み込む",
+      "description": [
+        "本体 ROM の機能（IOCS $46）をそのまま呼びます。プログラム本体より後ろのセクタに置いた画像や面データを、実行中に読み込むために使います。",
+        "引数はレジスタに入る値そのままの形です。d1 は装置とモード、d2 はトラック・面・セクタの位置を 1 つの数に詰めた値です。"
+      ],
+      "params": [
+        {
+          "name": "d1",
+          "desc": "装置番号 << 8 | モード。1 台目のフロッピーからの通常読み込みは 0x00009070。"
+        },
+        {
+          "name": "d2",
+          "desc": "セクタ長 << 24 | トラック << 16 | 面 << 8 | セクタ。セクタ長 3 が 1024 バイト。トラックと面は 0 から、セクタは 1 から数えます。"
+        },
+        {
+          "name": "byte_count",
+          "desc": "読み込むバイト数。"
+        },
+        {
+          "name": "dst",
+          "desc": "読み込み先のメモリ。"
+        }
+      ],
+      "returns": "IOCS の戻り値。成功していても 0 以外が返ることがあるので、-1（0xFFFFFFFF）のときだけ失敗と判定してください。",
+      "example": {
+        "caption": "トラック 30・面 0・セクタ 1 から 1024 バイト読み込みます。判定は「-1 のときだけ失敗」です。",
+        "code": "static unsigned char buffer[1024];\nlong result = x68_iocs_disk_read(0x00009070UL, (3UL << 24) | (30UL << 16) | (0UL << 8) | 1UL,\n                                 sizeof(buffer), buffer);\n\nx68_screen_open();\nif (result == -1) {\n  puts(\"DISK ERROR\");\n} else {\n  printf(\"FIRST=%x\", buffer[0]);\n}\nx68_screen_flip();"
+      },
+      "pitfalls": [
+        "戻り値が 0 以外でも成功していることがあります。0 かどうかで判定すると、正常なのに失敗として扱ってしまいます。",
+        "プログラム本体が置かれているセクタを読み書きしないよう、置き場所には十分な余裕を取ってください。"
+      ],
+      "seealso": []
+    }
+  ]
+}

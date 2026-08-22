@@ -1,0 +1,166 @@
+<section id="about">
+  <h2>この本の使い方</h2>
+  <p>Sprout68k で書けるプログラムに出てくる関数を、目的から引けるようにまとめたものです。上から順に読むと一通り書けるようになり、後半の「関数図鑑」はコードを書きながら引くための一覧になっています。</p>
+  <p>できることは、いまのところこの3つです。</p>
+  <ul>
+    <li><strong>絵を描く</strong> — 512×512 ドット・65536 色の画面に、点・線・四角・円を描けます。</li>
+    <li><strong>キーを読む</strong> — カーソルキー、スペース、数字、アルファベットが読めます。</li>
+    <li><strong>文字を出す</strong> — <code>printf</code> で、絵の上に重ねて文字を出せます。</li>
+  </ul>
+  <p class="note">音を鳴らす関数はまだありません。マウスやジョイスティックも未対応です。増えたらこのページに追加します。</p>
+</section>
+
+<section id="index-by-goal">
+  <h2>やりたいことから引く</h2>
+  <table class="goal-table">
+    <thead><tr><th>やりたいこと</th><th>使う関数</th></tr></thead>
+    <tbody>
+      <tr><td>絵を描く準備をする</td><td><a href="#x68_screen_open"><code>x68_screen_open</code></a></td></tr>
+      <tr><td>描いた絵を画面に出す</td><td><a href="#x68_screen_flip"><code>x68_screen_flip</code></a></td></tr>
+      <tr><td>画面を消す・背景色を塗る</td><td><a href="#x68_cls"><code>x68_cls</code></a></td></tr>
+      <tr><td>点を打つ／その色を読む</td><td><a href="#x68_pset"><code>x68_pset</code></a> ／ <a href="#x68_pget"><code>x68_pget</code></a></td></tr>
+      <tr><td>線を引く</td><td><a href="#x68_line"><code>x68_line</code></a></td></tr>
+      <tr><td>四角を描く（枠・塗り）</td><td><a href="#x68_box"><code>x68_box</code></a> ／ <a href="#x68_box_fill"><code>x68_box_fill</code></a></td></tr>
+      <tr><td>円を描く</td><td><a href="#x68_circle"><code>x68_circle</code></a></td></tr>
+      <tr><td>色を作る</td><td><a href="#x68_rgb"><code>x68_rgb</code></a></td></tr>
+      <tr><td>キーが押されているか調べる</td><td><a href="#x68_key_down"><code>x68_key_down</code></a> ＋ <a href="#X68_KEY_LEFT"><code>X68_KEY_*</code></a></td></tr>
+      <tr><td>点数やメッセージを表示する</td><td><a href="#printf"><code>printf</code></a> ／ <a href="#puts"><code>puts</code></a></td></tr>
+      <tr><td>文字を出す位置を決める</td><td><a href="#x68_locate"><code>x68_locate</code></a></td></tr>
+      <tr><td>ランダムな値がほしい</td><td><a href="#x68_rand_int"><code>x68_rand_int</code></a>（＋<a href="#srand"><code>srand</code></a>）</td></tr>
+      <tr><td>距離を測る（符号を消す）</td><td><a href="#abs"><code>abs</code></a></td></tr>
+      <tr><td>配列を初期化する・複製する</td><td><a href="#memset"><code>memset</code></a> ／ <a href="#memcpy"><code>memcpy</code></a></td></tr>
+      <tr><td>速さを一定に揃える</td><td><a href="#x68_screen_flip"><code>x68_screen_flip</code></a>（絵を描かないなら <a href="#x68_vsync_wait"><code>x68_vsync_wait</code></a>）</td></tr>
+      <tr><td>ディスクからデータを読む</td><td><a href="#x68_iocs_disk_read"><code>x68_iocs_disk_read</code></a>（上級）</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section id="first-program">
+  <h2>いちばん短いプログラム</h2>
+  <p>まずはこれです。エディタに貼り付けて<strong data-ui-label>実行</strong>を押すと、X68000 の画面に文字が出ます。</p>
+  <pre class="listing" data-full="true">#include "x68.h"
+
+void main(void) {
+  printf("HELLO X68000");
+}</pre>
+  <ul class="walk">
+    <li><code>#include "x68.h"</code> — この 1 行で、このページに載っている関数がすべて使えるようになります。プログラムの先頭に必ず書きます。</li>
+    <li><code>void main(void)</code> — プログラムはここから始まります。この環境では戻り値を返す必要がないので <code>void</code> です。</li>
+    <li><code>printf(...)</code> — 文字を表示します。</li>
+  </ul>
+  <p class="note"><code>main</code> から抜けると、起動時のプログラムが停止して待ち続けます。表示するだけのプログラムに <code>for (;;)</code> を書く必要はありません。</p>
+</section>
+
+<section id="drawing">
+  <h2>絵を描く — 3 つの決まりごと</h2>
+  <p>絵を出すには、かならず次の 3 段が要ります。</p>
+  <ol>
+    <li><a href="#x68_screen_open"><code>x68_screen_open()</code></a> で画面を開く（最初に 1 回だけ）</li>
+    <li>描画関数で描く</li>
+    <li><a href="#x68_screen_flip"><code>x68_screen_flip()</code></a> で画面に出す</li>
+  </ol>
+  <p>描画関数が描いているのは画面そのものではなく、メモリの上の「下書き用紙」です。<code>x68_screen_flip()</code> を呼んだときに、そこから画面へまとめて送られます。この一手間があるおかげで、描いている途中の絵が表示されてチラつくことがありません。<strong>絵が出ないときは、まずこの 3 段のどれかが抜けていないかを確かめてください。</strong></p>
+  <pre class="listing" data-full="true">#include "x68.h"
+
+void main(void) {
+  int black = x68_rgb(0, 0, 0);
+
+  x68_screen_open();
+  x68_cls(black);
+  x68_box_fill(160, 160, 192, 192, x68_rgb(255, 128, 0));
+  x68_circle(256, 256, 120, x68_rgb(255, 255, 255));
+  x68_line(0, 0, 511, 511, x68_rgb(0, 255, 255));
+  x68_screen_flip();
+}</pre>
+  <h3>座標</h3>
+  <p>左上が (0, 0)、右下が (511, 511) です。y は下へ行くほど大きくなります（算数のグラフとは上下が逆です）。画面からはみ出した部分は自動的に切り取られるので、はみ出しを自分で計算する必要はありません。</p>
+  <h3>色</h3>
+  <p>色は <a href="#x68_rgb"><code>x68_rgb(赤, 緑, 青)</code></a> で作ります。それぞれ 0〜255 で、0 が暗く 255 が明るい値です。よく使う色は変数に入れて名前を付けておくと、あとで読み返したときに分かりやすくなります。</p>
+  <pre class="listing">int black = x68_rgb(0, 0, 0);
+int white = x68_rgb(255, 255, 255);
+int red   = x68_rgb(255, 0, 0);
+
+x68_screen_open();
+x68_cls(black);
+x68_box_fill(180, 180, 152, 152, red);
+x68_box(180, 180, 152, 152, white);
+x68_screen_flip();</pre>
+</section>
+
+<section id="game-loop">
+  <h2>ゲームの形</h2>
+  <p>動くものを作るときは、次の 1 周をずっと繰り返します。この形はどのゲームでも変わりません。</p>
+  <pre class="listing">x68_screen_open();
+for (;;) {
+  /* 1. 画面を消す   */
+  /* 2. キーを読む   */
+  /* 3. 位置を計算する */
+  /* 4. 描く         */
+  /* 5. 画面に出す   */
+}</pre>
+  <p>「5. 画面に出す」の <code>x68_screen_flip()</code> が画面の書き換えを待つので、この 1 周は毎秒およそ 55〜60 回になります。速さを自分で調整する必要はありません。</p>
+  <p>下は、この形をそのまま使った短いゲームです。落ちてくる四角を、左右に動く棒で受け止めます。</p>
+  <pre class="listing" data-full="true">#include "x68.h"
+
+enum {
+  kPlayerW = 48,
+  kPlayerH = 12,
+  kPlayerY = 460,
+  kItemSize = 16,
+  kSpeed = 6,
+};
+
+static int player_x = 232;
+static int item_x = 100;
+static int item_y = 0;
+static int score = 0;
+
+/* 1 キーを読んで棒を動かす */
+static void ReadInput(void) {
+  if (x68_key_down(X68_KEY_LEFT)) player_x -= kSpeed;
+  if (x68_key_down(X68_KEY_RIGHT)) player_x += kSpeed;
+  if (player_x &lt; 0) player_x = 0;
+  if (player_x + kPlayerW &gt; X68_SCREEN_W) player_x = X68_SCREEN_W - kPlayerW;
+}
+
+/* 2 四角を落として、受け止めたかどうかを見る */
+static void UpdateItem(void) {
+  int caught;
+
+  item_y += 4;
+  caught = (item_y + kItemSize &gt;= kPlayerY) &amp;&amp;
+           (item_x + kItemSize &gt; player_x) &amp;&amp;
+           (item_x &lt; player_x + kPlayerW);
+  if (caught) score++;
+  if (caught || item_y &gt; X68_SCREEN_H) {
+    item_y = 0;
+    item_x = x68_rand_int(X68_SCREEN_W - kItemSize);
+  }
+}
+
+/* 3 描く */
+static void Draw(void) {
+  x68_cls(x68_rgb(0, 0, 48));
+  x68_box_fill(player_x, kPlayerY, kPlayerW, kPlayerH, x68_rgb(0, 255, 255));
+  x68_box_fill(item_x, item_y, kItemSize, kItemSize, x68_rgb(255, 224, 0));
+  x68_locate(0, 0);
+  printf("SCORE %d  ", score);
+}
+
+void main(void) {
+  x68_screen_open();
+  for (;;) {
+    ReadInput();
+    UpdateItem();
+    Draw();
+    x68_screen_flip();
+  }
+}</pre>
+  <ul class="walk">
+    <li><strong>1 キーを読んで棒を動かす</strong> — <code>x68_key_down()</code> は押されている間ずっと真になるので、押しっぱなしで動き続けます。動かしたあとで画面の端をはみ出していないか直しています。</li>
+    <li><strong>2 四角を落として、受け止めたかどうかを見る</strong> — 当たり判定は「4 辺が重なっているか」を <code>&amp;&amp;</code> で並べるだけです。受け止めたときと、下まで落ちきったときの両方で、上に戻して横位置を引き直しています。</li>
+    <li><strong>3 描く</strong> — <code>x68_cls()</code> で前の位置を消してから、棒・四角・点数の順に描いています。<code>printf</code> の末尾に空白を入れているのは、点数の桁が減ったときに前の数字が残らないようにするためです。</li>
+    <li><strong><code>main</code></strong> — 読む・計算する・描く・出す、を並べただけです。処理を小さな関数に分けておくと、あとから中身を差し替えやすくなります。</li>
+  </ul>
+  <p class="note">「押した瞬間だけ 1 回」にしたいときは、前のフレームの状態を変数に覚えておいて比べます。書き方は <a href="#X68_KEY_LEFT"><code>X68_KEY_*</code></a> の例にあります。</p>
+</section>

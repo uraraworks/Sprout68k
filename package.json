@@ -5,7 +5,9 @@
   "license": "GPL-2.0-only",
   "scripts": {
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "reference": "node tools/build_reference.mts",
+    "verify:reference": "node tools/verify_reference.mts"
   },
   "devDependencies": {
     "vite": "5.4.21"
