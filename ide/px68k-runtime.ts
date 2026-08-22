@@ -13,6 +13,7 @@ export interface EmulatorProbe {
   getFrameCount(): number;
   getState(): EmulatorState;
   runFrames(count: number): number;
+  runBlankImage(): Promise<{ ok: true }>;
 }
 
 declare global {
@@ -75,6 +76,7 @@ export class X68kRuntime {
       getFrameCount: () => this.frameCount,
       getState: () => this.state,
       runFrames: (count) => this.runFrames(count),
+      runBlankImage: () => this.runXdf(new Uint8Array(1_261_568)),
     });
   }
 
@@ -121,6 +123,16 @@ export class X68kRuntime {
       this.report(`実行エラー: ${message}`, true);
       throw error;
     }
+  }
+
+  stop(): { ok: true } {
+    this.stopCurrent();
+    this.frameCount = 0;
+    this.state = 'idle';
+    const context = this.canvas.getContext('2d');
+    context?.clearRect(0, 0, this.canvas.width, this.canvas.height);
+    this.report('実行を停止しました。編集中のソースは保持されています', false);
+    return { ok: true };
   }
 
   private schedule(generation: number): void {

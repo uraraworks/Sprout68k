@@ -8,6 +8,7 @@ import { IndexedDbProjectFS, validatePath } from './project-fs.mjs';
 import { SAMPLE_FILES, loadSample } from './sample-manifest.mjs';
 import { basename, sourceLanguage } from './source-view.mjs';
 import { createX68kAdapter } from './x68k-adapter.mjs';
+import { createRecoveryController } from './recovery-controller.mjs';
 import gplLicenseUrl from '../COPYING?url';
 import codeMirrorLicenseUrl from './vendor/codemirror/LICENSE.CodeMirror?url';
 import iplLicenseUrl from './system/IPLROM-LICENSE.txt?url';
@@ -28,6 +29,8 @@ const nodes = {
   build: document.querySelector('#build'),
   downloadXdf: document.querySelector('#download-xdf'),
   run: document.querySelector('#run'),
+  stopEmulator: document.querySelector('#stop-emulator'),
+  recoverEmulator: document.querySelector('#recover-emulator'),
   buildStatus: document.querySelector('#build-status'),
   buildOutput: document.querySelector('#build-output'),
   machineStatus: document.querySelector('#machine-status'),
@@ -48,6 +51,22 @@ let nextTabId = 1;
 let loadingDocument = false;
 let popupOpen = false;
 let confirmAction = (message) => window.confirm(message);
+
+function captureSourceState() {
+  return JSON.stringify({
+    activeTabId,
+    editor: editor.state.doc.toString(),
+    tabs: tabs.map(({ id, origin, path, text, savedText, cursor }) => (
+      { id, origin, path, text, savedText, cursor }
+    )),
+  });
+}
+
+function updateRecoveryLabel() {
+  nodes.recoverEmulator.textContent = recoveryController.hasSuccessfulBuild()
+    ? '停止して前回成功XDFを再起動'
+    : '停止して同梱サンプルを起動';
+}
 
 function reportMachine(message, error = false) {
   nodes.machineStatus.textContent = message;
@@ -92,6 +111,15 @@ const editor = new EditorView({
     ],
   }),
   parent: nodes.editor,
+});
+
+const recoveryController = createRecoveryController({
+  adapter,
+  captureSource: captureSourceState,
+  buildFallback: async () => {
+    const sample = SAMPLE_FILES[0];
+    return adapter.build({ path: sample.path, text: await loadSample(sample) });
+  },
 });
 
 function activeTab() {
@@ -388,6 +416,7 @@ async function buildCurrent() {
     nodes.buildStatus.textContent = `${tab.path}: ビルド中…`;
     const result = await adapter.build({ path: tab.path, text: tab.text });
     tab.build = result;
+    if (recoveryController.rememberSuccessfulBuild(result)) updateRecoveryLabel();
     renderBuildResult({ revealDiagnostics: true });
     return result;
   } finally {
@@ -415,6 +444,32 @@ async function runCurrent() {
     if (!built?.ok) return built;
     return await adapter.run({ xdf: built.xdf, filename: built.filename });
   } finally {
+    nodes.run.disabled = false;
+  }
+}
+
+async function stopEmulator() {
+  nodes.stopEmulator.disabled = true;
+  try {
+    await recoveryController.stop();
+  } finally {
+    nodes.stopEmulator.disabled = false;
+  }
+}
+
+async function recoverEmulator() {
+  nodes.stopEmulator.disabled = true;
+  nodes.recoverEmulator.disabled = true;
+  nodes.run.disabled = true;
+  try {
+    const result = await recoveryController.recover();
+    updateRecoveryLabel();
+    const label = result.source === 'last-successful' ? '前回成功XDF' : '同梱サンプル';
+    reportMachine(`復帰完了: ${label}を新しいX68000で実行中`, false);
+    return result;
+  } finally {
+    nodes.stopEmulator.disabled = false;
+    nodes.recoverEmulator.disabled = false;
     nodes.run.disabled = false;
   }
 }
@@ -488,13 +543,15 @@ nodes.download.addEventListener('click', downloadActiveFile);
 nodes.downloadXdf.addEventListener('click', downloadBuiltXdf);
 nodes.build.addEventListener('click', () => buildCurrent().catch(showError));
 nodes.run.addEventListener('click', () => runCurrent().catch(showError));
+nodes.stopEmulator.addEventListener('click', () => stopEmulator().catch(showError));
+nodes.recoverEmulator.addEventListener('click', () => recoverEmulator().catch(showError));
 
 const ready = initialize();
 ready.catch(showError);
 
 window.x68kdevWorkbench = {
   ready, openFile, createFile, saveFile, closeTab, activateTab,
-  buildCurrent, runCurrent,
+  buildCurrent, runCurrent, stopEmulator, recoverEmulator,
   getTabs: () => tabs.map((tab) => ({
     id: tab.id, origin: tab.origin, path: tab.path, active: tab.id === activeTabId, dirty: isDirty(tab),
   })),

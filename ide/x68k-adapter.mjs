@@ -73,5 +73,6 @@ export function createX68kAdapter({ report, canvas }) {
     },
 
     run: async ({ xdf }) => runtime.runXdf(xdf),
+    stop: async () => runtime.stop(),
   };
 }

@@ -9,13 +9,14 @@ const forbidden = ['pc' + '98', 'n' + 'p2', 'pc' + '-98', 'free' + 'dos', 'na' +
 const required = [
   'index.html', 'workbench.css', 'workbench.js', 'project-fs.mjs', 'source-view.mjs',
   'sample-manifest.mjs', 'x68k-adapter.mjs', 'samples/hello.c',
+  'recovery-controller.mjs',
   'px68k-runtime.ts', 'px68k/libretro-host.ts', 'px68k/text-screen.ts',
   'core/px68k_libretro.js', 'core/px68k_libretro.wasm',
   'system/iplrom.dat', 'system/cgrom.dat',
   'system/IPLROM-LICENSE.txt', 'system/CGROM-NOTICE.md',
   '../web/browser-toolchain.ts', '../tools/driver/builder.mts', '../tools/driver/diagnostics.mts',
   '../tools/driver/diagnostic_annotations.mts', '../tools/driver/verify_diagnostic_annotations.mts',
-  '../verify/verify_ide_boot.mts', '../COPYING', '../README.md',
+  '../verify/verify_ide_boot.mts', '../verify/verify_ide_recovery.mts', '../COPYING', '../README.md',
   'vendor/codemirror/codemirror.js', 'vendor/codemirror/LICENSE.CodeMirror',
 ];
 
@@ -66,10 +67,130 @@ if (!fsSource.includes("databaseName = 'X68kDevProjectFS'")) throw new Error('�
 const workbench = await readFile(resolve(root, 'workbench.js'), 'utf8');
 if (!workbench.includes('window.x68kdevWorkbench')) throw new Error('公開 API 名がありません');
 if (!workbench.includes('cpp()')) throw new Error('C 言語ハイライトがありません');
-for (const id of ['build-output', 'download-xdf', 'run', 'machine-status', 'x68k-screen']) {
+for (const id of ['build-output', 'download-xdf', 'run', 'stop-emulator', 'recover-emulator', 'machine-status', 'x68k-screen']) {
   if (!html.includes(`id="${id}"`)) throw new Error(`必要な DOM 要素がありません: ${id}`);
   if (!workbench.includes(`#${id}`)) throw new Error(`DOM 要素の参照がありません: ${id}`);
 }
+const recoverySource = await readFile(resolve(root, 'recovery-controller.mjs'), 'utf8');
+for (const contract of ['rememberSuccessfulBuild', 'buildFallback', 'captureSource', '復帰中に編集中のソースが変化しました']) {
+  if (!recoverySource.includes(contract)) throw new Error(`復帰のソース保持契約がありません: ${contract}`);
+}
+for (const forbiddenMutation of ['editor.dispatch', 'projectFS.write', '.savedText =']) {
+  if (recoverySource.includes(forbiddenMutation)) throw new Error(`復帰境界にソース変更処理があります: ${forbiddenMutation}`);
+}
+if (!workbench.includes('recoveryController.rememberSuccessfulBuild(result)')
+    || !workbench.includes('recoverEmulator') || !workbench.includes('stopEmulator')) {
+  throw new Error('成功XDFの保持または復帰UI結線がありません');
+}
+
+// ヘッダーは文書先頭にあり、復帰ボタンの縦位置は通常フローの固定寸法から算出できる。
+// padding 10 + title 28 + tagline margin 2 + line 14 + actions margin 6 = top 60px。
+for (const cssRule of [
+  '.app-header { padding: var(--recovery-header-padding) 16px',
+  '.app-tagline { margin: var(--recovery-tagline-margin) 0 0',
+  'line-height: var(--recovery-tagline-height)',
+  '.app-recovery-actions { height: var(--recovery-control-height); margin-top: var(--recovery-actions-margin)',
+]) {
+  if (!css.includes(cssRule)) throw new Error(`復帰導線の幾何契約がありません: ${cssRule}`);
+}
+const recoveryVariables = [
+  '--recovery-header-padding', '--recovery-title-height', '--recovery-tagline-margin',
+  '--recovery-tagline-height', '--recovery-actions-margin', '--recovery-control-height',
+  '--recovery-stop-width', '--recovery-action-width', '--recovery-actions-gap',
+];
+const recoveryValues = Object.fromEntries(recoveryVariables.map((variable) => {
+  const values = pixelValues(variable);
+  if (values.length !== 1) throw new Error(`復帰導線の CSS 数値を一意に取得できません: ${variable}`);
+  return [variable, values[0]];
+}));
+if (html.indexOf('id="recover-emulator"') > html.indexOf('<main')) {
+  throw new Error('復帰導線が初期表示のヘッダー内にありません');
+}
+const recoveryTop = recoveryValues['--recovery-header-padding'] + recoveryValues['--recovery-title-height']
+  + recoveryValues['--recovery-tagline-margin'] + recoveryValues['--recovery-tagline-height']
+  + recoveryValues['--recovery-actions-margin'];
+const recoveryBottom = recoveryTop + recoveryValues['--recovery-control-height'];
+for (const viewport of ['1280x900', '800x600']) {
+  const [viewportWidth, viewportHeight] = viewport.split('x').map(Number);
+  const recoveryWidth = recoveryValues['--recovery-stop-width']
+    + recoveryValues['--recovery-action-width'] + recoveryValues['--recovery-actions-gap'];
+  const recoveryLeft = (viewportWidth - recoveryWidth) / 2;
+  const recoveryRight = recoveryLeft + recoveryWidth;
+  if (recoveryTop < 0 || recoveryBottom > viewportHeight) {
+    throw new Error(`${viewport}: 復帰導線が初期ビューポート外です (${recoveryTop}..${recoveryBottom}px)`);
+  }
+  if (recoveryLeft < 0 || recoveryRight > viewportWidth) {
+    throw new Error(`${viewport}: 復帰導線が初期ビューポートの横幅外です (${recoveryLeft}..${recoveryRight}px)`);
+  }
+  console.log(`verify-ide: recovery reachability ${viewport} x=${recoveryLeft}..${recoveryRight}px y=${recoveryTop}..${recoveryBottom}px`);
+}
+
+// ボタン内容の収まりを client/scroll 寸法に対応させた静的検査。
+// 日本語等を16px、ASCIIを9pxと保守的に見積もり、paddingを加えたscroll寸法を求める。
+const buttonVariables = [
+  '--button-line-height', '--button-block-padding', '--button-inline-padding', '--button-border-width',
+];
+const buttonValues = Object.fromEntries(buttonVariables.map((variable) => {
+  const values = pixelValues(variable);
+  if (values.length !== 1) throw new Error(`ボタンの CSS 数値を一意に取得できません: ${variable}`);
+  return [variable, values[0]];
+}));
+for (const cssContract of ['white-space: nowrap', 'flex-shrink: 0']) {
+  if (!css.match(new RegExp(`button \\{[^}]*${cssContract}`))) {
+    throw new Error(`ボタン内容の枠内保持契約がありません: ${cssContract}`);
+  }
+}
+function buttonLabel(id) {
+  const match = html.match(new RegExp(`<button[^>]*id="${id}"[^>]*>([^<]+)</button>`));
+  if (!match) throw new Error(`ボタン文言を取得できません: ${id}`);
+  return match[1].trim();
+}
+function labelScrollWidth(label) {
+  const glyphWidth = [...label].reduce((width, character) => width + (/^[\\x00-\\x7f]$/.test(character) ? 9 : 16), 0);
+  return glyphWidth + buttonValues['--button-inline-padding'] * 2;
+}
+const clientHeight = recoveryValues['--recovery-control-height'] - buttonValues['--button-border-width'] * 2;
+const labelScrollHeight = buttonValues['--button-line-height'] + buttonValues['--button-block-padding'] * 2;
+if (labelScrollHeight > clientHeight) {
+  throw new Error(`ヘッダーボタンが縦に溢れます: scroll=${labelScrollHeight}px client=${clientHeight}px`);
+}
+const recoveryLabels = [
+  buttonLabel('recover-emulator'),
+  ...[...workbench.matchAll(/'(停止して[^'\n]+)'/g)].map((match) => match[1]),
+];
+const fixedButtons = [
+  { id: 'stop-emulator', labels: [buttonLabel('stop-emulator')], width: recoveryValues['--recovery-stop-width'] },
+  { id: 'recover-emulator', labels: recoveryLabels, width: recoveryValues['--recovery-action-width'] },
+];
+for (const button of fixedButtons) {
+  const scrollWidth = Math.max(...button.labels.map(labelScrollWidth));
+  const clientWidth = button.width - buttonValues['--button-border-width'] * 2;
+  if (scrollWidth > clientWidth) {
+    throw new Error(`${button.id} の文言が横に溢れます: scroll=${scrollWidth}px client=${clientWidth}px`);
+  }
+  console.log(`verify-ide: label fit ${button.id} scroll<=${scrollWidth}px client=${clientWidth}px height=${labelScrollHeight}/${clientHeight}px`);
+}
+const buttonRows = [
+  { name: 'sidebar', ids: ['new-file', 'save-file', 'download-file'], available: 240 - 2 - 16, gap: 2 },
+  { name: 'editor', ids: ['build', 'download-xdf', 'run'], available: 420 - 2 - 24, gap: 6, minimum: 72 },
+];
+for (const row of buttonRows) {
+  const required = row.ids.reduce((width, id) => width + Math.max(row.minimum ?? 0, labelScrollWidth(buttonLabel(id)) + 2), 0)
+    + row.gap * (row.ids.length - 1);
+  if (required > row.available) throw new Error(`${row.name} のボタン列が横に溢れます: ${required}/${row.available}px`);
+  console.log(`verify-ide: label fit ${row.name} row=${required}/${row.available}px`);
+}
+for (const containment of [
+  '.file-entry { flex: 1; min-width: 0; border-radius: 0; overflow: hidden; text-align: left; text-overflow: ellipsis; white-space: nowrap',
+  '.tab { max-width: 200px; height: 35px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap',
+]) {
+  if (!css.includes(containment)) throw new Error(`可変ファイル名の枠内省略契約がありません: ${containment.split(' {')[0]}`);
+}
+if (16 + 0 > 27 - buttonValues['--button-border-width'] * 2
+    || 16 + 12 > 30 - buttonValues['--button-border-width'] * 2) {
+  throw new Error('タブ閉じる／ファイル削除ボタンの文言が枠に収まりません');
+}
+console.log('verify-ide: label fit dynamic paths=ellipsis, close/delete=contained');
 const adapterSource = await readFile(resolve(root, 'x68k-adapter.mjs'), 'utf8');
 if (!adapterSource.includes('../web/browser-toolchain.ts')) throw new Error('共有ブラウザツールチェーン参照がありません');
 if (!adapterSource.includes("./px68k-runtime.ts") || !adapterSource.includes('runtime.runXdf(xdf)')) {
@@ -130,7 +251,7 @@ for (const testCase of reachabilityCases) {
   console.log(`verify-ide: reachability ${testCase.name} annotation=${annotationTop}..${annotationBottom}px source>=${sourceVisibleHeight}px`);
 }
 const runtimeSource = await readFile(resolve(root, 'px68k-runtime.ts'), 'utf8');
-for (const member of ['window.x68kdevEmulatorProbe', 'readTextScreen', 'getFrameCount', 'getState', 'runFrames']) {
+for (const member of ['window.x68kdevEmulatorProbe', 'readTextScreen', 'getFrameCount', 'getState', 'runFrames', 'runBlankImage', 'stop()']) {
   if (!runtimeSource.includes(member)) throw new Error(`ブラウザプローブがありません: ${member}`);
 }
 for (const reference of ['../COPYING', './system/IPLROM-LICENSE.txt', './system/CGROM-NOTICE.md']) {
