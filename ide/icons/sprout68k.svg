@@ -17,15 +17,12 @@
     </linearGradient>
   </defs>
   <g>
-  <path d="M5 16C10 10 19 9 25 14C28 17 29 22 29 28C23 31 14 29 9 25C6 22 4 18 5 16Z"
+  <path d="M27.5 29C29.5 33 28.7 37 29 42C29.3 46 34.7 46 35 42C35.3 37 34.5 33 36.5 29Z"
+    fill="url(#stem)" stroke="#243b64" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M5 16C10 9 19 8 25 13C28 16 29 22 29 28C23 34 14 33 9 26C6 23 4 18 5 16Z"
     fill="url(#left-leaf)" stroke="#243b64" stroke-width="2.5" stroke-linejoin="miter" stroke-miterlimit="2.5"/>
-  <path d="M59 16C54 10 45 9 39 14C36 17 35 22 35 28C41 31 50 29 55 25C58 22 60 18 59 16Z"
+  <path d="M59 16C54 9 45 8 39 13C36 16 35 22 35 28C41 34 50 33 55 26C58 23 60 18 59 16Z"
     fill="url(#right-leaf)" stroke="#243b64" stroke-width="2.5" stroke-linejoin="miter" stroke-miterlimit="2.5"/>
-  <path d="M27.5 29C29.5 33 28.7 37 29 42C29.3 46 34.7 46 35 42C35.3 37 34.5 33 36.5 29Z" fill="url(#stem)"/>
-  <path d="M27.5 29C29.5 33 28.7 37 29 42C29.3 46 34.7 46 35 42C35.3 37 34.5 33 36.5 29"
-    fill="none" stroke="#243b64" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
-  <path d="M32 36C31.5 33 29.5 30 27.5 29M32 36C32.5 33 34.5 30 36.5 29"
-    fill="none" stroke="#52e51a" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
   <path d="M28.7 27.5C23 22.8 17.2 19.2 8 16.3C17.5 18.2 23.8 21.8 29.3 26.8Z" fill="#08752b"/>
   <path d="M35.3 27.5C41 22.8 46.8 19.2 56 16.3C46.5 18.2 40.2 21.8 34.7 26.8Z" fill="#08752b"/>
   <path d="M9 15C12 12 16 11.7 19 13C16.5 12.8 13.5 13.5 11.5 15.5C10.4 16.3 8.2 16.2 9 15Z" fill="#c8ff5f" opacity=".9"/>
