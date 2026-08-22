@@ -15,6 +15,7 @@ import { renderRunToggle, runToggleView } from './run-toggle.mjs';
 import { verifyBrowserUi } from './browser-ui-verifier.mjs';
 import { offlineStartupMode, offlineStatusPresentation } from './offline-support.mjs';
 import { SCREENSHOT_LIMIT, nextScreenshotName, pruneScreenshots, screenshotScale } from './screenshot-store.mjs';
+import { UNKNOWN_BUILD_DATE, formatBuildDate, formatBuildStamp } from '../tools/build-stamp.mjs';
 
 const root = dirname(fileURLToPath(import.meta.url));
 const forbidden = ['pc' + '98', 'n' + 'p2', 'pc' + '-98', 'free' + 'dos', 'na' + 'sm', 'smaller' + 'c', '98' + '01', '98' + '21'];
@@ -34,6 +35,7 @@ const required = [
   '../samples/breakout/block.c', '../docs/IDEキーボード入力_20260822.md', '../lib/include/x68.h', '../COPYING', '../CONTRIBUTING.md', '../README.md',
   '../tools/distribution.mts', '../tools/html_url_verifier.mts',
   '../tools/build_reference.mts', '../tools/verify_reference.mts', '../tools/reference/guide.html',
+  '../tools/build-stamp.mjs',
   'vendor/codemirror/codemirror.js', 'vendor/codemirror/LICENSE.CodeMirror',
 ];
 
@@ -236,7 +238,7 @@ for (const contract of [
   "const SPROUT68K_SCOPE_PATH = '/Sprout68k/'",
   'scope: SPROUT68K_SCOPE_PATH',
   "updateViaCache: 'none'",
-  'build: ${__BUILD_ID__}',
+  'build: ${__BUILD_STAMP__}',
   "'オフラインでも使えます'",
   "'オフライン準備に失敗しました'",
   "type: 'SPROUT68K_CHECK_CACHE'",
@@ -655,6 +657,43 @@ for (const attribution of ['px68k-libretro', 'Workbench' + 'N' + 'P2', 'CodeMirr
 }
 if (!html.includes('./samples/hello.c') && !(await readFile(resolve(root, 'sample-manifest.mjs'), 'utf8')).includes('./samples/hello.c')) {
   throw new Error('C サンプル参照がありません');
+}
+
+/* --- フッタのビルド表記 ---
+ * 日付はコミット日時から取る（壁時計を使わない）。同じコミットから何度
+ * ビルドしても同じ文字列になり、配布物がどのコミットのものか後から分かる。
+ * JST は固定オフセットで計算し、ビルドする端末のタイムゾーン設定に依存しない。 */
+{
+  /* 2026-08-22 22:52 JST = 2026-08-22 13:52 UTC */
+  const sample = 1787406735;
+  const expected = '2026-08-22 22:52 JST';
+  if (formatBuildDate(sample) !== expected) {
+    throw new Error(`ビルド日付の整形が違います: ${formatBuildDate(sample)} (期待 ${expected})`);
+  }
+  /* 日付をまたぐ境目（JST 00:00 ちょうど = UTC 前日 15:00）で日がずれないこと */
+  const midnightJst = Date.UTC(2026, 0, 1, 15, 0, 0) / 1000; // 2026-01-02 00:00 JST
+  if (formatBuildDate(midnightJst) !== '2026-01-02 00:00 JST') {
+    throw new Error(`日付の境目がずれています: ${formatBuildDate(midnightJst)}`);
+  }
+  /* 取れないときはもっともらしい値で埋めない */
+  if (formatBuildDate(null) !== UNKNOWN_BUILD_DATE) throw new Error('日時なしの表記が違います');
+  if (!formatBuildStamp(null, 'abc').includes('abc')) throw new Error('日時が無くても識別子は出すこと');
+  /* 括弧の中は配布物の内容ハッシュ（Service Worker のキャッシュ判定と同じ値）。
+   * デプロイ直後にどちらが届いているかを突き合わせるのはこの値。 */
+  if (formatBuildStamp(sample, 'a2303d56fb76') !== `${expected} (a2303d56fb76)`) {
+    throw new Error(`ビルド表記の組み立てが違います: ${formatBuildStamp(sample, 'a2303d56fb76')}`);
+  }
+  /* ビルドする端末のタイムゾーンに依存しないこと（別プロセスでTZを変えて確かめる）。
+   * ローカルTZ依存のAPIを使ってしまうと、ここで初めて食い違いが出る。 */
+  const script = `import('${resolve(root, '../tools/build-stamp.mjs')}').then(m=>process.stdout.write(m.formatBuildDate(${sample})))`;
+  for (const timezone of ['UTC', 'America/New_York', 'Australia/Sydney']) {
+    const { execFileSync } = await import('node:child_process');
+    const output = execFileSync(process.execPath, ['--input-type=module', '-e', script], {
+      encoding: 'utf8', env: { ...process.env, TZ: timezone },
+    });
+    if (output !== expected) throw new Error(`TZ=${timezone} で表記が変わりました: ${output}`);
+  }
+  console.log(`verify-ide: build stamp PASS (${expected}, TZ 3件で不変, 日付の境目, 取得失敗時の表記)`);
 }
 
 /* --- スクリーンショット欄が実行画面カードを押し出さないための契約 ---

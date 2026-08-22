@@ -134,7 +134,7 @@ new ResizeObserver(resizeMachineScreen).observe(nodes.screenShell);
 new MutationObserver(resizeMachineScreen).observe(nodes.screen, { attributes: true, attributeFilter: ['width', 'height'] });
 applySplitLayout();
 
-nodes.buildId.textContent = `build: ${__BUILD_ID__}`;
+nodes.buildId.textContent = `build: ${__BUILD_STAMP__}`;
 function showOfflineStatus(state, detail = '') {
   const presentation = offlineStatusPresentation(state);
   nodes.offlineStatus.textContent = presentation.text;

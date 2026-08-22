@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, relative, resolve, sep } from 'node:path';
@@ -41,6 +42,24 @@ export function resolveWebAssetsRoot(root: string): string {
   const snapshot = resolve(root, 'deploy/web-assets');
   if (existsSync(resolve(snapshot, 'manifest.json'))) return snapshot;
   throw new Error('web-assetsがありません（build生成物またはdeploy snapshotが必要です）');
+}
+
+/**
+ * 直近コミットの日時(unix秒)。フッタの日付に使う。
+ * **壁時計は使わない**（同じコミットから何度ビルドしても同じ表記にするため）。
+ * git が使えない場合は例外を投げずに null を返し、表示側が「date unknown」と出す
+ * （ビルドを失敗させない・もっともらしい値で埋めない）。
+ */
+export function commitTimestamp(root: string): number | null {
+  try {
+    const output = execFileSync('git', ['log', '-1', '--format=%ct', 'HEAD'], {
+      cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'],
+    }).trim();
+    const seconds = Number(output);
+    return Number.isFinite(seconds) ? seconds : null;
+  } catch {
+    return null;
+  }
 }
 
 /** UIと公開資産の内容から、キャッシュ更新と画面表示に共用する短いIDを作る。 */
