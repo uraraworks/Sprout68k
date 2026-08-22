@@ -1,0 +1,55 @@
+name: 不具合報告
+description: 再現可能な不具合を報告する
+title: "[不具合] "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## 投稿前に必ず確認してください
+        **判定基準は「エミュレータや実機で自分で測れば同じ結果が得られる種類の情報か」です。**
+
+        逆アセンブル結果、ROM・Human68k・市販ソフトの内部情報、非公開資料、第三者の著作物は受け取りません。該当する投稿は、情報を読んだ時点で手遅れになるため本文を読まずにクローズします。詳しくは [CONTRIBUTING.md](../../CONTRIBUTING.md) を確認してください。
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: 再現手順
+      description: 何をしたら何が起きるか、第三者が再現できる手順を書いてください。
+      placeholder: |
+        1. …を開く
+        2. …を実行する
+        3. …が起きる
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: 実際に起きたこと
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: 期待した結果
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: 環境
+      description: OS、ブラウザとバージョン、実機またはエミュレータの名前とバージョンを書いてください。
+    validations:
+      required: true
+  - type: textarea
+    id: measurement
+    attributes:
+      label: 測定方法・公開資料の出典
+      description: 実測した場合は測り方を、公開資料に基づく場合は資料名・URL・版・該当箇所を書いてください。
+  - type: checkboxes
+    id: information-policy
+    attributes:
+      label: 受け取りポリシーの確認
+      options:
+        - label: 逆アセンブル結果や ROM の内部情報、非公開情報、第三者の著作物を含んでいません。
+          required: true
