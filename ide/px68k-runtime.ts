@@ -4,6 +4,7 @@ import iplromUrl from './system/iplrom.dat?url';
 import cgromUrl from './system/cgrom.dat?url';
 import { LibretroHost } from './px68k/libretro-host';
 import type { PX68KModule } from './px68k/libretro-host';
+import { KeyboardInputController } from './px68k/keyboard-input.ts';
 
 type CoreFactory = (options?: Record<string, unknown>) => Promise<PX68KModule>;
 export type EmulatorState = 'idle' | 'running' | 'error';
@@ -67,10 +68,17 @@ export class X68kRuntime {
   private generation = 0;
   private frameCount = 0;
   private state: EmulatorState = 'idle';
+  private readonly keyboardInput: KeyboardInputController;
 
   constructor(canvas: HTMLCanvasElement, report: (message: string, error?: boolean) => void) {
     this.canvas = canvas;
     this.report = report;
+    this.keyboardInput = new KeyboardInputController({
+      target: canvas,
+      enabled: () => this.state === 'running' && this.host !== null,
+      setKey: (retrok, down) => this.host?.setKey(retrok, down),
+      sendKeyMake: (retrok) => this.host?.sendKeyMake(retrok),
+    });
     window.x68kdevEmulatorProbe = Object.freeze({
       readTextScreen: () => this.readTextScreen(),
       getFrameCount: () => this.frameCount,
@@ -82,6 +90,7 @@ export class X68kRuntime {
 
   private stopCurrent(): void {
     this.generation++;
+    this.keyboardInput.releaseAll();
     if (this.animationFrame !== null) cancelAnimationFrame(this.animationFrame);
     this.animationFrame = null;
     if (this.host) {

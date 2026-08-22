@@ -90,6 +90,9 @@ button:focus-visible, input:focus-visible { outline: 1px solid var(--vsc-focus);
 .editor-toolbar #run:hover { background: var(--vsc-accent-hover); }
 #build-status, #machine-status { min-height: 34px; padding: 8px 12px; color: var(--vsc-fg-dim); background: var(--vsc-ui-bg); font-size: 12px; }
 #build-status.error, #machine-status.error { color: #f14c4c; }
+#keyboard-status { min-height: 30px; padding: 7px 12px; color: #fbbf24; background: var(--vsc-ui-bg); font-size: 11px; }
+.machine-card.keyboard-active #keyboard-status { color: #86efac; font-weight: 700; }
+.machine-card.keyboard-active .screen-shell { border-color: #22c55e; box-shadow: 0 0 0 2px #22c55e55; }
 #build-output { height: var(--diagnostic-panel-height); min-height: var(--diagnostic-panel-height); max-height: var(--diagnostic-panel-height); margin: 0; padding: 8px 12px; overflow: auto; border-top: 1px solid var(--vsc-border); color: var(--vsc-fg); background: #151515; font: 11px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; }
 #build-output:empty::before { color: var(--vsc-fg-dim); content: "コンパイル診断はここに表示されます"; }
 .diagnostic-original-group { border: 1px solid #4b5563; background: #111827; }
@@ -104,6 +107,7 @@ button:focus-visible, input:focus-visible { outline: 1px solid var(--vsc-focus);
 .diagnostic-annotation p { margin: 3px 0 0; color: #e2e8f0; white-space: normal; }
 .screen-shell { min-height: 360px; margin: 12px; display: grid; place-items: center; overflow: hidden; border: 1px solid #475569; border-radius: 5px; background: #000; }
 #x68k-screen { display: block; width: 100%; height: auto; max-height: 66vh; object-fit: contain; image-rendering: pixelated; }
+#x68k-screen:focus { outline: 2px solid #22c55e; outline-offset: -2px; }
 .app-footer { min-height: 29px; display: flex; justify-content: space-between; gap: 12px; padding: 6px 16px; border-top: 1px solid var(--vsc-border); background: var(--vsc-chrome-bg); color: var(--vsc-fg-dim); font-size: 11px; }
 .status-left { min-width: 0; display: flex; gap: 10px; }
 #save-state.dirty { color: var(--vsc-warning); }

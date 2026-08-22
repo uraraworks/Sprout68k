@@ -1,7 +1,11 @@
 import helloSource from './samples/hello.c?raw';
+import keyboardInputSource from './samples/keyboard-input.c?raw';
+import breakoutSource from '../samples/breakout/main.c?raw';
 
 export const SAMPLE_FILES = [
   { path: 'samples/hello.c', source: helloSource },
+  { path: 'samples/keyboard-input.c', source: keyboardInputSource },
+  { path: 'samples/breakout/main.c', source: breakoutSource },
 ];
 
 export async function loadSample(sample) {

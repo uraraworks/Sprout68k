@@ -34,6 +34,8 @@ const nodes = {
   buildStatus: document.querySelector('#build-status'),
   buildOutput: document.querySelector('#build-output'),
   machineStatus: document.querySelector('#machine-status'),
+  keyboardStatus: document.querySelector('#keyboard-status'),
+  machineCard: document.querySelector('.machine-card'),
   screen: document.querySelector('#x68k-screen'),
 };
 
@@ -442,7 +444,9 @@ async function runCurrent() {
   try {
     const built = tab.build?.ok ? tab.build : await buildCurrent();
     if (!built?.ok) return built;
-    return await adapter.run({ xdf: built.xdf, filename: built.filename });
+    const result = await adapter.run({ xdf: built.xdf, filename: built.filename });
+    nodes.screen.focus();
+    return result;
   } finally {
     nodes.run.disabled = false;
   }
@@ -466,6 +470,7 @@ async function recoverEmulator() {
     updateRecoveryLabel();
     const label = result.source === 'last-successful' ? '前回成功XDF' : '同梱サンプル';
     reportMachine(`復帰完了: ${label}を新しいX68000で実行中`, false);
+    nodes.screen.focus();
     return result;
   } finally {
     nodes.stopEmulator.disabled = false;
@@ -545,6 +550,14 @@ nodes.build.addEventListener('click', () => buildCurrent().catch(showError));
 nodes.run.addEventListener('click', () => runCurrent().catch(showError));
 nodes.stopEmulator.addEventListener('click', () => stopEmulator().catch(showError));
 nodes.recoverEmulator.addEventListener('click', () => recoverEmulator().catch(showError));
+nodes.screen.addEventListener('focus', () => {
+  nodes.machineCard.classList.add('keyboard-active');
+  nodes.keyboardStatus.textContent = 'キーボード入力: X68000へ送信中';
+});
+nodes.screen.addEventListener('blur', () => {
+  nodes.machineCard.classList.remove('keyboard-active');
+  nodes.keyboardStatus.textContent = 'キーボード入力: 実行画面をクリックすると有効';
+});
 
 const ready = initialize();
 ready.catch(showError);

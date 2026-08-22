@@ -44,7 +44,8 @@
     <section class="machine-card" aria-labelledby="machine-heading">
       <div class="panel-heading"><h2 id="machine-heading">X68000 実行画面</h2></div>
       <div id="machine-status" role="status">未実行</div>
-      <div class="screen-shell"><canvas id="x68k-screen" width="768" height="512" aria-label="X68000画面"></canvas></div>
+      <div id="keyboard-status">キーボード入力: 実行画面をクリックすると有効</div>
+      <div class="screen-shell"><canvas id="x68k-screen" width="768" height="512" tabindex="0" aria-label="X68000画面（クリックするとキーボード入力）"></canvas></div>
     </section>
   </main>
   <footer class="app-footer">

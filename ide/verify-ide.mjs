@@ -8,15 +8,18 @@ const root = dirname(fileURLToPath(import.meta.url));
 const forbidden = ['pc' + '98', 'n' + 'p2', 'pc' + '-98', 'free' + 'dos', 'na' + 'sm', 'smaller' + 'c', '98' + '01', '98' + '21'];
 const required = [
   'index.html', 'workbench.css', 'workbench.js', 'project-fs.mjs', 'source-view.mjs',
-  'sample-manifest.mjs', 'x68k-adapter.mjs', 'samples/hello.c',
+  'sample-manifest.mjs', 'x68k-adapter.mjs', 'samples/hello.c', 'samples/keyboard-input.c',
   'recovery-controller.mjs',
   'px68k-runtime.ts', 'px68k/libretro-host.ts', 'px68k/text-screen.ts',
+  'px68k/keyboard.ts', 'px68k/key-repeat.ts', 'px68k/keyboard-input.ts',
   'core/px68k_libretro.js', 'core/px68k_libretro.wasm',
   'system/iplrom.dat', 'system/cgrom.dat',
   'system/IPLROM-LICENSE.txt', 'system/CGROM-NOTICE.md',
   '../web/browser-toolchain.ts', '../tools/driver/builder.mts', '../tools/driver/diagnostics.mts',
   '../tools/driver/diagnostic_annotations.mts', '../tools/driver/verify_diagnostic_annotations.mts',
-  '../verify/verify_ide_boot.mts', '../verify/verify_ide_recovery.mts', '../COPYING', '../README.md',
+  '../verify/verify_ide_boot.mts', '../verify/verify_ide_recovery.mts',
+  '../verify/verify_ide_keyboard.mts',
+  '../docs/IDEキーボード入力_20260822.md', '../lib/include/x68.h', '../COPYING', '../README.md',
   'vendor/codemirror/codemirror.js', 'vendor/codemirror/LICENSE.CodeMirror',
 ];
 
@@ -67,7 +70,7 @@ if (!fsSource.includes("databaseName = 'X68kDevProjectFS'")) throw new Error('�
 const workbench = await readFile(resolve(root, 'workbench.js'), 'utf8');
 if (!workbench.includes('window.x68kdevWorkbench')) throw new Error('公開 API 名がありません');
 if (!workbench.includes('cpp()')) throw new Error('C 言語ハイライトがありません');
-for (const id of ['build-output', 'download-xdf', 'run', 'stop-emulator', 'recover-emulator', 'machine-status', 'x68k-screen']) {
+for (const id of ['build-output', 'download-xdf', 'run', 'stop-emulator', 'recover-emulator', 'machine-status', 'keyboard-status', 'x68k-screen']) {
   if (!html.includes(`id="${id}"`)) throw new Error(`必要な DOM 要素がありません: ${id}`);
   if (!workbench.includes(`#${id}`)) throw new Error(`DOM 要素の参照がありません: ${id}`);
 }
@@ -253,6 +256,35 @@ for (const testCase of reachabilityCases) {
 const runtimeSource = await readFile(resolve(root, 'px68k-runtime.ts'), 'utf8');
 for (const member of ['window.x68kdevEmulatorProbe', 'readTextScreen', 'getFrameCount', 'getState', 'runFrames', 'runBlankImage', 'stop()']) {
   if (!runtimeSource.includes(member)) throw new Error(`ブラウザプローブがありません: ${member}`);
+}
+const keyboardSource = await readFile(resolve(root, 'px68k/keyboard.ts'), 'utf8');
+const keyboardInputSource = await readFile(resolve(root, 'px68k/keyboard-input.ts'), 'utf8');
+for (const contract of ['keyboardEventToRetrok', 'keyToRetrok(event.key)', "event.code ? `code:${event.code}`", 'releaseAll']) {
+  if (!keyboardSource.includes(contract) && !keyboardInputSource.includes(contract)) {
+    throw new Error(`キーボード入力契約がありません: ${contract}`);
+  }
+}
+if (!html.includes('id="x68k-screen" width="768" height="512" tabindex="0"')) {
+  throw new Error('実行画面がキーボードフォーカス可能ではありません');
+}
+for (const focusContract of ['keyboard-active', 'キーボード入力: X68000へ送信中', "nodes.screen.addEventListener('focus'"]) {
+  if (!css.includes(focusContract) && !workbench.includes(focusContract)) {
+    throw new Error(`キーボードフォーカス表示がありません: ${focusContract}`);
+  }
+}
+const sampleManifest = await readFile(resolve(root, 'sample-manifest.mjs'), 'utf8');
+if (!sampleManifest.includes('../samples/breakout/main.c?raw')) throw new Error('ブロック崩しサンプル参照がありません');
+const x68Header = await readFile(resolve(root, '../lib/include/x68.h'), 'utf8');
+for (const learnerKey of ['ENTER', 'ESC', ...'ABCDEFGHIJKLMNOPQRSTUVWXYZ', ...'0123456789']) {
+  if (!x68Header.includes(`#define X68_KEY_${learnerKey} `)) {
+    throw new Error(`学習者向けキー定数がありません: X68_KEY_${learnerKey}`);
+  }
+}
+const keyboardSample = await readFile(resolve(root, 'samples/keyboard-input.c'), 'utf8');
+for (const demonstratedKey of ['SPACE', 'ENTER', 'ESC', 'A', '1']) {
+  if (!keyboardSample.includes(`X68_KEY_${demonstratedKey}`) || !keyboardSample.includes(`[${demonstratedKey}]`)) {
+    throw new Error(`入力サンプルでキーを確認できません: ${demonstratedKey}`);
+  }
 }
 for (const reference of ['../COPYING', './system/IPLROM-LICENSE.txt', './system/CGROM-NOTICE.md']) {
   if (!html.includes(`href="${reference}"`)) throw new Error(`ライセンス参照がありません: ${reference}`);

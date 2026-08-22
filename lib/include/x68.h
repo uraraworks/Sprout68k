@@ -161,6 +161,46 @@ int x68_key_down(int key);
 #define X68_KEY_RIGHT 0x3d
 #define X68_KEY_DOWN  0x3e
 #define X68_KEY_SPACE 0x35
+#define X68_KEY_ENTER 0x1d
+#define X68_KEY_ESC   0x01
+
+#define X68_KEY_0 0x0b
+#define X68_KEY_1 0x02
+#define X68_KEY_2 0x03
+#define X68_KEY_3 0x04
+#define X68_KEY_4 0x05
+#define X68_KEY_5 0x06
+#define X68_KEY_6 0x07
+#define X68_KEY_7 0x08
+#define X68_KEY_8 0x09
+#define X68_KEY_9 0x0a
+
+#define X68_KEY_A 0x1e
+#define X68_KEY_B 0x2e
+#define X68_KEY_C 0x2c
+#define X68_KEY_D 0x20
+#define X68_KEY_E 0x13
+#define X68_KEY_F 0x21
+#define X68_KEY_G 0x22
+#define X68_KEY_H 0x23
+#define X68_KEY_I 0x18
+#define X68_KEY_J 0x24
+#define X68_KEY_K 0x25
+#define X68_KEY_L 0x26
+#define X68_KEY_M 0x30
+#define X68_KEY_N 0x2f
+#define X68_KEY_O 0x19
+#define X68_KEY_P 0x1a
+#define X68_KEY_Q 0x11
+#define X68_KEY_R 0x14
+#define X68_KEY_S 0x1f
+#define X68_KEY_T 0x15
+#define X68_KEY_U 0x17
+#define X68_KEY_V 0x2d
+#define X68_KEY_W 0x12
+#define X68_KEY_X 0x2b
+#define X68_KEY_Y 0x16
+#define X68_KEY_Z 0x2a
 
 /* ============================================================
  * 標準名の層: C 標準に同じ意味のものがあるものは、標準の名前と

@@ -360,6 +360,42 @@ export function codeToRetrok(code: string): number {
   return CODE_TO_RETROK[code] ?? RETROK.UNKNOWN;
 }
 
+/**
+ * KeyboardEvent.code が空の自動操作・一部ブラウザ向けのフォールバック。
+ * 最低限のゲーム操作と英数字は KeyboardEvent.key だけでも解決する。
+ */
+export function keyToRetrok(key: string): number {
+  const named: Record<string, number> = {
+    ArrowUp: RETROK.UP, ArrowDown: RETROK.DOWN,
+    ArrowLeft: RETROK.LEFT, ArrowRight: RETROK.RIGHT,
+    Enter: RETROK.RETURN, Escape: RETROK.ESCAPE,
+    Esc: RETROK.ESCAPE, ' ': RETROK.SPACE, Spacebar: RETROK.SPACE,
+  };
+  if (key in named) return named[key];
+  if (/^[A-Za-z]$/.test(key)) return key.toLowerCase().charCodeAt(0);
+  if (/^[0-9]$/.test(key)) return key.charCodeAt(0);
+  return RETROK.UNKNOWN;
+}
+
+export function keyboardEventToRetrok(event: Pick<KeyboardEvent, 'code' | 'key'>): number {
+  const physical = codeToRetrok(event.code);
+  return physical !== RETROK.UNKNOWN ? physical : keyToRetrok(event.key);
+}
+
+/** X68000実機にはあるが、現在のDOM KeyboardEvent.code表から直接は届かないキー。 */
+export const X68K_KEYS_WITHOUT_HOST_CODE = [
+  { label: 'ローマ字', retrok: RETROK.BROWSER_STOP, scancode: 0x5b },
+  { label: 'コード入力', retrok: RETROK.BROWSER_SEARCH, scancode: 0x5c },
+  { label: 'ひらがな', retrok: RETROK.BROWSER_FAVORITES, scancode: 0x5f },
+  { label: '全角', retrok: RETROK.BROWSER_HOME, scancode: 0x60 },
+  { label: 'COPY', retrok: RETROK.VOLUME_MUTE, scancode: 0x62 },
+  { label: 'XF1', retrok: RETROK.EURO, scancode: 0x55 },
+  { label: 'XF2', retrok: RETROK.UNDO, scancode: 0x56 },
+  { label: 'XF3', retrok: RETROK.OEM_102, scancode: 0x57 },
+  { label: 'XF4', retrok: RETROK.BROWSER_BACK, scancode: 0x58 },
+  { label: 'XF5', retrok: RETROK.BROWSER_FORWARD, scancode: 0x59 },
+] as const;
+
 // --- ASCII 文字 → X68000(JIS配列)のキー入力 -------------------------------
 // MCP ブリッジの type_text 用。px68k の KeyTable(libretro.c)は「物理キー」の RETROK しか
 // 持たないため、'!' のような記号は SHIFT + 元キーに分解して送る必要がある。
