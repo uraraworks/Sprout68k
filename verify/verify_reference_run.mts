@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /*
- * 関数リファレンスに載せた例を、**実際に X68000 で走らせる**検証。
+ * 資料に載せた例と、IDE に同梱するサンプルを、**実際に X68000 で走らせる**検証。
  *
  * 【なぜ要るか(2026-08-23)】これまでの検査は「例がコンパイルできること」
  * だけを見ていた。ところが x68_panic_install が呼び出し元の a2/a3 を壊す
@@ -64,6 +64,17 @@ function collect(): Sample[] {
       expectsDrawing: expectsDrawing(code),
     });
   }
+  /* IDE に同梱するサンプル。学習者が最初に開くものなので、
+   * 「動く」ことは資料の例より重い。 */
+  for (const name of ['hello.c', 'shapes.c', 'keyboard-input.c', 'move.c', 'catch.c', 'stars.c', 'life.c']) {
+    const code = readFileSync(resolve(ROOT, 'ide/samples', name), 'utf8');
+    samples.push({ label: `sample:${name}`, source: code, expectsDrawing: expectsDrawing(code) });
+  }
+  samples.push({
+    label: 'sample:block.c',
+    source: readFileSync(resolve(ROOT, 'samples/breakout/block.c'), 'utf8'),
+    expectsDrawing: true,
+  });
   return samples;
 }
 
