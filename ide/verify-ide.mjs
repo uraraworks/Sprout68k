@@ -463,9 +463,11 @@ const toolbarControl = pixelValues('--toolbar-control-size');
 const toolbarIcon = pixelValues('--toolbar-icon-size');
 const toolbarBuildWidth = pixelValues('--toolbar-build-width');
 const toolbarRunWidth = pixelValues('--toolbar-run-width');
+const toolbarShareWidth = pixelValues('--toolbar-share-width');
 const toolbarLabelGap = pixelValues('--toolbar-label-gap');
 if (buttonBorder.length !== 1 || toolbarControl.length !== 1 || toolbarIcon.length !== 1
-    || toolbarBuildWidth.length !== 1 || toolbarRunWidth.length !== 1 || toolbarLabelGap.length !== 1) {
+    || toolbarBuildWidth.length !== 1 || toolbarRunWidth.length !== 1 || toolbarShareWidth.length !== 1
+    || toolbarLabelGap.length !== 1) {
   throw new Error('ツールバー寸法のCSS数値を一意に取得できません');
 }
 for (const cssContract of ['white-space: nowrap', 'flex-shrink: 0']) {
@@ -495,7 +497,8 @@ for (const [, attributes, body] of buttonBodies) {
   const icons = [...body.matchAll(/<svg\b[^>]*class="toolbar-icon"[^>]*viewBox="0 0 24 24"[^>]*>/g)];
   if (icons.length !== 1) throw new Error(`24x24のツールバーアイコンが1件ではありません: ${id}`);
   const controlWidth = id === 'build' ? toolbarBuildWidth[0]
-    : id === 'run' ? toolbarRunWidth[0] : toolbarControl[0];
+    : id === 'run' ? toolbarRunWidth[0]
+    : id === 'share' ? toolbarShareWidth[0] : toolbarControl[0];
   const controlHeight = toolbarControl[0];
   const clientWidth = controlWidth - buttonBorder[0] * 2;
   const clientHeight = controlHeight - buttonBorder[0] * 2;
@@ -505,18 +508,28 @@ for (const [, attributes, body] of buttonBodies) {
   console.log(`verify-ide: icon fit ${id} ${toolbarIcon[0]}px in ${clientWidth}x${clientHeight}px`);
 }
 const sidebarRowWidth = toolbarControl[0] * 3 + 2 * 2;
-const editorRowWidth = toolbarBuildWidth[0] + toolbarRunWidth[0] + toolbarControl[0] + editorToolbarGap * 2;
+const editorRowWidth = toolbarBuildWidth[0] + toolbarRunWidth[0] + toolbarShareWidth[0] + toolbarControl[0] + editorToolbarGap * 3;
 if (sidebarRowWidth > 240 - 2 - 16 || editorRowWidth > 420 - 2 - 24) {
   throw new Error('ツールバーボタン列が最小幅に収まりません');
 }
 console.log(`verify-ide: icon rows fit sidebar=${sidebarRowWidth}/222px editor=${editorRowWidth}/394px`);
-const buildContentWidth = toolbarIcon[0] + toolbarLabelGap[0] + 3 * 14;
-const runContentWidth = toolbarIcon[0] + toolbarLabelGap[0] + 2 * 14;
-if (buildContentWidth > toolbarBuildWidth[0] - buttonBorder[0] * 2 - 20
-    || runContentWidth > toolbarRunWidth[0] - buttonBorder[0] * 2 - 20) {
-  throw new Error(`文字付きボタンが枠から溢れます: build=${buildContentWidth}px run=${runContentWidth}px`);
+// 文字付きボタンは「アイコン + 隙間 + 全角文字数×14px」が枠に収まること。
+// 幅指定が「アイコンのみ」用のままだと、中の文字が枠からはみ出す
+// （2026-08-23 に共有ボタンで実際に踏んだ。数値上は溢れておらず、見た目だけ壊れる）。
+const labeledActions = [
+  ['build', 3, toolbarBuildWidth[0]],
+  ['run', 2, toolbarRunWidth[0]],
+  ['share', 2, toolbarShareWidth[0]],
+];
+const labeledReport = [];
+for (const [id, characters, width] of labeledActions) {
+  const contentWidth = toolbarIcon[0] + toolbarLabelGap[0] + characters * 14;
+  if (contentWidth > width - buttonBorder[0] * 2 - 20) {
+    throw new Error(`文字付きボタンが枠から溢れます: ${id}=${contentWidth}px > ${width}px`);
+  }
+  labeledReport.push(`${id}=${contentWidth}px`);
 }
-console.log(`verify-ide: labeled actions fit build=${buildContentWidth}px run=${runContentWidth}px`);
+console.log(`verify-ide: labeled actions fit ${labeledReport.join(' ')}`);
 for (const containment of [
   '.file-entry { flex: 1; min-width: 0; border-radius: 0; overflow: hidden; text-align: left; text-overflow: ellipsis; white-space: nowrap',
   '.tab { max-width: 200px; height: 35px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap',

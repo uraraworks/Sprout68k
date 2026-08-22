@@ -33,6 +33,7 @@
   --toolbar-control-size: 38px;
   --toolbar-build-width: 92px;
   --toolbar-run-width: 78px;
+  --toolbar-share-width: 78px;
   --toolbar-icon-size: 20px;
   --toolbar-label-gap: 6px;
   --workspace-sidebar-width: 240px;
@@ -66,8 +67,9 @@ button:focus-visible, input:focus-visible { outline: 1px solid var(--vsc-focus);
 .header-help-btn { position: absolute; top: var(--help-header-offset); right: var(--help-header-right); width: var(--help-control-size); height: var(--help-control-size); display: grid; place-items: center; border: 1px solid #475569; border-radius: 50%; color: var(--x68-header-text); background: #172033; font-size: 17px; font-weight: 700; line-height: 1; text-decoration: none; }
 .header-help-btn:hover { border-color: var(--vsc-focus); background: #253044; }
 .header-help-btn:focus-visible { outline: 1px solid var(--vsc-focus); outline-offset: 2px; }
-/* 関数リファレンスへの入口。?ボタンの左に並べる(重ならないよう?の幅ぶん右端をずらす)。 */
-.header-ref-btn { position: absolute; top: var(--help-header-offset); right: calc(var(--help-header-right) + var(--help-control-size) + 6px); height: var(--help-control-size); display: grid; place-items: center; padding: 0 10px; border: 1px solid #475569; border-radius: calc(var(--help-control-size) / 2); color: var(--x68-header-text); background: #172033; font-size: 12px; font-weight: 700; line-height: 1; letter-spacing: 0.04em; text-decoration: none; }
+/* 関数リファレンスへの入口。?ボタンの左に並べる(重ならないよう?の幅ぶん右端をずらす)。
+ * 「API」の文字は入門者に通じないので本のアイコンにする。 */
+.header-ref-btn { position: absolute; top: var(--help-header-offset); right: calc(var(--help-header-right) + var(--help-control-size) + 6px); width: var(--help-control-size); height: var(--help-control-size); display: grid; place-items: center; border: 1px solid #475569; border-radius: 50%; color: var(--x68-header-text); background: #172033; line-height: 0; text-decoration: none; }
 .header-ref-btn:hover { border-color: var(--vsc-focus); background: #253044; }
 .header-ref-btn:focus-visible { outline: 1px solid var(--vsc-focus); outline-offset: 2px; }
 .app-title-row { display: flex; justify-content: center; align-items: center; gap: 9px; }
@@ -112,9 +114,10 @@ button:focus-visible, input:focus-visible { outline: 1px solid var(--vsc-focus);
 .cm-editor .cm-selectionBackground, .cm-content::selection, .cm-content ::selection, .cm-focused .cm-selectionBackground { background-color: var(--vsc-selection) !important; }
 .editor-toolbar { display: flex; gap: 6px; padding: 8px 12px; border-top: 1px solid var(--vsc-border); background: var(--vsc-ui-bg); }
 .editor-toolbar button { width: var(--toolbar-control-size); height: var(--toolbar-control-size); padding: 0; display: grid; place-items: center; border-color: var(--vsc-accent); }
-.editor-toolbar #build, .editor-toolbar #run { display: inline-flex; gap: var(--toolbar-label-gap); padding: 0 10px; font-weight: 700; }
+.editor-toolbar #build, .editor-toolbar #run, .editor-toolbar #share { display: inline-flex; gap: var(--toolbar-label-gap); padding: 0 10px; font-weight: 700; }
 .editor-toolbar #build { width: var(--toolbar-build-width); }
 .editor-toolbar #run { width: var(--toolbar-run-width); }
+.editor-toolbar #share { width: var(--toolbar-share-width); }
 .editor-toolbar #run { color: white; background: var(--vsc-accent); }
 .editor-toolbar #run:hover { background: var(--vsc-accent-hover); }
 #build-status, #machine-status { min-height: 34px; padding: 8px 12px; color: var(--vsc-fg-dim); background: var(--vsc-ui-bg); font-size: 12px; }

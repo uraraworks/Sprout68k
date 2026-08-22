@@ -321,6 +321,14 @@ if (![bootBin, runtimeBin, builtXdf, builtPayload].every(existsSync)) {
     check(digest(releasedRuntime) === manifest.runtime.sha256 && releasedRuntime.length === manifest.runtime.size,
       'ランタイム配布物が manifest と一致する');
     check(digest(releasedBoot) === manifest.boot.sha256, 'ブートセクタ配布物が manifest と一致する');
+    /* 受け取り側に配る share_v1.mts が、送信側が使っている正典と同じであること。
+     * ここが割れると、送信側と受信側が別の実装で動く。 */
+    const releasedShare = new Uint8Array(readFileSync(resolve(released, manifest.share.name)));
+    const canonicalShare = new Uint8Array(readFileSync(resolve(ROOT, 'tools/share_v1.mts')));
+    check(digest(releasedShare) === manifest.share.sha256, '配布する share_v1.mts が manifest と一致する');
+    check(releasedShare.length === canonicalShare.length
+      && releasedShare.every((byte, index) => byte === canonicalShare[index]),
+      '配布する share_v1.mts が正典(tools/share_v1.mts)とバイト一致する');
     check(manifest.abiVersion === layout.get('ABI_VERSION'), `manifest の ABI 版が配置と一致する (v${manifest.abiVersion})`);
 
     /* 中身の無いソースでビルドした配布物と、ブロック崩しでビルドしたランタイムが

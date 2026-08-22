@@ -22,6 +22,7 @@ export const ROOT_STATIC_FILES = [
   // 過去の版は消さないこと（古い共有リンクが動かなくなる）。
   'deploy/runtime/v1/runtime.bin',
   'deploy/runtime/v1/boot.bin',
+  'deploy/runtime/v1/share_v1.mts',
   'deploy/runtime/v1/manifest.json',
 ] as const;
 

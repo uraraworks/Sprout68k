@@ -1,9 +1,10 @@
 #!/usr/bin/env node
 /* 共有リンクの受け取り側が持つランタイム配布物を作る。
  *
- *   deploy/runtime/v1/runtime.bin  ランタイム本体（ライブラリ全部入り）
- *   deploy/runtime/v1/boot.bin     ブートセクタ
- *   deploy/runtime/v1/manifest.json  大きさ・SHA-256・配置
+ *   deploy/runtime/v1/runtime.bin   ランタイム本体（ライブラリ全部入り）
+ *   deploy/runtime/v1/boot.bin      ブートセクタ
+ *   deploy/runtime/v1/share_v1.mts  URLの復号と .xdf の組み立て（送受信で共用する正典の写し）
+ *   deploy/runtime/v1/manifest.json 大きさ・SHA-256・配置
  *
  * **受け取る側にコンパイラは要らない。** この2つのファイルと、URLから復元した
  * 利用者コードを tools/share_v1.mts で組み立てれば .xdf になる。
@@ -59,11 +60,16 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   mkdirSync(directory, { recursive: true });
   writeFileSync(resolve(directory, 'runtime.bin'), runtime);
   writeFileSync(resolve(directory, 'boot.bin'), boot);
+  /* 受け取り側は復号と組み立てにこれが要る。**送信側とまったく同じ正典を配る**
+   * （受け取り側が自前で書くと、送信側と静かに食い違う）。 */
+  const shareSource = readFileSync(resolve(ROOT, 'tools/share_v1.mts'));
+  writeFileSync(resolve(directory, 'share_v1.mts'), shareSource);
   const manifest = {
     abiVersion: layout.ABI_VERSION,
     note: '共有リンクの受け取り側が持つランタイム。過去の版は消さないこと（古い共有リンクが動かなくなる）。',
     runtime: { size: runtime.length, sha256: sha256(runtime) },
     boot: { size: boot.length, sha256: sha256(boot) },
+    share: { name: 'share_v1.mts', size: shareSource.length, sha256: sha256(shareSource) },
     layout,
   };
   writeFileSync(resolve(directory, 'manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`);
