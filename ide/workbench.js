@@ -10,6 +10,7 @@ import { basename, sourceLanguage } from './source-view.mjs';
 import { createX68kAdapter } from './x68k-adapter.mjs';
 import { createRecoveryController } from './recovery-controller.mjs';
 import { renderRunToggle } from './run-toggle.mjs';
+import { ScreenshotStore, captureCanvas } from './screenshot-store.mjs';
 import { offlineStartupMode, offlineStatusPresentation } from './offline-support.mjs';
 import {
   MAX_SPLIT_RATIO, MIN_SPLIT_RATIO, clampSplitRatio, containedContentSize,
@@ -46,6 +47,13 @@ const nodes = {
   screenShell: document.querySelector('#screen-shell'),
   buildId: document.querySelector('#build-id'),
   offlineStatus: document.querySelector('#offline-status'),
+  shoot: document.querySelector('#shoot'),
+  shotBar: document.querySelector('#shot-bar'),
+  shotList: document.querySelector('#shot-list'),
+  shotSave: document.querySelector('#shot-save'),
+  shotCopy: document.querySelector('#shot-copy'),
+  shotShare: document.querySelector('#shot-share'),
+  shotDelete: document.querySelector('#shot-delete'),
 };
 
 const LAST_PATH_KEY = 'sprout68k:last-path';
@@ -218,6 +226,7 @@ function captureSourceState() {
 }
 
 function setEmulatorRunning(running) {
+  nodes.shoot.disabled = !running;
   emulatorRunning = Boolean(running);
   renderRunToggle(nodes.run, emulatorRunning ? 'running' : 'idle');
 }
@@ -652,6 +661,143 @@ async function confirmNewFile() {
   }
 }
 
+/* ============================================================
+ * スクリーンショット
+ *
+ * 画像の受け渡しは環境差が大きい。クリップボードへの画像書き込みは
+ * ブラウザによって使えないことがあり、共有シートはスマホにしかない。
+ * **確実に動くのはダウンロード**なので保存を主にして、コピーと共有は
+ * 使える環境でだけボタンを出す（押しても何も起きないボタンは置かない）。
+ * ============================================================ */
+const screenshotStore = new ScreenshotStore();
+let selectedShot = null;
+
+function canCopyImage() {
+  return typeof ClipboardItem === 'function' && Boolean(navigator.clipboard?.write);
+}
+
+function canShareImage() {
+  return Boolean(navigator.canShare) && Boolean(navigator.share);
+}
+
+async function renderShots() {
+  let records = [];
+  try {
+    records = await screenshotStore.list();
+  } catch (error) {
+    reportMachine(`スクリーンショットを読み出せません: ${error.message}`, true);
+  }
+  nodes.shotBar.hidden = records.length === 0;
+  if (!records.some((record) => record.name === selectedShot)) {
+    selectedShot = records[0]?.name ?? null;
+  }
+  /* 既存のサムネイルは作り直さず、必要なものだけ足し引きする。毎回まるごと
+   * 差し替えると、押している最中に要素が入れ替わってクリックが消える。 */
+  const wanted = new Map(records.map((record) => [record.name, record]));
+  for (const element of [...nodes.shotList.children]) {
+    if (!wanted.has(element.dataset.name)) {
+      URL.revokeObjectURL(element.querySelector('img').src);
+      element.remove();
+    }
+  }
+  const existing = new Set([...nodes.shotList.children].map((element) => element.dataset.name));
+  for (const record of records) {
+    let button = nodes.shotList.querySelector(`[data-name="${CSS.escape(record.name)}"]`);
+    if (!existing.has(record.name)) {
+      button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'shot-thumb';
+      button.dataset.name = record.name;
+      button.setAttribute('role', 'option');
+      const image = document.createElement('img');
+      image.src = URL.createObjectURL(record.blob);
+      image.alt = `${record.name}（${record.width}×${record.height}）`;
+      button.append(image);
+      button.addEventListener('click', () => {
+        selectedShot = record.name;
+        renderShots();
+      });
+      nodes.shotList.append(button);
+    }
+    button.setAttribute('aria-selected', String(record.name === selectedShot));
+  }
+  /* 新しい順に並べ直す（DOMの順序を records に合わせる） */
+  for (const record of records) {
+    const button = nodes.shotList.querySelector(`[data-name="${CSS.escape(record.name)}"]`);
+    if (button) nodes.shotList.append(button);
+  }
+  nodes.shotCopy.hidden = !canCopyImage();
+  nodes.shotShare.hidden = !canShareImage();
+}
+
+async function selectedRecord() {
+  if (!selectedShot) return null;
+  const records = await screenshotStore.list();
+  return records.find((record) => record.name === selectedShot) ?? null;
+}
+
+async function takeScreenshot() {
+  try {
+    const shot = await captureCanvas(nodes.screen);
+    const record = await screenshotStore.add(shot);
+    selectedShot = record.name;
+    await renderShots();
+    reportMachine(`スクリーンショットを撮りました（${shot.width}×${shot.height}）`);
+  } catch (error) {
+    reportMachine(`スクリーンショットを撮れません: ${error.message}`, true);
+  }
+}
+
+async function saveScreenshot() {
+  const record = await selectedRecord();
+  if (!record) return;
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(record.blob);
+  link.download = record.name;
+  link.click();
+  URL.revokeObjectURL(link.href);
+}
+
+async function copyScreenshot() {
+  const record = await selectedRecord();
+  if (!record) return;
+  try {
+    await navigator.clipboard.write([new ClipboardItem({ 'image/png': record.blob })]);
+    reportMachine('スクリーンショットをコピーしました');
+  } catch (error) {
+    reportMachine(`コピーできません: ${error.message}。「画像を保存」を使ってください`, true);
+  }
+}
+
+async function shareScreenshot() {
+  const record = await selectedRecord();
+  if (!record) return;
+  const file = new File([record.blob], record.name, { type: 'image/png' });
+  if (!navigator.canShare({ files: [file] })) {
+    reportMachine('この環境では画像の共有を使えません。「画像を保存」を使ってください', true);
+    return;
+  }
+  try {
+    await navigator.share({ files: [file] });
+  } catch (error) {
+    if (error.name !== 'AbortError') reportMachine(`共有できません: ${error.message}`, true);
+  }
+}
+
+async function deleteScreenshot() {
+  const record = await selectedRecord();
+  if (!record) return;
+  await screenshotStore.delete(record.name);
+  selectedShot = null;
+  await renderShots();
+}
+
+nodes.shoot.addEventListener('click', takeScreenshot);
+nodes.shotSave.addEventListener('click', saveScreenshot);
+nodes.shotCopy.addEventListener('click', copyScreenshot);
+nodes.shotShare.addEventListener('click', shareScreenshot);
+nodes.shotDelete.addEventListener('click', deleteScreenshot);
+
 async function initialize() {
   await projectFS.open();
   await refreshFileTree();
@@ -670,6 +816,8 @@ async function initialize() {
   } catch {}
   if (!restored) await openFile('sample', SAMPLE_FILES[0].path);
   await adapter.initialize();
+  /* 前に撮ったスクリーンショットはブラウザ内に残っているので起動時に出す。 */
+  await renderShots();
   nodes.buildStatus.textContent = '編集とブラウザ内保存を利用できます';
   return true;
 }

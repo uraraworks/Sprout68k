@@ -22,13 +22,13 @@
     <aside class="sidebar" aria-label="エクスプローラー">
       <div class="sidebar-heading">エクスプローラー</div>
       <div class="sidebar-actions">
-        <button id="new-file" type="button" title="新規ファイル" aria-label="新規ファイル">
+        <button id="new-file" type="button" title="新規ファイル" aria-label="新規ファイル" data-button-kind="icon">
           <svg class="toolbar-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 5v14M5 12h14"/></svg>
         </button>
-        <button id="save-file" type="button" title="保存" aria-label="保存">
+        <button id="save-file" type="button" title="保存" aria-label="保存" data-button-kind="icon">
           <svg class="toolbar-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5 4h11l3 3v13H5Z"/><path d="M8 4v6h8V4M8 20v-6h8v6"/></svg>
         </button>
-        <button id="download-file" type="button" title="ダウンロード" aria-label="ダウンロード">
+        <button id="download-file" type="button" title="ダウンロード" aria-label="ダウンロード" data-button-kind="icon">
           <svg class="toolbar-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 4v11m-4-4 4 4 4-4M5 19h14"/></svg>
         </button>
         <div id="new-file-popup" class="new-file-popup" role="dialog" aria-label="新規ファイル" hidden>
@@ -43,14 +43,14 @@
       <div class="tab-strip" id="tab-strip" role="tablist" aria-label="開いているファイル"></div>
       <div id="editor" aria-label="C ソースエディタ"></div>
       <div class="editor-toolbar">
-        <button id="build" type="button" aria-label="ビルド" title="ビルド">
+        <button id="build" type="button" aria-label="ビルド" title="ビルド" data-button-kind="icon">
           <svg class="toolbar-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m14.5 5.5 4 4M13 7l4 4M4.5 19.5l8.7-8.7 2 2-8.7 8.7Z"/><path d="m5 5 4 1-3 3Z"/></svg>
           <span class="toolbar-label">ビルド</span>
         </button>
-        <button id="download-xdf" type="button" aria-label="XDFをダウンロード" title="XDFをダウンロード" disabled>
+        <button id="download-xdf" type="button" aria-label="XDFをダウンロード" title="XDFをダウンロード" disabled data-button-kind="icon">
           <svg class="toolbar-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M8 8h8M12 9v7m-3-3 3 3 3-3"/></svg>
         </button>
-        <button id="run" type="button" aria-label="実行" title="実行" data-state="idle">
+        <button id="run" type="button" aria-label="実行" title="実行" data-state="idle" data-button-kind="icon">
           <svg class="toolbar-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path data-run-icon="play" d="m8 5 11 7-11 7Z"/><rect data-run-icon="stop" x="6.5" y="6.5" width="11" height="11" rx="1.5"/></svg>
           <span class="toolbar-label">実行</span>
         </button>
@@ -60,10 +60,27 @@
     </section>
     <div id="workspace-splitter" class="workspace-splitter" role="separator" aria-label="エディタと実行画面の大きさを調整" aria-orientation="vertical" aria-valuemin="28" aria-valuemax="72" aria-valuenow="56" tabindex="0"></div>
     <section class="machine-card" aria-labelledby="machine-heading">
-      <div class="panel-heading"><h2 id="machine-heading">X68000 実行画面</h2></div>
+      <div class="panel-heading">
+        <h2 id="machine-heading">X68000 実行画面</h2>
+        <button id="shoot" class="shot-button" type="button" disabled title="実行画面を撮影" aria-label="実行画面を撮影" data-button-kind="icon">
+          <svg class="toolbar-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <path fill="currentColor" d="M9 3h6l1.2 2.4H20a1.6 1.6 0 0 1 1.6 1.6v11.4A1.6 1.6 0 0 1 20 20H4a1.6 1.6 0 0 1-1.6-1.6V7A1.6 1.6 0 0 1 4 5.4h3.8zm3 5a5 5 0 1 0 0 10 5 5 0 0 0 0-10zm0 2.4a2.6 2.6 0 1 1 0 5.2 2.6 2.6 0 0 1 0-5.2z"/>
+          </svg>
+          <span class="toolbar-label">スクショ</span>
+        </button>
+      </div>
       <div id="machine-status" role="status">未実行</div>
       <div id="keyboard-status">キーボード入力: 実行画面をクリックすると有効</div>
       <div class="screen-shell" id="screen-shell"><canvas id="x68k-screen" width="768" height="512" tabindex="0" aria-label="X68000画面（クリックするとキーボード入力）"></canvas></div>
+      <div class="shot-bar" id="shot-bar" hidden>
+        <div class="shot-list" id="shot-list" role="listbox" aria-label="撮影したスクリーンショット"></div>
+        <div class="shot-actions">
+          <button id="shot-save" type="button" title="画像を保存" aria-label="画像を保存" data-button-kind="text">画像を保存</button>
+          <button id="shot-copy" type="button" hidden title="画像をコピー" aria-label="画像をコピー" data-button-kind="text">画像をコピー</button>
+          <button id="shot-share" type="button" hidden title="画像を共有" aria-label="画像を共有" data-button-kind="text">共有</button>
+          <button id="shot-delete" type="button" class="shot-danger" title="選んだ画像を削除" aria-label="選んだ画像を削除" data-button-kind="text">削除</button>
+        </div>
+      </div>
     </section>
   </main>
   <footer class="app-footer">

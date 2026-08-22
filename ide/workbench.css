@@ -159,3 +159,21 @@ button:focus-visible, input:focus-visible { outline: 1px solid var(--vsc-focus);
   .screen-shell { min-height: 160px; }
   .app-footer { flex-wrap: wrap; }
 }
+
+/* --- スクリーンショット ---
+ * 用途は「X などへ画像として手で添付するため」。#以降のフラグメントは
+ * サーバへ送られないので、共有リンクからOGP画像を作ることはできない。 */
+.panel-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.shot-button { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border: 1px solid #475569; border-radius: 4px; color: var(--x68-header-text); background: #253044; font: inherit; font-size: 12px; cursor: pointer; }
+.shot-button:hover:not(:disabled) { border-color: var(--vsc-focus); background: #2f3d55; }
+.shot-button:disabled { opacity: 0.45; cursor: default; }
+.shot-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 0 12px 10px; padding: 8px 10px; border: 1px solid #475569; border-radius: 5px; background: #181818; }
+.shot-list { display: flex; flex: 1 1 200px; gap: 6px; min-width: 0; overflow-x: auto; }
+.shot-thumb { flex: 0 0 auto; padding: 0; border: 2px solid #475569; border-radius: 4px; background: #000; line-height: 0; cursor: pointer; }
+.shot-thumb img { display: block; width: 64px; height: 64px; object-fit: contain; image-rendering: pixelated; }
+.shot-thumb[aria-selected="true"] { border-color: var(--vsc-focus); }
+.shot-thumb:focus-visible { outline: 2px solid #22c55e; outline-offset: 1px; }
+.shot-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.shot-actions button { padding: 4px 10px; border: 1px solid #475569; border-radius: 4px; color: var(--x68-header-text); background: #253044; font: inherit; font-size: 12px; cursor: pointer; }
+.shot-actions button:hover { border-color: var(--vsc-focus); background: #2f3d55; }
+.shot-actions .shot-danger:hover { border-color: #f87171; }

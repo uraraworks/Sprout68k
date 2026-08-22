@@ -14,13 +14,14 @@ import {
 import { renderRunToggle, runToggleView } from './run-toggle.mjs';
 import { verifyBrowserUi } from './browser-ui-verifier.mjs';
 import { offlineStartupMode, offlineStatusPresentation } from './offline-support.mjs';
+import { SCREENSHOT_LIMIT, nextScreenshotName, pruneScreenshots, screenshotScale } from './screenshot-store.mjs';
 
 const root = dirname(fileURLToPath(import.meta.url));
 const forbidden = ['pc' + '98', 'n' + 'p2', 'pc' + '-98', 'free' + 'dos', 'na' + 'sm', 'smaller' + 'c', '98' + '01', '98' + '21'];
 const required = [
   'index.html', 'help.html', 'reference.html', 'api/reference.json', 'workbench.css', 'workbench.js', 'project-fs.mjs', 'source-view.mjs',
   'sample-manifest.mjs', 'split-layout.mjs', 'run-toggle.mjs', 'offline-support.mjs', 'browser-ui-verifier.mjs', 'x68k-adapter.mjs', 'samples/hello.c', 'samples/keyboard-input.c',
-  'recovery-controller.mjs',
+  'recovery-controller.mjs', 'screenshot-store.mjs',
   'px68k-runtime.ts', 'px68k/libretro-host.ts', 'px68k/text-screen.ts',
   'px68k/keyboard.ts', 'px68k/key-repeat.ts', 'px68k/keyboard-input.ts',
   'core/px68k_libretro.js', 'core/px68k_libretro.wasm',
@@ -473,8 +474,20 @@ if (!css.includes('.toolbar-icon { width: var(--toolbar-icon-size); height: var(
 }
 const buttonBodies = [...html.matchAll(/<button\b([^>]*)>([\s\S]*?)<\/button>/g)];
 if (buttonBodies.length !== toolbarButtonTags.length) throw new Error('ツールバーボタン本体を全件抽出できません');
+/* ボタンは「アイコン付き」と「文字だけ」の2種類ある。どちらなのかを
+ * data-button-kind に必ず書かせる。**分類の無いボタンはエラー**にすることで、
+ * 新しいボタンを足したときに検査から静かに漏れることを防ぐ
+ * （アイコン契約の対象を絞るだけにすると、次のボタンで緩む）。 */
 for (const [, attributes, body] of buttonBodies) {
   const id = htmlAttribute(`<button ${attributes}>`, 'id');
+  const kind = htmlAttribute(`<button ${attributes}>`, 'data-button-kind');
+  if (kind !== 'icon' && kind !== 'text') {
+    throw new Error(`ボタンの種類(data-button-kind="icon"|"text")がありません: ${id}`);
+  }
+  if (kind === 'text') {
+    if (!body.replace(/<[^>]*>/g, '').trim()) throw new Error(`文字だけのボタンに文字がありません: ${id}`);
+    continue;
+  }
   const icons = [...body.matchAll(/<svg\b[^>]*class="toolbar-icon"[^>]*viewBox="0 0 24 24"[^>]*>/g)];
   if (icons.length !== 1) throw new Error(`24x24のツールバーアイコンが1件ではありません: ${id}`);
   const controlWidth = id === 'build' ? toolbarBuildWidth[0]
@@ -642,6 +655,41 @@ for (const attribution of ['px68k-libretro', 'Workbench' + 'N' + 'P2', 'CodeMirr
 }
 if (!html.includes('./samples/hello.c') && !(await readFile(resolve(root, 'sample-manifest.mjs'), 'utf8')).includes('./samples/hello.c')) {
   throw new Error('C サンプル参照がありません');
+}
+
+/* --- スクリーンショットの判断部分（DOM も IndexedDB も使わない）--- */
+{
+  /* 倍率は整数倍だけ。1.5倍などにすると補間なしでは点の大きさが不揃いになる。 */
+  const cases = [[512, 512, 2], [768, 512, 2], [256, 256, 4], [1024, 1024, 1], [2048, 512, 1]];
+  for (const [width, height, expected] of cases) {
+    const actual = screenshotScale(width, height);
+    if (actual !== expected) throw new Error(`screenshotScale(${width},${height}) = ${actual}, 期待 ${expected}`);
+    if (!Number.isInteger(actual) || actual < 1) throw new Error(`倍率が整数の正数でない: ${actual}`);
+  }
+  if (screenshotScale(0, 0) !== 1) throw new Error('大きさ0でも倍率1を返すこと');
+
+  /* 同じ秒に2枚撮っても上書きしない（黙って消えるのがいちばん困る）。 */
+  const at = Date.UTC(2026, 7, 22, 3, 4, 5);
+  const first = nextScreenshotName([], at);
+  const second = nextScreenshotName([first], at);
+  const third = nextScreenshotName([first, second], at);
+  if (first === second || second === third || first === third) {
+    throw new Error(`同じ時刻の名前が重複した: ${first} / ${second} / ${third}`);
+  }
+  if (!first.endsWith('.png')) throw new Error(`拡張子が .png でない: ${first}`);
+
+  /* 溜めすぎたら古いものから捨てる。捨てるのは新しい順で溢れたぶんだけ。 */
+  const records = Array.from({ length: SCREENSHOT_LIMIT + 3 }, (_, index) => ({ name: `s${index}`, takenAt: index }));
+  const { keep, discard } = pruneScreenshots(records);
+  if (keep.length !== SCREENSHOT_LIMIT) throw new Error(`残す枚数が違う: ${keep.length}`);
+  if (discard.length !== 3) throw new Error(`捨てる枚数が違う: ${discard.length}`);
+  if (keep[0].takenAt !== SCREENSHOT_LIMIT + 2) throw new Error('新しい順に残していない');
+  if (!discard.every((record) => record.takenAt < keep[keep.length - 1].takenAt)) {
+    throw new Error('新しいものを捨てている');
+  }
+  /* 陽性対照: 上限より少なければ1枚も捨てない */
+  if (pruneScreenshots(records.slice(0, 3)).discard.length !== 0) throw new Error('捨てなくてよい場面で捨てている');
+  console.log(`verify-ide: screenshot PASS (倍率${cases.length}件, 名前の重複回避, 上限${SCREENSHOT_LIMIT}枚の整理)`);
 }
 
 await verifyBrowserUi(resolve(root, '..'));
