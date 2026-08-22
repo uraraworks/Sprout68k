@@ -32,8 +32,12 @@ export function createRecoveryController({ adapter, buildFallback, captureSource
     return { ok: true };
   }
 
-  async function recover() {
+  /** 実行ボタンの境界。必ず旧ランタイムを破棄し、既知のXDFを新規ランタイムで起動する。 */
+  async function runFresh(candidate) {
     const before = snapshot();
+    if (candidate !== undefined && !rememberSuccessfulBuild(candidate)) {
+      throw new TypeError('実行対象のXDFが不正です');
+    }
     await adapter.stop();
     assertSourceUnchanged(before);
 
@@ -55,6 +59,6 @@ export function createRecoveryController({ adapter, buildFallback, captureSource
     rememberSuccessfulBuild,
     hasSuccessfulBuild: () => lastSuccessfulBuild !== null,
     stop,
-    recover,
+    runFresh,
   });
 }

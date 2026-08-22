@@ -4,6 +4,7 @@ import { relative, resolve, sep } from 'node:path';
 import { runInNewContext } from 'node:vm';
 import { APP_PATH, CACHE_PREFIX, IDE_STATIC_FILES, ROOT_STATIC_FILES, resolveWebAssetsRoot } from './distribution.mts';
 import { verifyHtmlUrls } from './html_url_verifier.mts';
+import { offlineStatusPresentation } from '../ide/offline-support.mjs';
 
 const ROOT = resolve(import.meta.dirname, '..');
 const DIST = resolve(ROOT, 'build/web-page');
@@ -151,7 +152,9 @@ await swHarness.dispatch('message', {
 });
 assert([...swHarness.stores.values()][0]?.size === offline.files.length, 'client起動照会で空cacheを自己修復できません');
 assert((clientReply as { state?: string })?.state === 'ready', '自己修復後にreadyを返していません');
-console.log(`PASS(SW実行モデル): install全${offline.files.length}件、空cacheからclient-checkで全件自己修復`);
+const readyPresentation = offlineStatusPresentation('ready');
+assert(!readyPresentation.error && readyPresentation.text === 'オフラインでも使えます', 'readyが本番UIの成功表示になりません');
+console.log(`PASS(SW実行モデル): install全${offline.files.length}件、空cacheからclient-checkで全件自己修復、UI=オフラインでも使えます`);
 
 const injectedPath = offline.files[0].path;
 const faultHarness = await createSwHarness(injectedPath);
@@ -160,7 +163,9 @@ try { await faultHarness.dispatch('install'); } catch { installRejected = true; 
 assert(installRejected && faultHarness.stores.size === 0 && !faultHarness.skipWaitingCalled, 'install失敗時に部分cacheを破棄してactivateを阻止できません');
 assert(faultHarness.errors.some((line) => line.includes(injectedPath) && line.includes('INJECTED_NETWORK_FAILURE')), 'install失敗ログにURLと原因がありません');
 assert(faultHarness.statusMessages.some((message) => (message as { state?: string }).state === 'error'), 'install失敗をclientへ通知していません');
-console.log(`PASS(故障注入): ${injectedPath}取得失敗をURL付き記録、部分cache破棄、activate阻止`);
+const failurePresentation = offlineStatusPresentation('error');
+assert(failurePresentation.error && failurePresentation.text === 'オフライン準備に失敗しました', 'precache失敗がUIで赤色表示になりません');
+console.log(`PASS(故障注入): ${injectedPath}取得失敗をURL付き記録、部分cache破棄、activate阻止、UI=error(赤)`);
 
 const sourceAssets = JSON.parse(readFileSync(resolve(resolveWebAssetsRoot(ROOT), 'manifest.json'), 'utf8')) as AssetManifest;
 assert(sourceAssets.version === 1, 'web-assets manifestの版が不正です');

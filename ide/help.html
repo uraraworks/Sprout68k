@@ -93,18 +93,12 @@
     <section>
       <h2><span class="lang-ja">3. 動かなくなったら</span><span class="lang-en">3. When the program stops responding</span></h2>
       <div class="lang-ja">
-        <ul>
-          <li><strong data-ui-label>実行を停止</strong>は、現在のエミュレータ実行を止めます。</li>
-          <li><strong data-ui-label>停止して前回成功XDFを再起動</strong>は、実行を止め、最後にビルドできたXDFを起動し直します。</li>
-        </ul>
-        <p class="note">どちらを使っても、編集中・未保存を含むソースは失われません。</p>
+        <p>実行中は<strong data-ui-label>実行</strong>ボタンが<strong data-ui-label>停止</strong>に変わります。停止して実行し直すと、X68000をきれいな状態から作り直し、最後にビルドできたXDFを起動します。</p>
+        <p class="note">暴走やビルド失敗から実行し直しても、編集中・未保存を含むソースは失われません。</p>
       </div>
       <div class="lang-en">
-        <ul>
-          <li><strong data-ui-label>実行を停止</strong> stops the running emulator.</li>
-          <li><strong data-ui-label>停止して前回成功XDFを再起動</strong> stops it and restarts the most recent successfully built XDF.</li>
-        </ul>
-        <p class="note">Neither action discards your source, including unsaved edits.</p>
+        <p>While X68000 is running, the <strong data-ui-label>実行</strong> (Run) button changes to <strong data-ui-label>停止</strong> (Stop). Stop and run again to recreate a clean X68000 and start the most recently built XDF.</p>
+        <p class="note">Running again after a runaway program or build failure never discards your source, including unsaved edits.</p>
       </div>
     </section>
 

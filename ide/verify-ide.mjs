@@ -7,12 +7,19 @@ import { runInNewContext } from 'node:vm';
 import { createServer } from '../../WebX68k/node_modules/vite/dist/node/index.js';
 import { APP_PATH } from '../tools/distribution.mts';
 import { verifyHtmlUrls } from '../tools/html_url_verifier.mts';
+import {
+  DEFAULT_SPLIT_RATIO, SPLIT_RATIO_KEY, containedContentSize, desktopPaneSizes,
+  mobileEditorHeight, readSplitRatio, writeSplitRatio,
+} from './split-layout.mjs';
+import { renderRunToggle, runToggleView } from './run-toggle.mjs';
+import { verifyBrowserUi } from './browser-ui-verifier.mjs';
+import { offlineStartupMode, offlineStatusPresentation } from './offline-support.mjs';
 
 const root = dirname(fileURLToPath(import.meta.url));
 const forbidden = ['pc' + '98', 'n' + 'p2', 'pc' + '-98', 'free' + 'dos', 'na' + 'sm', 'smaller' + 'c', '98' + '01', '98' + '21'];
 const required = [
   'index.html', 'help.html', 'workbench.css', 'workbench.js', 'project-fs.mjs', 'source-view.mjs',
-  'sample-manifest.mjs', 'x68k-adapter.mjs', 'samples/hello.c', 'samples/keyboard-input.c',
+  'sample-manifest.mjs', 'split-layout.mjs', 'run-toggle.mjs', 'offline-support.mjs', 'browser-ui-verifier.mjs', 'x68k-adapter.mjs', 'samples/hello.c', 'samples/keyboard-input.c',
   'recovery-controller.mjs',
   'px68k-runtime.ts', 'px68k/libretro-host.ts', 'px68k/text-screen.ts',
   'px68k/keyboard.ts', 'px68k/key-repeat.ts', 'px68k/keyboard-input.ts',
@@ -122,6 +129,8 @@ for (const file of allFiles) {
 const fsSource = await readFile(resolve(root, 'project-fs.mjs'), 'utf8');
 if (!fsSource.includes("databaseName = 'Sprout68kProjectFS'")) throw new Error('専用 DB 名がありません');
 const workbench = await readFile(resolve(root, 'workbench.js'), 'utf8');
+const runToggleSource = await readFile(resolve(root, 'run-toggle.mjs'), 'utf8');
+const offlineSupportSource = await readFile(resolve(root, 'offline-support.mjs'), 'utf8');
 if (!workbench.includes('window.sprout68kWorkbench')) throw new Error('公開 API 名がありません');
 if (!workbench.includes('cpp()')) throw new Error('C 言語ハイライトがありません');
 
@@ -147,9 +156,10 @@ console.log(`verify-ide: toolbar accessible names PASS (${toolbarButtonTags.leng
 const helpUiLabels = [...new Set([...help.matchAll(/<strong\s+data-ui-label>([^<]+)<\/strong>/g)]
   .map((match) => match[1].trim()))];
 if (helpUiLabels.length < 8) throw new Error(`ヘルプのUIラベル抽出数が不足しています: ${helpUiLabels.length}`);
-const staticUiLabels = html.replace(/<[^>]+>/g, '\n').split('\n').map((text) => text.trim()).filter(Boolean);
+const htmlWithoutButtons = html.replace(/<button\b[^>]*>[\s\S]*?<\/button>/g, '');
+const staticUiLabels = htmlWithoutButtons.replace(/<[^>]+>/g, '\n').split('\n').map((text) => text.trim()).filter(Boolean);
 const accessibleUiLabels = toolbarButtonTags.map((tag) => htmlAttribute(tag, 'aria-label'));
-const dynamicUiLabels = [...workbench.matchAll(/'([^'\n]+)'/g)].map((match) => match[1]);
+const dynamicUiLabels = [...`${workbench}\n${runToggleSource}\n${offlineSupportSource}`.matchAll(/'([^'\n]+)'/g)].map((match) => match[1]);
 const actualUiLabels = new Set([...accessibleUiLabels, ...staticUiLabels, ...dynamicUiLabels]);
 for (const label of helpUiLabels) {
   if (!actualUiLabels.has(label)) {
@@ -157,6 +167,20 @@ for (const label of helpUiLabels) {
   }
 }
 console.log(`verify-ide: help labels PASS (${helpUiLabels.length} labels extracted from help body)`);
+const labelFaultHtml = html.replace('aria-label="ビルド" title="ビルド"', 'aria-label="構築" title="構築"');
+if (labelFaultHtml === html) throw new Error('ヘルプラベル故障注入の対象がありません');
+const faultButtonTags = [...labelFaultHtml.matchAll(/<button\b[^>]*>/g)].map((match) => match[0]);
+const faultStaticLabels = labelFaultHtml.replace(/<button\b[^>]*>[\s\S]*?<\/button>/g, '')
+  .replace(/<[^>]+>/g, '\n').split('\n').map((text) => text.trim()).filter(Boolean);
+const faultActualLabels = new Set([
+  ...faultButtonTags.map((tag) => htmlAttribute(tag, 'aria-label')),
+  ...faultStaticLabels,
+  ...dynamicUiLabels,
+]);
+if ([...helpUiLabels].every((label) => faultActualLabels.has(label))) {
+  throw new Error('UI側のビルドラベル変更をヘルプ照合が検出できません');
+}
+console.log('PASS(故障注入・ヘルプ照合): UI側のビルドラベル変更を拒否');
 
 const helpScripts = [...help.matchAll(/<script>([\s\S]*?)<\/script>/g)].map((match) => match[1]);
 if (helpScripts.length !== 1) throw new Error(`ヘルプのinline scriptが1件ではありません: ${helpScripts.length}`);
@@ -202,7 +226,7 @@ if (helpJa.appLinks.some((link) => link.hidden) || helpFromApp.appLinks.some((li
   throw new Error('from=app によるアプリ導線の表示切替が不正です');
 }
 console.log('verify-ide: help query PASS (lang=ja/en, from=app hides 2 app links)');
-for (const id of ['build-output', 'download-xdf', 'run', 'stop-emulator', 'recover-emulator', 'machine-status', 'keyboard-status', 'x68k-screen', 'build-id', 'offline-status']) {
+for (const id of ['build-output', 'download-xdf', 'run', 'machine-status', 'keyboard-status', 'x68k-screen', 'build-id', 'offline-status']) {
   if (!html.includes(`id="${id}"`)) throw new Error(`必要な DOM 要素がありません: ${id}`);
   if (!workbench.includes(`#${id}`)) throw new Error(`DOM 要素の参照がありません: ${id}`);
 }
@@ -215,8 +239,25 @@ for (const contract of [
   "'オフライン準備に失敗しました'",
   "type: 'SPROUT68K_CHECK_CACHE'",
 ]) {
-  if (!workbench.includes(contract)) throw new Error(`配布UI契約がありません: ${contract}`);
+  if (!`${workbench}\n${offlineSupportSource}`.includes(contract)) throw new Error(`配布UI契約がありません: ${contract}`);
 }
+const devOfflineMode = offlineStartupMode({ development: true, serviceWorkerSupported: true, inScope: true });
+const productionOfflineMode = offlineStartupMode({ development: false, serviceWorkerSupported: true, inScope: true });
+const devOfflinePresentation = offlineStatusPresentation(devOfflineMode);
+const readyOfflinePresentation = offlineStatusPresentation('ready');
+const failedOfflinePresentation = offlineStatusPresentation('error');
+if (devOfflineMode !== 'development-disabled' || devOfflinePresentation.error
+    || devOfflinePresentation.text !== 'オフライン: 開発サーバでは無効'
+    || productionOfflineMode !== 'register'
+    || readyOfflinePresentation.error || readyOfflinePresentation.text !== 'オフラインでも使えます') {
+  throw new Error('dev/本番のオフライン表示分類が不正です');
+}
+if (!failedOfflinePresentation.error || failedOfflinePresentation.text !== 'オフライン準備に失敗しました') {
+  throw new Error('precache失敗の赤色表示が失われています');
+}
+if (!workbench.includes('development: import.meta.env.DEV')) throw new Error('Vite開発モードの実状態を判定に使っていません');
+console.log('verify-ide: offline mode PASS dev=development-disabled(非赤), production=register->ready');
+console.log('PASS(故障注入・オフライン表示): errorは「オフライン準備に失敗しました」+赤表示');
 const recoverySource = await readFile(resolve(root, 'recovery-controller.mjs'), 'utf8');
 for (const contract of ['rememberSuccessfulBuild', 'buildFallback', 'captureSource', '復帰中に編集中のソースが変化しました']) {
   if (!recoverySource.includes(contract)) throw new Error(`復帰のソース保持契約がありません: ${contract}`);
@@ -225,51 +266,120 @@ for (const forbiddenMutation of ['editor.dispatch', 'projectFS.write', '.savedTe
   if (recoverySource.includes(forbiddenMutation)) throw new Error(`復帰境界にソース変更処理があります: ${forbiddenMutation}`);
 }
 if (!workbench.includes('recoveryController.rememberSuccessfulBuild(result)')
-    || !workbench.includes('recoverEmulator') || !workbench.includes('stopEmulator')) {
-  throw new Error('成功XDFの保持または復帰UI結線がありません');
+    || !workbench.includes('recoveryController.runFresh(') || !workbench.includes('toggleEmulator')) {
+  throw new Error('成功XDFの保持または実行時復帰結線がありません');
+}
+for (const removedControl of ['id="stop-emulator"', 'id="recover-emulator"', '停止して前回成功XDFを再起動', '実行を停止']) {
+  if (html.includes(removedControl) || help.includes(removedControl)) {
+    throw new Error(`表示から外した操作が残っています: ${removedControl}`);
+  }
 }
 
-// ヘッダーは文書先頭にあり、復帰ボタンの縦位置は通常フローの固定寸法から算出できる。
-// padding 10 + title 28 + tagline margin 2 + line 14 + actions margin 6 = top 60px。
-for (const cssRule of [
-  '.app-header { position: relative; padding: var(--recovery-header-padding) 16px',
-  '.app-tagline { margin: var(--recovery-tagline-margin) 0 0',
-  'line-height: var(--recovery-tagline-height)',
-  '.app-recovery-actions { height: var(--recovery-control-height); margin-top: var(--recovery-actions-margin)',
+const editorToolbarGap = Number(css.match(/\.editor-toolbar \{[^}]*gap:\s*(\d+)px/)?.[1]);
+if (!Number.isFinite(editorToolbarGap)) throw new Error('ツールバーのgapを取得できません');
+
+// 同一ボタンの可視文字・アイコン・アクセシブル名を、状態正典から一括更新する。
+function mockRunButton() {
+  const attributes = new Map();
+  const label = { textContent: '' };
+  const play = {};
+  const stop = {};
+  return {
+    title: '', dataset: {}, attributes, label, play, stop,
+    setAttribute(name, value) { attributes.set(name, value); },
+    querySelector(selector) {
+      return selector === '.toolbar-label' ? label
+        : selector === '[data-run-icon="play"]' ? play
+          : selector === '[data-run-icon="stop"]' ? stop : null;
+    },
+  };
+}
+function assertToggle(button, state) {
+  const expected = runToggleView(state);
+  return button.label.textContent === expected.label
+    && button.attributes.get('aria-label') === expected.label
+    && button.title === expected.label && button.dataset.state === state;
+}
+const toggle = mockRunButton();
+for (const state of ['idle', 'running', 'idle']) {
+  renderRunToggle(toggle, state);
+  if (!assertToggle(toggle, state)) throw new Error(`実行トグルが${state}表示に遷移しません`);
+}
+renderRunToggle(toggle, 'running');
+toggle.title = '実行'; // titleだけ更新されない故障
+if (assertToggle(toggle, 'running')) throw new Error('トグルの部分更新故障を検出できません');
+if (!html.includes('data-run-icon="play"') || !html.includes('data-run-icon="stop"')
+    || !workbench.includes("renderRunToggle(nodes.run, emulatorRunning ? 'running' : 'idle')")) {
+  throw new Error('実行トグルのDOM結線がありません');
+}
+console.log('verify-ide: run/stop toggle PASS idle(実行/play) -> running(停止/stop) -> idle(実行/play), aria-label/title synchronized');
+console.log('PASS(故障注入・実行トグル): titleだけ未更新の状態を拒否');
+
+const tagline = html.match(/<p class="app-tagline">([^<]+)<\/p>/)?.[1] ?? '';
+if (tagline !== 'A browser-based C learning environment for X68000' || /[ぁ-んァ-ヶ一-龠]/.test(tagline)) {
+  throw new Error(`英語タグラインが不正です: ${tagline}`);
+}
+
+// スプリットでmachine paneが広がったとき、実際に描画するcanvasのCSS寸法が
+// 縦横とも増え、canvas固有のアスペクト比を保つことを純粋関数で検査する。
+for (const contract of [
+  'containedContentSize(', 'nodes.screen.style.width', 'nodes.screen.style.height',
+  'new ResizeObserver(resizeMachineScreen)', "attributeFilter: ['width', 'height']",
 ]) {
-  if (!css.includes(cssRule)) throw new Error(`復帰導線の幾何契約がありません: ${cssRule}`);
+  if (!workbench.includes(contract)) throw new Error(`実行画面の追随拡大契約がありません: ${contract}`);
 }
-const recoveryVariables = [
-  '--recovery-header-padding', '--recovery-title-height', '--recovery-tagline-margin',
-  '--recovery-tagline-height', '--recovery-actions-margin', '--recovery-control-height',
-  '--recovery-stop-width', '--recovery-action-width', '--recovery-actions-gap',
-];
-const recoveryValues = Object.fromEntries(recoveryVariables.map((variable) => {
-  const values = pixelValues(variable);
-  if (values.length !== 1) throw new Error(`復帰導線の CSS 数値を一意に取得できません: ${variable}`);
-  return [variable, values[0]];
-}));
-if (html.indexOf('id="recover-emulator"') > html.indexOf('<main')) {
-  throw new Error('復帰導線が初期表示のヘッダー内にありません');
+for (const contract of ['max-width: 100%', 'max-height: 100%', 'object-fit: contain', 'aspect-ratio: 3 / 2']) {
+  if (!css.includes(contract)) throw new Error(`実行画面の比率維持CSSがありません: ${contract}`);
 }
-const recoveryTop = recoveryValues['--recovery-header-padding'] + recoveryValues['--recovery-title-height']
-  + recoveryValues['--recovery-tagline-margin'] + recoveryValues['--recovery-tagline-height']
-  + recoveryValues['--recovery-actions-margin'];
-const recoveryBottom = recoveryTop + recoveryValues['--recovery-control-height'];
-for (const viewport of ['1280x900', '800x600']) {
-  const [viewportWidth, viewportHeight] = viewport.split('x').map(Number);
-  const recoveryWidth = recoveryValues['--recovery-stop-width']
-    + recoveryValues['--recovery-action-width'] + recoveryValues['--recovery-actions-gap'];
-  const recoveryLeft = (viewportWidth - recoveryWidth) / 2;
-  const recoveryRight = recoveryLeft + recoveryWidth;
-  if (recoveryTop < 0 || recoveryBottom > viewportHeight) {
-    throw new Error(`${viewport}: 復帰導線が初期ビューポート外です (${recoveryTop}..${recoveryBottom}px)`);
+const initialPanes = desktopPaneSizes({ workspaceWidth: 1280, ratio: DEFAULT_SPLIT_RATIO });
+const expandedPanes = desktopPaneSizes({ workspaceWidth: 1280, ratio: 0.28 });
+function fittedMode(machineWidth, intrinsicWidth, intrinsicHeight) {
+  const shellWidth = machineWidth - 26;
+  const shellHeight = Math.max(240, shellWidth * 2 / 3);
+  return containedContentSize(intrinsicWidth, intrinsicHeight, shellWidth, shellHeight);
+}
+const initialCanvasTag = html.match(/<canvas id="x68k-screen"[^>]*>/)?.[0] ?? '';
+const initialCanvasWidth = Number(htmlAttribute(initialCanvasTag, 'width'));
+const initialCanvasHeight = Number(htmlAttribute(initialCanvasTag, 'height'));
+let reportedGrowth;
+for (const [intrinsicWidth, intrinsicHeight] of [[initialCanvasWidth, initialCanvasHeight], [512, 512]]) {
+  const initialContent = fittedMode(initialPanes.machineWidth, intrinsicWidth, intrinsicHeight);
+  const expandedContent = fittedMode(expandedPanes.machineWidth, intrinsicWidth, intrinsicHeight);
+  const sourceAspect = intrinsicWidth / intrinsicHeight;
+  const expandedAspect = expandedContent.width / expandedContent.height;
+  if (expandedContent.width <= initialContent.width || expandedContent.height <= initialContent.height
+      || Math.abs(expandedAspect - sourceAspect) > 1e-9) {
+    throw new Error(`実行画面の中身が比率を保って拡大しません: mode=${intrinsicWidth}x${intrinsicHeight} initial=${initialContent.width}x${initialContent.height} expanded=${expandedContent.width}x${expandedContent.height}`);
   }
-  if (recoveryLeft < 0 || recoveryRight > viewportWidth) {
-    throw new Error(`${viewport}: 復帰導線が初期ビューポートの横幅外です (${recoveryLeft}..${recoveryRight}px)`);
+  if (intrinsicWidth === initialCanvasWidth && intrinsicHeight === initialCanvasHeight) {
+    reportedGrowth = { initialContent, expandedContent, expandedAspect };
   }
-  console.log(`verify-ide: recovery reachability ${viewport} x=${recoveryLeft}..${recoveryRight}px y=${recoveryTop}..${recoveryBottom}px`);
 }
+const stretchedFault = { width: expandedPanes.machineWidth - 26, height: (expandedPanes.machineWidth - 26) * 2 / 3 };
+if (Math.abs(stretchedFault.width / stretchedFault.height - 1) <= 1e-9) {
+  throw new Error('枠いっぱいに引き伸ばす故障注入を検出できません');
+}
+console.log(`verify-ide: split content growth PASS ${reportedGrowth.initialContent.width.toFixed(1)}x${reportedGrowth.initialContent.height.toFixed(1)} -> ${reportedGrowth.expandedContent.width.toFixed(1)}x${reportedGrowth.expandedContent.height.toFixed(1)}, aspect=${reportedGrowth.expandedAspect.toFixed(3)}; 512x512 mode also PASS`);
+console.log('PASS(故障注入・画面比率): 枠いっぱいの引き伸ばしを拒否');
+
+// 同じlocalStorageを次のページ読込に見立て、保存値を新しい状態から読み直す。
+const splitStore = new Map();
+const storage = { getItem: (key) => splitStore.get(key) ?? null, setItem: (key, value) => splitStore.set(key, value) };
+const persistedRatio = writeSplitRatio(storage, 0.34);
+const reloadedRatio = readSplitRatio(storage);
+if (splitStore.get(SPLIT_RATIO_KEY) === undefined || reloadedRatio !== persistedRatio) {
+  throw new Error(`分割位置を再読込後に復元できません: saved=${persistedRatio} loaded=${reloadedRatio}`);
+}
+const droppingStorage = { getItem: () => null, setItem: () => {} };
+writeSplitRatio(droppingStorage, 0.34);
+if (readSplitRatio(droppingStorage) === persistedRatio) {
+  throw new Error('localStorage書込みを落とす故障注入を検出できません');
+}
+for (const contract of ['readSplitRatio(localStorage)', 'writeSplitRatio(localStorage, splitRatio)']) {
+  if (!workbench.includes(contract)) throw new Error(`分割位置の永続化結線がありません: ${contract}`);
+}
+console.log(`verify-ide: split persistence PASS key=${SPLIT_RATIO_KEY} saved/reloaded=${reloadedRatio}`);
+console.log('PASS(故障注入・分割保存): localStorage書込み欠落を拒否');
 
 // ヘッダーの「?」とフッターの「使い方」は、固定寸法と通常フロー上の位置から
 // 初期ビューポート内にあることを検査する。
@@ -309,12 +419,47 @@ for (const viewport of ['1280x900', '800x600']) {
   console.log(`verify-ide: help reachability ${viewport} header=${headerLeft}..${headerRight}x${headerTop}..${headerBottom}px footer=${footerTop}..${viewportHeight}px`);
 }
 
+// 初期表示のツールバー矩形を固定CSS寸法から算出する。800pxではsidebarを88px、
+// editorをその直後へ1カラム配置するため、両ツールバーを600px内に収められる。
+const headerGeometryVariables = ['--app-header-padding', '--app-title-height', '--app-tagline-margin', '--app-tagline-height'];
+const headerGeometry = Object.fromEntries(headerGeometryVariables.map((variable) => {
+  const values = pixelValues(variable);
+  if (values.length !== 1) throw new Error(`ヘッダーCSS数値を一意に取得できません: ${variable}`);
+  return [variable, values[0]];
+}));
+const appHeaderHeight = headerGeometry['--app-header-padding'] * 2 + headerGeometry['--app-title-height']
+  + headerGeometry['--app-tagline-margin'] + headerGeometry['--app-tagline-height'];
+const toolbarReachCases = [
+  { name: '1280x900', width: 1280, height: 900, mobile: false },
+  { name: '800x600', width: 800, height: 600, mobile: true },
+];
+for (const testCase of toolbarReachCases) {
+  const workspaceTop = appHeaderHeight + 8;
+  const sidebarButtonTop = workspaceTop + 35;
+  const editorTop = testCase.mobile ? workspaceTop + 88 + 8 : workspaceTop;
+  const editorHeight = testCase.mobile ? mobileEditorHeight(DEFAULT_SPLIT_RATIO) : Math.min(testCase.height * 0.66, 650);
+  const editorButtonTop = editorTop + 48 + 36 + editorHeight + 8;
+  const editorButtonBottom = editorButtonTop + 38;
+  const editorLeft = testCase.mobile ? 8 + 12 : 8 + 240 + 8 + 12;
+  const editorRight = editorLeft + 220;
+  if (sidebarButtonTop < 0 || sidebarButtonTop + 38 > testCase.height
+      || editorButtonTop < 0 || editorButtonBottom > testCase.height
+      || editorLeft < 0 || editorRight > testCase.width) {
+    throw new Error(`${testCase.name}: ツールバーボタンが初期ビューポート外です`);
+  }
+  console.log(`verify-ide: toolbar reachability ${testCase.name} sidebarY=${sidebarButtonTop}..${sidebarButtonTop + 38}px editor=${editorLeft}..${editorRight}x${editorButtonTop}..${editorButtonBottom}px`);
+}
+
 // inline SVGの表示寸法をbuttonのclient寸法と突き合わせる。button一覧は上でHTMLから
 // 抽出したものを再利用し、アイコンごとの検査表は持たない。
 const buttonBorder = pixelValues('--button-border-width');
 const toolbarControl = pixelValues('--toolbar-control-size');
 const toolbarIcon = pixelValues('--toolbar-icon-size');
-if (buttonBorder.length !== 1 || toolbarControl.length !== 1 || toolbarIcon.length !== 1) {
+const toolbarBuildWidth = pixelValues('--toolbar-build-width');
+const toolbarRunWidth = pixelValues('--toolbar-run-width');
+const toolbarLabelGap = pixelValues('--toolbar-label-gap');
+if (buttonBorder.length !== 1 || toolbarControl.length !== 1 || toolbarIcon.length !== 1
+    || toolbarBuildWidth.length !== 1 || toolbarRunWidth.length !== 1 || toolbarLabelGap.length !== 1) {
   throw new Error('ツールバー寸法のCSS数値を一意に取得できません');
 }
 for (const cssContract of ['white-space: nowrap', 'flex-shrink: 0']) {
@@ -331,10 +476,9 @@ for (const [, attributes, body] of buttonBodies) {
   const id = htmlAttribute(`<button ${attributes}>`, 'id');
   const icons = [...body.matchAll(/<svg\b[^>]*class="toolbar-icon"[^>]*viewBox="0 0 24 24"[^>]*>/g)];
   if (icons.length !== 1) throw new Error(`24x24のツールバーアイコンが1件ではありません: ${id}`);
-  const controlWidth = id === 'stop-emulator' ? recoveryValues['--recovery-stop-width']
-    : id === 'recover-emulator' ? recoveryValues['--recovery-action-width'] : toolbarControl[0];
-  const controlHeight = id === 'stop-emulator' || id === 'recover-emulator'
-    ? recoveryValues['--recovery-control-height'] : toolbarControl[0];
+  const controlWidth = id === 'build' ? toolbarBuildWidth[0]
+    : id === 'run' ? toolbarRunWidth[0] : toolbarControl[0];
+  const controlHeight = toolbarControl[0];
   const clientWidth = controlWidth - buttonBorder[0] * 2;
   const clientHeight = controlHeight - buttonBorder[0] * 2;
   if (toolbarIcon[0] > clientWidth || toolbarIcon[0] > clientHeight) {
@@ -343,11 +487,18 @@ for (const [, attributes, body] of buttonBodies) {
   console.log(`verify-ide: icon fit ${id} ${toolbarIcon[0]}px in ${clientWidth}x${clientHeight}px`);
 }
 const sidebarRowWidth = toolbarControl[0] * 3 + 2 * 2;
-const editorRowWidth = toolbarControl[0] * 3 + 6 * 2;
+const editorRowWidth = toolbarBuildWidth[0] + toolbarRunWidth[0] + toolbarControl[0] + editorToolbarGap * 2;
 if (sidebarRowWidth > 240 - 2 - 16 || editorRowWidth > 420 - 2 - 24) {
   throw new Error('ツールバーボタン列が最小幅に収まりません');
 }
 console.log(`verify-ide: icon rows fit sidebar=${sidebarRowWidth}/222px editor=${editorRowWidth}/394px`);
+const buildContentWidth = toolbarIcon[0] + toolbarLabelGap[0] + 3 * 14;
+const runContentWidth = toolbarIcon[0] + toolbarLabelGap[0] + 2 * 14;
+if (buildContentWidth > toolbarBuildWidth[0] - buttonBorder[0] * 2 - 20
+    || runContentWidth > toolbarRunWidth[0] - buttonBorder[0] * 2 - 20) {
+  throw new Error(`文字付きボタンが枠から溢れます: build=${buildContentWidth}px run=${runContentWidth}px`);
+}
+console.log(`verify-ide: labeled actions fit build=${buildContentWidth}px run=${runContentWidth}px`);
 for (const containment of [
   '.file-entry { flex: 1; min-width: 0; border-radius: 0; overflow: hidden; text-align: left; text-overflow: ellipsis; white-space: nowrap',
   '.tab { max-width: 200px; height: 35px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap',
@@ -422,6 +573,13 @@ const runtimeSource = await readFile(resolve(root, 'px68k-runtime.ts'), 'utf8');
 for (const member of ['window.sprout68kEmulatorProbe', 'readTextScreen', 'getFrameCount', 'getState', 'runFrames', 'runBlankImage', 'stop()']) {
   if (!runtimeSource.includes(member)) throw new Error(`ブラウザプローブがありません: ${member}`);
 }
+const runXdfBody = runtimeSource.match(/async runXdf\([^)]*\)[\s\S]*?\n  }\n\n  stop\(\)/)?.[0] ?? '';
+const discardIndex = runXdfBody.indexOf('this.stopCurrent()');
+const newHostIndex = runXdfBody.indexOf('new LibretroHost(');
+if (discardIndex < 0 || newHostIndex < 0 || discardIndex >= newHostIndex) {
+  throw new Error('実行ごとに旧ホストを破棄してLibretroHostを作り直す契約がありません');
+}
+console.log('verify-ide: fresh emulator PASS stopCurrent() precedes new LibretroHost() on every runXdf()');
 const keyboardSource = await readFile(resolve(root, 'px68k/keyboard.ts'), 'utf8');
 const keyboardInputSource = await readFile(resolve(root, 'px68k/keyboard-input.ts'), 'utf8');
 for (const contract of ['keyboardEventToRetrok', 'keyToRetrok(event.key)', "event.code ? `code:${event.code}`", 'releaseAll']) {
@@ -469,4 +627,5 @@ if (!html.includes('./samples/hello.c') && !(await readFile(resolve(root, 'sampl
   throw new Error('C サンプル参照がありません');
 }
 
+await verifyBrowserUi(resolve(root, '..'));
 console.log(`verify-ide: PASS (${required.length} required files, ${allFiles.length} files scanned)`);

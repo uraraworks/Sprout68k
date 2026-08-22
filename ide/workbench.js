@@ -9,6 +9,12 @@ import { SAMPLE_FILES, loadSample } from './sample-manifest.mjs';
 import { basename, sourceLanguage } from './source-view.mjs';
 import { createX68kAdapter } from './x68k-adapter.mjs';
 import { createRecoveryController } from './recovery-controller.mjs';
+import { renderRunToggle } from './run-toggle.mjs';
+import { offlineStartupMode, offlineStatusPresentation } from './offline-support.mjs';
+import {
+  MAX_SPLIT_RATIO, MIN_SPLIT_RATIO, clampSplitRatio, containedContentSize,
+  desktopPaneSizes, mobileEditorHeight, readSplitRatio, writeSplitRatio,
+} from './split-layout.mjs';
 import gplLicenseUrl from '../COPYING?url';
 import codeMirrorLicenseUrl from './vendor/codemirror/LICENSE.CodeMirror?url';
 import iplLicenseUrl from './system/IPLROM-LICENSE.txt?url';
@@ -24,33 +30,108 @@ const nodes = {
   download: document.querySelector('#download-file'),
   tabStrip: document.querySelector('#tab-strip'),
   editor: document.querySelector('#editor'),
+  workspace: document.querySelector('.workspace-grid'),
+  splitter: document.querySelector('#workspace-splitter'),
   saveState: document.querySelector('#save-state'),
   currentPath: document.querySelector('#current-path'),
   build: document.querySelector('#build'),
   downloadXdf: document.querySelector('#download-xdf'),
   run: document.querySelector('#run'),
-  stopEmulator: document.querySelector('#stop-emulator'),
-  recoverEmulator: document.querySelector('#recover-emulator'),
   buildStatus: document.querySelector('#build-status'),
   buildOutput: document.querySelector('#build-output'),
   machineStatus: document.querySelector('#machine-status'),
   keyboardStatus: document.querySelector('#keyboard-status'),
   machineCard: document.querySelector('.machine-card'),
   screen: document.querySelector('#x68k-screen'),
+  screenShell: document.querySelector('#screen-shell'),
   buildId: document.querySelector('#build-id'),
   offlineStatus: document.querySelector('#offline-status'),
 };
 
 const LAST_PATH_KEY = 'sprout68k:last-path';
 const SPROUT68K_SCOPE_PATH = '/Sprout68k/';
+let splitRatio = readSplitRatio(localStorage);
+
+function narrowWorkspace() {
+  return window.matchMedia('(max-width: 1100px)').matches;
+}
+
+function resizeMachineScreen() {
+  const fitted = containedContentSize(
+    nodes.screen.width, nodes.screen.height,
+    nodes.screenShell.clientWidth, nodes.screenShell.clientHeight,
+  );
+  if (fitted.width <= 0 || fitted.height <= 0) return;
+  nodes.screen.style.width = `${Math.floor(fitted.width)}px`;
+  nodes.screen.style.height = `${Math.floor(fitted.height)}px`;
+}
+
+function applySplitLayout({ persist = false } = {}) {
+  splitRatio = clampSplitRatio(splitRatio);
+  if (narrowWorkspace()) {
+    document.documentElement.style.removeProperty('--editor-pane-width');
+    document.documentElement.style.setProperty('--mobile-editor-height', `${Math.round(mobileEditorHeight(splitRatio))}px`);
+    nodes.splitter.setAttribute('aria-orientation', 'horizontal');
+  } else {
+    const panes = desktopPaneSizes({ workspaceWidth: nodes.workspace.clientWidth, ratio: splitRatio });
+    document.documentElement.style.setProperty('--editor-pane-width', `${Math.round(panes.editorWidth)}px`);
+    nodes.splitter.setAttribute('aria-orientation', 'vertical');
+  }
+  nodes.splitter.setAttribute('aria-valuenow', String(Math.round(splitRatio * 100)));
+  if (persist) {
+    try { splitRatio = writeSplitRatio(localStorage, splitRatio); } catch {}
+  }
+  requestAnimationFrame(resizeMachineScreen);
+}
+
+let splitDrag;
+nodes.splitter.addEventListener('pointerdown', (event) => {
+  splitDrag = { pointerId: event.pointerId, x: event.clientX, y: event.clientY, ratio: splitRatio };
+  nodes.splitter.setPointerCapture(event.pointerId);
+  nodes.splitter.classList.add('dragging');
+  event.preventDefault();
+});
+nodes.splitter.addEventListener('pointermove', (event) => {
+  if (!splitDrag || splitDrag.pointerId !== event.pointerId) return;
+  if (narrowWorkspace()) {
+    const heightRange = 120;
+    const ratioRange = MAX_SPLIT_RATIO - MIN_SPLIT_RATIO;
+    splitRatio = splitDrag.ratio + ((event.clientY - splitDrag.y) / heightRange) * ratioRange;
+  } else {
+    const panes = desktopPaneSizes({ workspaceWidth: nodes.workspace.clientWidth, ratio: splitDrag.ratio });
+    splitRatio = splitDrag.ratio + (event.clientX - splitDrag.x) / Math.max(1, panes.available);
+  }
+  applySplitLayout({ persist: true });
+});
+function finishSplitDrag(event) {
+  if (!splitDrag || splitDrag.pointerId !== event.pointerId) return;
+  splitDrag = undefined;
+  nodes.splitter.classList.remove('dragging');
+  applySplitLayout({ persist: true });
+}
+nodes.splitter.addEventListener('pointerup', finishSplitDrag);
+nodes.splitter.addEventListener('pointercancel', finishSplitDrag);
+nodes.splitter.addEventListener('keydown', (event) => {
+  const decrease = event.key === 'ArrowLeft' || event.key === 'ArrowUp';
+  const increase = event.key === 'ArrowRight' || event.key === 'ArrowDown';
+  if (!decrease && !increase && event.key !== 'Home' && event.key !== 'End') return;
+  event.preventDefault();
+  splitRatio = event.key === 'Home' ? MIN_SPLIT_RATIO
+    : event.key === 'End' ? MAX_SPLIT_RATIO : splitRatio + (increase ? 0.03 : -0.03);
+  applySplitLayout({ persist: true });
+});
+
+window.addEventListener('resize', () => applySplitLayout());
+new ResizeObserver(resizeMachineScreen).observe(nodes.screenShell);
+new MutationObserver(resizeMachineScreen).observe(nodes.screen, { attributes: true, attributeFilter: ['width', 'height'] });
+applySplitLayout();
 
 nodes.buildId.textContent = `build: ${__BUILD_ID__}`;
 function showOfflineStatus(state, detail = '') {
-  nodes.offlineStatus.textContent = state === 'ready'
-    ? 'オフラインでも使えます'
-    : state === 'error' ? 'オフライン準備に失敗しました' : 'オフライン: 準備中';
+  const presentation = offlineStatusPresentation(state);
+  nodes.offlineStatus.textContent = presentation.text;
   nodes.offlineStatus.title = detail;
-  nodes.offlineStatus.classList.toggle('error', state === 'error');
+  nodes.offlineStatus.classList.toggle('error', presentation.error);
 }
 
 function checkOfflineCache(worker) {
@@ -67,7 +148,16 @@ function checkCurrentOfflineWorker() {
 }
 
 async function initializeOfflineSupport() {
-  if (!('serviceWorker' in navigator) || !location.pathname.startsWith(SPROUT68K_SCOPE_PATH)) {
+  const startupMode = offlineStartupMode({
+    development: import.meta.env.DEV,
+    serviceWorkerSupported: 'serviceWorker' in navigator,
+    inScope: location.pathname.startsWith(SPROUT68K_SCOPE_PATH),
+  });
+  if (startupMode === 'development-disabled') {
+    showOfflineStatus('development-disabled', 'Vite開発モードではService Workerを生成しません');
+    return;
+  }
+  if (startupMode === 'error') {
     showOfflineStatus('error', 'この環境ではService Workerを利用できません');
     return;
   }
@@ -115,6 +205,7 @@ let nextTabId = 1;
 let loadingDocument = false;
 let popupOpen = false;
 let confirmAction = (message) => window.confirm(message);
+let emulatorRunning = false;
 
 function captureSourceState() {
   return JSON.stringify({
@@ -126,12 +217,9 @@ function captureSourceState() {
   });
 }
 
-function updateRecoveryLabel() {
-  const label = recoveryController.hasSuccessfulBuild()
-    ? '停止して前回成功XDFを再起動'
-    : '停止して同梱サンプルを起動';
-  nodes.recoverEmulator.setAttribute('aria-label', label);
-  nodes.recoverEmulator.title = label;
+function setEmulatorRunning(running) {
+  emulatorRunning = Boolean(running);
+  renderRunToggle(nodes.run, emulatorRunning ? 'running' : 'idle');
 }
 
 function reportMachine(message, error = false) {
@@ -482,7 +570,7 @@ async function buildCurrent() {
     nodes.buildStatus.textContent = `${tab.path}: ビルド中…`;
     const result = await adapter.build({ path: tab.path, text: tab.text });
     tab.build = result;
-    if (recoveryController.rememberSuccessfulBuild(result)) updateRecoveryLabel();
+    recoveryController.rememberSuccessfulBuild(result);
     renderBuildResult({ revealDiagnostics: true });
     return result;
   } finally {
@@ -507,40 +595,33 @@ async function runCurrent() {
   nodes.run.disabled = true;
   try {
     const built = tab.build?.ok ? tab.build : await buildCurrent();
-    if (!built?.ok) return built;
-    const result = await adapter.run({ xdf: built.xdf, filename: built.filename });
+    // ビルド失敗時も、前回成功XDF（未保持なら同梱サンプル）で新規起動する。
+    const result = await recoveryController.runFresh(built?.ok ? built : undefined);
+    const label = result.source === 'last-successful' ? '成功済みXDF' : '同梱サンプル';
+    reportMachine(`新しいX68000で${label}を実行中`, false);
+    setEmulatorRunning(true);
     nodes.screen.focus();
-    return result;
+    return { ...result, build: built };
+  } catch (error) {
+    setEmulatorRunning(false);
+    throw error;
   } finally {
     nodes.run.disabled = false;
   }
 }
 
 async function stopEmulator() {
-  nodes.stopEmulator.disabled = true;
+  nodes.run.disabled = true;
   try {
     await recoveryController.stop();
+    setEmulatorRunning(false);
   } finally {
-    nodes.stopEmulator.disabled = false;
+    nodes.run.disabled = false;
   }
 }
 
-async function recoverEmulator() {
-  nodes.stopEmulator.disabled = true;
-  nodes.recoverEmulator.disabled = true;
-  nodes.run.disabled = true;
-  try {
-    const result = await recoveryController.recover();
-    updateRecoveryLabel();
-    const label = result.source === 'last-successful' ? '前回成功XDF' : '同梱サンプル';
-    reportMachine(`復帰完了: ${label}を新しいX68000で実行中`, false);
-    nodes.screen.focus();
-    return result;
-  } finally {
-    nodes.stopEmulator.disabled = false;
-    nodes.recoverEmulator.disabled = false;
-    nodes.run.disabled = false;
-  }
+async function toggleEmulator() {
+  return emulatorRunning ? stopEmulator() : runCurrent();
 }
 
 function showError(error) {
@@ -611,9 +692,7 @@ nodes.save.addEventListener('click', () => saveFile().catch(showError));
 nodes.download.addEventListener('click', downloadActiveFile);
 nodes.downloadXdf.addEventListener('click', downloadBuiltXdf);
 nodes.build.addEventListener('click', () => buildCurrent().catch(showError));
-nodes.run.addEventListener('click', () => runCurrent().catch(showError));
-nodes.stopEmulator.addEventListener('click', () => stopEmulator().catch(showError));
-nodes.recoverEmulator.addEventListener('click', () => recoverEmulator().catch(showError));
+nodes.run.addEventListener('click', () => toggleEmulator().catch(showError));
 nodes.screen.addEventListener('focus', () => {
   nodes.machineCard.classList.add('keyboard-active');
   nodes.keyboardStatus.textContent = 'キーボード入力: X68000へ送信中';
@@ -625,10 +704,13 @@ nodes.screen.addEventListener('blur', () => {
 
 const ready = initialize();
 ready.catch(showError);
+setEmulatorRunning(false);
 
 window.sprout68kWorkbench = {
   ready, openFile, createFile, saveFile, closeTab, activateTab,
-  buildCurrent, runCurrent, stopEmulator, recoverEmulator,
+  buildCurrent, runCurrent, stopEmulator, toggleEmulator,
+  getSplitRatio: () => splitRatio,
+  setSplitRatio: (ratio) => { splitRatio = clampSplitRatio(ratio); applySplitLayout({ persist: true }); },
   getTabs: () => tabs.map((tab) => ({
     id: tab.id, origin: tab.origin, path: tab.path, active: tab.id === activeTabId, dirty: isDirty(tab),
   })),

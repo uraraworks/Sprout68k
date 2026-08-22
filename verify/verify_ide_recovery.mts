@@ -1,4 +1,4 @@
-/* 実px68kで無表示プログラムからhelloへ復帰し、保存済み／未保存ソースの不変を検証する。 */
+/* 実px68kで壊れた状態から実行操作でhelloへ復帰し、保存済み／未保存ソースの不変を検証する。 */
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { homedir } from 'node:os';
@@ -124,11 +124,13 @@ await emulator.run({ xdf: stuckXdf });
 emulator.runFrames(1800);
 if (emulator.readText().includes(EXPECTED)) throw new Error('暴走プログラムに期待文字列が出ました');
 const bootsBeforeRecovery = emulator.boots;
-const recovered = await recovery.recover();
+const brokenHost = emulator.host;
+// UIの「実行」が呼ぶのと同じ境界。専用復帰ボタンに依存しない。
+const recovered = await recovery.runFresh();
 for (let frames = 0; frames < 3000 && !emulator.readText().includes(EXPECTED); frames += 50) {
   emulator.runFrames(50);
 }
-if (!emulator.readText().includes(EXPECTED) || emulator.boots !== bootsBeforeRecovery + 1) {
+if (!emulator.readText().includes(EXPECTED) || emulator.boots !== bootsBeforeRecovery + 1 || emulator.host === brokenHost) {
   throw new Error(`既知状態へ復帰しません: boots=${emulator.boots}, text=${JSON.stringify(emulator.readText())}`);
 }
 if (!beforeSaved.equals(Buffer.from(sourceState.saved)) || !beforeEditing.equals(Buffer.from(sourceState.editing))) {
@@ -136,6 +138,13 @@ if (!beforeSaved.equals(Buffer.from(sourceState.saved)) || !beforeEditing.equals
 }
 console.log(`PASS(暴走復帰): 無表示の無限ループから ${EXPECTED} へ復帰 (${recovered.filename})`);
 console.log('PASS(ソース保持): 保存済み／未保存の編集中内容がバイト一致');
+const firstFreshHost = emulator.host;
+const bootsBeforeSecondRun = emulator.boots;
+await recovery.runFresh();
+if (emulator.host === firstFreshHost || emulator.boots !== bootsBeforeSecondRun + 1) {
+  throw new Error('連続した実行操作でエミュレータが作り直されません');
+}
+console.log(`PASS(新規実行): 実行ごとに別LibretroHostを生成 (boots ${bootsBeforeSecondRun}->${emulator.boots})`);
 await emulator.stop();
 
 const faultState = { saved: 'int main(void) { return 0; }\n', editing: 'int main(void) { return 1; }\n' };
@@ -150,7 +159,7 @@ const faultRecovery = createRecoveryController({
 faultRecovery.rememberSuccessfulBuild({ ok: true, filename: 'fault.xdf', xdf: new Uint8Array(1) });
 let faultDetected = false;
 try {
-  await faultRecovery.recover();
+  await faultRecovery.runFresh();
 } catch (error) {
   faultDetected = error instanceof Error && error.message.includes('ソースが変化しました');
 }

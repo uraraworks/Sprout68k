@@ -15,15 +15,7 @@
   <header class="app-header">
     <a class="header-help-btn" href="./help.html?lang=ja&amp;from=app" target="_blank" rel="noopener noreferrer" title="使い方" aria-label="使い方">?</a>
     <div class="app-title-row"><img class="app-icon" src="./icons/sprout68k.svg" alt=""><h1>Sprout68k</h1></div>
-    <p class="app-tagline">ブラウザで学ぶ X68000 C プログラミング</p>
-    <div class="app-recovery-actions" aria-label="実行の復帰操作">
-      <button id="stop-emulator" type="button" aria-label="実行を停止" title="実行を停止">
-        <svg class="toolbar-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="6.5" y="6.5" width="11" height="11" rx="1.5"/></svg>
-      </button>
-      <button id="recover-emulator" type="button" aria-label="停止して同梱サンプルを起動" title="停止して同梱サンプルを起動">
-        <svg class="toolbar-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M19 8V4m0 0h-4m4 0-3.1 3.1a7 7 0 1 0 1.3 8.1"/><rect x="9" y="9" width="6" height="6" rx="1"/></svg>
-      </button>
-    </div>
+    <p class="app-tagline">A browser-based C learning environment for X68000</p>
   </header>
   <main class="workspace-grid">
     <aside class="sidebar" aria-label="エクスプローラー">
@@ -52,22 +44,25 @@
       <div class="editor-toolbar">
         <button id="build" type="button" aria-label="ビルド" title="ビルド">
           <svg class="toolbar-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m14.5 5.5 4 4M13 7l4 4M4.5 19.5l8.7-8.7 2 2-8.7 8.7Z"/><path d="m5 5 4 1-3 3Z"/></svg>
+          <span class="toolbar-label">ビルド</span>
         </button>
         <button id="download-xdf" type="button" aria-label="XDFをダウンロード" title="XDFをダウンロード" disabled>
           <svg class="toolbar-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M8 8h8M12 9v7m-3-3 3 3 3-3"/></svg>
         </button>
-        <button id="run" type="button" aria-label="実行" title="実行">
-          <svg class="toolbar-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m8 5 11 7-11 7Z"/></svg>
+        <button id="run" type="button" aria-label="実行" title="実行" data-state="idle">
+          <svg class="toolbar-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path data-run-icon="play" d="m8 5 11 7-11 7Z"/><rect data-run-icon="stop" x="6.5" y="6.5" width="11" height="11" rx="1.5"/></svg>
+          <span class="toolbar-label">実行</span>
         </button>
       </div>
       <div id="build-status" role="status">準備中…</div>
       <div id="build-output" aria-label="コンパイル診断" tabindex="0"></div>
     </section>
+    <div id="workspace-splitter" class="workspace-splitter" role="separator" aria-label="エディタと実行画面の大きさを調整" aria-orientation="vertical" aria-valuemin="28" aria-valuemax="72" aria-valuenow="56" tabindex="0"></div>
     <section class="machine-card" aria-labelledby="machine-heading">
       <div class="panel-heading"><h2 id="machine-heading">X68000 実行画面</h2></div>
       <div id="machine-status" role="status">未実行</div>
       <div id="keyboard-status">キーボード入力: 実行画面をクリックすると有効</div>
-      <div class="screen-shell"><canvas id="x68k-screen" width="768" height="512" tabindex="0" aria-label="X68000画面（クリックするとキーボード入力）"></canvas></div>
+      <div class="screen-shell" id="screen-shell"><canvas id="x68k-screen" width="768" height="512" tabindex="0" aria-label="X68000画面（クリックするとキーボード入力）"></canvas></div>
     </section>
   </main>
   <footer class="app-footer">
