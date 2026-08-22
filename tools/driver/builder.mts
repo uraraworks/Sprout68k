@@ -142,7 +142,9 @@ export class Builder {
     await this.assembleCpp('68020', resolvePath(root, 'lib/asm/x68_panic.S'), resolvePath(objdir, 'x68_panic_asm.o'));
     await this.assembleCpp('68000', resolvePath(root, 'stage_c/crt0/crt0.S'), resolvePath(objdir, 'crt0.o'), ['-D', `STACK_ADDR=${this.stackAddress}`]);
     const elf = resolvePath(objdir, `${target}.elf`); const bin = resolvePath(objdir, `${target}.bin`); const map = resolvePath(objdir, `${target}.map`);
-    await this.run('ld', ['-T', resolvePath(root, 'stage_c/crt0/linker.ld'), '-Map', map, '-o', elf, resolvePath(objdir, 'crt0.o'), resolvePath(objdir, 'main.o'), ...['x68_std', 'x68_l0', 'x68_l1', 'x68_panic', 'x68_input'].map((name) => resolvePath(objdir, `${name}.o`)), resolvePath(objdir, 'x68_iocs.o'), resolvePath(objdir, 'x68_gvram_copy.o'), resolvePath(objdir, 'x68_panic_asm.o'), this.options.tools.libgcc]);
+    // MMUのないベアメタル用リンカスクリプトで意図したRWXだけを非表示にする。
+    // --no-warn-rwx-segmentsは他のld/GCC警告には影響しない。
+    await this.run('ld', ['--no-warn-rwx-segments', '-T', resolvePath(root, 'stage_c/crt0/linker.ld'), '-Map', map, '-o', elf, resolvePath(objdir, 'crt0.o'), resolvePath(objdir, 'main.o'), ...['x68_std', 'x68_l0', 'x68_l1', 'x68_panic', 'x68_input'].map((name) => resolvePath(objdir, `${name}.o`)), resolvePath(objdir, 'x68_iocs.o'), resolvePath(objdir, 'x68_gvram_copy.o'), resolvePath(objdir, 'x68_panic_asm.o'), this.options.tools.libgcc]);
     await this.run('objcopy', ['-O', 'binary', elf, bin]);
     const bodySize = this.options.hostFs.size(bin); const sectors = Math.max(1, Math.ceil(bodySize / SECTOR_SIZE));
     this.checkMemoryLayout(bodySize);

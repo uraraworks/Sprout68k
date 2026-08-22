@@ -38,7 +38,7 @@ if (!same(reference, user)) throw new Error('利用者ターゲットと breakou
 console.log(`PASS(バイト一致): user(main.c同一内容) 対 breakout (${user.length} bytes)`);
 
 const changed = Buffer.from(source);
-const marker = Buffer.from('#define PADDLE_W 64');
+const marker = Buffer.from('kPaddleWidth = 64');
 const offset = changed.indexOf(marker);
 if (offset < 0) throw new Error('故障注入位置が見つかりません');
 changed[offset + marker.length - 1] = '5'.charCodeAt(0);
@@ -127,8 +127,20 @@ await build({
   userSource: { path: 'hello.c', content: hello },
 });
 const linkerWarning = diagnostics.find((line) => /m68k-elf-ld: warning:/.test(line));
-if (!linkerWarning || diagnostics.some((line) => line.includes('this.program'))) {
-  throw new Error(`ツール名検証FAIL: ${diagnostics.join('\n')}`);
+if (linkerWarning || diagnostics.some((line) => /LOAD segment with RWX permissions/.test(line))) {
+  throw new Error(`RWX警告の限定抑制FAIL: ${diagnostics.join('\n')}`);
 }
-console.log(`PASS(ツール名): ${linkerWarning}`);
+console.log('PASS(RWX警告): hello.cの実ビルド診断に0件');
+
+diagnostics.length = 0;
+await build({
+  target: 'user', output: resolve(RESULT, 'warning.xdf'), root: ROOT, hostFs, tools,
+  executors: memfsExecutors, buildRoot: resolve(RESULT, 'warning_objects'),
+  userSource: { path: 'warning.c', content: 'void main(void) {\n  int unused = 1;\n}\n' },
+});
+const learnerWarning = diagnostics.find((line) => /warning\.c:\d+:\d+: warning: unused variable 'unused'/.test(line));
+if (!learnerWarning || diagnostics.some((line) => /LOAD segment with RWX permissions/.test(line))) {
+  throw new Error(`学習者向け警告の保持FAIL: ${diagnostics.join('\n')}`);
+}
+console.log(`PASS(他警告を保持): ${learnerWarning}`);
 console.log('利用者ターゲット検証 PASS');

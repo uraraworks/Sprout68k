@@ -30,7 +30,7 @@ const required = [
   '../tools/driver/diagnostic_annotations.mts', '../tools/driver/verify_diagnostic_annotations.mts',
   '../verify/verify_ide_boot.mts', '../verify/verify_ide_recovery.mts',
   '../verify/verify_ide_keyboard.mts',
-  '../docs/IDEキーボード入力_20260822.md', '../lib/include/x68.h', '../COPYING', '../CONTRIBUTING.md', '../README.md',
+  '../samples/breakout/block.c', '../docs/IDEキーボード入力_20260822.md', '../lib/include/x68.h', '../COPYING', '../CONTRIBUTING.md', '../README.md',
   '../tools/distribution.mts', '../tools/html_url_verifier.mts',
   'vendor/codemirror/codemirror.js', 'vendor/codemirror/LICENSE.CodeMirror',
 ];
@@ -609,6 +609,22 @@ for (const demonstratedKey of ['SPACE', 'ENTER', 'ESC', 'A', '1']) {
     throw new Error(`入力サンプルでキーを確認できません: ${demonstratedKey}`);
   }
 }
+const learnerSamples = [
+  ['hello.c', await readFile(resolve(root, 'samples/hello.c'), 'utf8')],
+  ['keyboard-input.c', keyboardSample],
+  ['block.c', await readFile(resolve(root, '../samples/breakout/block.c'), 'utf8')],
+];
+for (const [name, source] of learnerSamples) {
+  for (const [index, line] of source.split('\n').entries()) {
+    if (line.includes('\t')) throw new Error(`${name}:${index + 1}: タブインデントです`);
+    if ([...line].length > 80) throw new Error(`${name}:${index + 1}: 80文字を超えています`);
+  }
+  if (/\)\s*\n\s*\{/.test(source)) throw new Error(`${name}: 関数または制御構造の開きブレースが別行です`);
+}
+for (const helper of ['ReadPressedKey', 'PrintKeyName', 'ResetBall']) {
+  if (!learnerSamples.some(([, source]) => source.includes(`${helper}(`))) throw new Error(`Google流のサンプル内関数名がありません: ${helper}`);
+}
+console.log('verify-ide: sample style PASS (3 files, no tabs, <=80 chars, same-line braces, sample helpers CamelCase)');
 for (const id of ['license-gpl', 'license-codemirror', 'license-ipl', 'license-cgrom']) {
   if (!html.includes(`id="${id}"`) || !workbench.includes(`#${id}`)) throw new Error(`ライセンス参照がありません: ${id}`);
 }

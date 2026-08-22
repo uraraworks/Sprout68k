@@ -27,7 +27,7 @@ PATCH="$ROOT/verify/patches/breakout_verify.patch"
 
 VERIFY_TMP="${VERIFY_TMP:?VERIFY_TMP(検証用に手直しした一時ファイルのパス)が必要}"
 
-diff -u --label a/samples/breakout/block.c --label b/samples/breakout/block.c \
+diff -U0 --label a/samples/breakout/block.c --label b/samples/breakout/block.c \
   "$CLEAN" "$VERIFY_TMP" > "$PATCH" || true
 
 echo "wrote $PATCH"
