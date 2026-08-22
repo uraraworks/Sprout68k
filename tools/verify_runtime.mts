@@ -16,10 +16,11 @@
  */
 import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
+import { gunzipSync, gzipSync } from 'node:zlib';
 import { resolve } from 'node:path';
 import { ROOT, ABI_SLOT_SIZE, abiAddress, readAbi, readLayout,
          renderAbiLinkerScript, renderJumpTable, renderRuntimeLinkerScript, renderUserLinkerScript } from './build_abi.mts';
-import { DEFAULT_DISK, USER_HEADER_SIZE, packUserPayload, unpackUserPayload, toBase64Url, fromBase64Url } from './share_v1.mts';
+import { DEFAULT_DISK, USER_HEADER_SIZE, assembleXdf, packUserPayload, unpackUserPayload, toBase64Url, fromBase64Url } from './share_v1.mts';
 
 const NM = process.env.M68K_NM ?? `${process.env.HOME}/x68kdev-toolchain/bin/m68k-elf-nm`;
 const RUNTIME_ELF = resolve(ROOT, 'build/shared_obj/runtime.elf');
@@ -107,7 +108,8 @@ if (!existsSync(RUNTIME_ELF) || !existsSync(USER_ELF)) {
 /* ---- 4. ペイロードの往復 ------------------------------------------ */
 const shareLayout = {
   ABI_VERSION: layout.get('ABI_VERSION')!, RUNTIME_BASE: layout.get('RUNTIME_BASE')!,
-  USER_BASE: layout.get('USER_BASE')!, USER_LIMIT: layout.get('USER_LIMIT')!, ...DEFAULT_DISK,
+  USER_BASE: layout.get('USER_BASE')!, USER_LIMIT: layout.get('USER_LIMIT')!,
+  USER_AREA_SIZE: layout.get('USER_AREA_SIZE')!, ...DEFAULT_DISK,
 };
 const body = new Uint8Array(Array.from({ length: 777 }, (_, index) => (index * 37) & 0xff));
 const payload = packUserPayload(body, shareLayout);
@@ -143,6 +145,48 @@ rejects('本体バイト数の改変', (bytes) => { bytes[11] ^= 0x01; });
   [swapped[4], swapped[5]] = [swapped[5], swapped[4]];
   check(renderAbiLinkerScript(swapped, layout) !== renderAbiLinkerScript(names, layout),
     '故障注入: ABI表の並べ替えが番地表に現れる');
+}
+
+/* ---- 5. 共有URLからの復元がビルド成果物とバイト一致するか --------- *
+ * これが「合体処理はビルド経路と同じ」の実証。受信側は boot.bin と
+ * runtime.bin を固定で持ち、URLから復元したペイロードを差し込むだけ。 */
+const bootBin = resolve(ROOT, 'build/shared_obj/boot.bin');
+const runtimeBin = resolve(ROOT, 'build/shared_obj/runtime.bin');
+const builtXdf = resolve(ROOT, 'build/shared_breakout.xdf');
+const builtPayload = resolve(ROOT, 'build/shared_breakout.payload');
+if (![bootBin, runtimeBin, builtXdf, builtPayload].every(existsSync)) {
+  check(false, 'build/shared_breakout.xdf 等が無い。先に tools/build_shared.sh を通すこと');
+} else {
+  const payloadBytes = new Uint8Array(readFileSync(builtPayload));
+  /* 送信側と同じ道: gzip → base64url */
+  const url = toBase64Url(new Uint8Array(gzipSync(payloadBytes, { level: 9 })));
+  console.log(`  共有URLのデータ部: ${url.length} 文字 (X の安全圏 4000 文字の ${(url.length / 40).toFixed(0)}%)`);
+  check(url.length <= 4000, `共有URLがXの安全圏(4000文字)に収まる (${url.length} 文字)`);
+  check(/^[A-Za-z0-9_-]+$/.test(url), '共有URLのデータ部がURLで安全な文字だけでできている');
+
+  /* 受信側の道: base64url復号 → gunzip → 検査 → 組み立て */
+  const received = unpackUserPayload(new Uint8Array(gunzipSync(fromBase64Url(url))), shareLayout);
+  const rebuilt = assembleXdf(
+    new Uint8Array(readFileSync(bootBin)), new Uint8Array(readFileSync(runtimeBin)),
+    packUserPayload(received, shareLayout), shareLayout,
+  );
+  const built = new Uint8Array(readFileSync(builtXdf));
+  const same = rebuilt.image.length === built.length && rebuilt.image.every((byte, index) => byte === built[index]);
+  check(same, `共有URLから復元した .xdf がビルドした .xdf とバイト一致する (${rebuilt.sectorCount} セクタ)`);
+
+  /* 故障注入: URLの1文字を変えたら一致しない（または復号で弾かれる） */
+  const brokenUrl = `${url.slice(0, 20)}${url[20] === 'A' ? 'B' : 'A'}${url.slice(21)}`;
+  check(brokenUrl !== url, '故障注入: URLを実際に1文字書き換えた（陽性対照）');
+  let detected = false;
+  try {
+    const broken = unpackUserPayload(new Uint8Array(gunzipSync(fromBase64Url(brokenUrl))), shareLayout);
+    const image = assembleXdf(
+      new Uint8Array(readFileSync(bootBin)), new Uint8Array(readFileSync(runtimeBin)),
+      packUserPayload(broken, shareLayout), shareLayout,
+    ).image;
+    detected = !image.every((byte, index) => byte === built[index]);
+  } catch { detected = true; }
+  check(detected, '故障注入: URLを1文字書き換えると復元結果が変わる（または弾かれる）');
 }
 
 console.log(`\nABI v${layout.get('ABI_VERSION')}: ${names.length} 関数 / スロット ${ABI_SLOT_SIZE} バイト`);

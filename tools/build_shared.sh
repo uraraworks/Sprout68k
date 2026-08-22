@@ -89,7 +89,7 @@ BODY_SIZE=$(node -e '
 import("'"$ROOT"'/tools/share_v1.mts").then(async (share) => {
   const { readFileSync } = await import("node:fs");
   const layout = { ABI_VERSION: '"$ABI_VERSION"', RUNTIME_BASE: '"$RUNTIME_BASE"', USER_BASE: '"$USER_BASE"',
-                   USER_LIMIT: '"$USER_LIMIT"', ...share.DEFAULT_DISK };
+                   USER_LIMIT: '"$USER_LIMIT"', USER_AREA_SIZE: '"$USER_AREA_SIZE"', ...share.DEFAULT_DISK };
   const user = share.packUserPayload(new Uint8Array(readFileSync("'"$OBJDIR"'/user.bin")), layout);
   process.stdout.write(String(layout.USER_BASE - layout.RUNTIME_BASE + user.length));
 });
@@ -111,7 +111,7 @@ import("'"$ROOT"'/tools/share_v1.mts").then(async (share) => {
   const { readFileSync, writeFileSync, mkdirSync } = await import("node:fs");
   const { dirname } = await import("node:path");
   const layout = { ABI_VERSION: '"$ABI_VERSION"', RUNTIME_BASE: '"$RUNTIME_BASE"', USER_BASE: '"$USER_BASE"',
-                   USER_LIMIT: '"$USER_LIMIT"', ...share.DEFAULT_DISK };
+                   USER_LIMIT: '"$USER_LIMIT"', USER_AREA_SIZE: '"$USER_AREA_SIZE"', ...share.DEFAULT_DISK };
   const boot = new Uint8Array(readFileSync("'"$OBJDIR"'/boot.bin"));
   const runtime = new Uint8Array(readFileSync("'"$OBJDIR"'/runtime.bin"));
   const payload = share.packUserPayload(new Uint8Array(readFileSync("'"$OBJDIR"'/user.bin")), layout);

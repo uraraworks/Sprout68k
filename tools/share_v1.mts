@@ -22,6 +22,7 @@ export interface ShareLayout {
   RUNTIME_BASE: number;
   USER_BASE: number;
   USER_LIMIT: number;
+  USER_AREA_SIZE: number;
   SECTOR_SIZE: number;
   TOTAL_SECTORS: number;
 }
@@ -51,10 +52,11 @@ function readU32(source: Uint8Array, offset: number): number {
 
 /** 利用者コードの生バイト列にヘッダを付ける（これがURLに載るもの）。 */
 export function packUserPayload(body: Uint8Array, layout: ShareLayout): Uint8Array {
-  const capacity = layout.USER_LIMIT - layout.USER_BASE - USER_HEADER_SIZE;
+  /* 上限はメモリではなくディスク上の固定長領域で決まる（下の assembleXdf 参照）。 */
+  const capacity = layout.USER_AREA_SIZE - USER_HEADER_SIZE;
   if (body.length === 0) throw new Error('利用者コードが空です');
   if (body.length > capacity) {
-    throw new Error(`利用者コードが利用者領域を超えています (${body.length} > ${capacity} バイト)`);
+    throw new Error(`利用者コードが共有できる大きさを超えています (${body.length} > ${capacity} バイト)`);
   }
   const payload = new Uint8Array(USER_HEADER_SIZE + body.length);
   payload.set(USER_MAGIC, 0);
@@ -87,6 +89,11 @@ export function unpackUserPayload(payload: Uint8Array, layout: ShareLayout): Uin
  * だけの既存実装をそのまま使う。そのため、ランタイムの後ろを USER_BASE まで
  * 0 で埋めて1本の連続した塊にする（ブートセクタを新しく書かずに済み、
  * 実測済みの読み込み経路をそのまま流用できる）。
+ *
+ * 利用者ペイロードの置き場は USER_AREA_SIZE の**固定長**にする。可変にすると
+ * セクタ数が変わり、ブートセクタを作り直さないといけなくなる。受信側は
+ * アセンブラを持たないので、boot.bin と runtime.bin をそのまま持てるように
+ * 固定長にしてある（＝この関数の出力は毎回同じ大きさ・同じセクタ数）。
  */
 export function assembleXdf(
   boot: Uint8Array, runtime: Uint8Array, userPayload: Uint8Array, layout: ShareLayout,
@@ -97,7 +104,10 @@ export function assembleXdf(
   }
   if (boot.length > layout.SECTOR_SIZE) throw new Error('ブートセクタが1セクタを超えています');
 
-  const body = new Uint8Array(runtimeCapacity + userPayload.length);
+  if (userPayload.length > layout.USER_AREA_SIZE) {
+    throw new Error(`ペイロードが固定長領域を超えています (${userPayload.length} > ${layout.USER_AREA_SIZE} バイト)`);
+  }
+  const body = new Uint8Array(runtimeCapacity + layout.USER_AREA_SIZE);
   body.set(runtime, 0);
   body.set(userPayload, runtimeCapacity);
 
