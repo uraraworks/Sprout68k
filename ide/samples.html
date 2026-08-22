@@ -1,0 +1,1016 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#111827">
+  <link rel="icon" href="./icons/sprout68k.svg" type="image/svg+xml">
+  <title>Sprout68k 作例集</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --header: #111827; --background: #1f1f1f; --panel: #181818; --border: #334155;
+      --text: #d1d5db; --dim: #9ca3af; --accent: #38bdf8; --note: #172033; --code: #16202e;
+    }
+    * { box-sizing: border-box; }
+    body { min-height: 100vh; margin: 0; display: flex; flex-direction: column; color: var(--text); background: var(--background); font: 14px/1.8 -apple-system, BlinkMacSystemFont, "Segoe UI", "Hiragino Sans", "Yu Gothic", sans-serif; }
+    .help-header { position: sticky; top: 0; z-index: 2; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 16px; background: var(--header); border-bottom: 1px solid var(--border); }
+    .help-title { display: flex; align-items: center; gap: 9px; }
+    .help-title img { width: 28px; height: 28px; }
+    .help-title h1 { margin: 0; color: #f8fafc; font-size: 16px; }
+    .help-actions { display: flex; align-items: center; gap: 8px; }
+    .help-actions a { padding: 5px 10px; border: 1px solid #475569; border-radius: 4px; color: var(--text); background: #253044; font: inherit; font-size: 12px; text-decoration: none; }
+    main { flex: 1; width: min(1080px, 100%); margin: 0 auto; padding: 20px 16px 60px; }
+    h2 { margin: 34px 0 6px; padding-bottom: 6px; border-bottom: 2px solid var(--border); color: #f8fafc; font-size: 18px; }
+    h4 { margin: 0 0 6px; color: #cbd5e1; font-size: 13px; }
+    a { color: #7dd3fc; }
+    code { font: 12px/1.6 ui-monospace, SFMono-Regular, Menlo, monospace; }
+    .group-lead { margin: 4px 0 18px; color: var(--dim); }
+    .toc { padding: 12px 16px; border: 1px solid var(--border); border-radius: 6px; background: var(--panel); }
+    .toc ol { margin: 6px 0; padding-left: 22px; }
+    .sample { margin: 0 0 26px; padding: 14px 16px; border: 1px solid var(--border); border-radius: 8px; background: var(--panel); }
+    .sample-head { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding-bottom: 10px; border-bottom: 1px solid var(--border); }
+    .sample-no { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 50%; background: #253044; color: #f8fafc; font-weight: 700; }
+    .sample-title { flex: 1 1 200px; min-width: 0; }
+    .sample-title h3 { margin: 0; color: #f8fafc; font-size: 16px; }
+    .sample-summary { margin: 2px 0 0; color: var(--dim); font-size: 13px; }
+    .sample-learn { padding: 4px 10px; border: 1px solid var(--accent); border-radius: 999px; color: #7dd3fc; font-size: 12px; }
+    .sample-learn span { margin-right: 6px; color: var(--dim); }
+    .sample-body { display: grid; grid-template-columns: minmax(0, 320px) minmax(0, 1fr); gap: 18px; margin-top: 14px; }
+    .sample-shot { display: block; width: 100%; height: auto; border: 1px solid var(--border); border-radius: 5px; background: #000; image-rendering: pixelated; }
+    .sample-play { margin: 10px 0; font-size: 13px; }
+    .tag { display: inline-block; margin-right: 8px; padding: 1px 8px; border-radius: 3px; background: #253044; color: var(--dim); font-size: 11px; }
+    .sample-vars dl { margin: 4px 0 0; }
+    .sample-vars dt { margin-top: 6px; }
+    .sample-vars dd { margin: 2px 0 0 16px; color: var(--dim); font-size: 13px; }
+    .sample-listing-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 10px; }
+    .sample-path { flex: 1 1 auto; color: var(--dim); font-size: 12px; }
+    .sample-open { padding: 3px 10px; border: 1px solid #475569; border-radius: 4px; background: #253044; font-size: 12px; text-decoration: none; }
+    .sample-listing { max-height: 460px; margin: 6px 0 12px; padding: 10px 12px; overflow: auto; border: 1px solid var(--border); border-radius: 6px; background: var(--code); }
+    .sample-listing code { color: #cbd5e1; white-space: pre; }
+    .sample-walk ol { margin: 4px 0; padding-left: 20px; }
+    .sample-walk > ol > li { margin: 10px 0; }
+    .sample-walk > ol > li > strong { color: #f8fafc; }
+    .sample-walk ul { margin: 4px 0; padding-left: 18px; color: var(--dim); font-size: 13px; }
+    .sample-note { margin: 12px 0 0; padding: 8px 12px; border-left: 4px solid var(--accent); background: var(--note); font-size: 13px; }
+    .help-footer { padding: 9px 16px; border-top: 1px solid var(--border); background: var(--panel); text-align: center; font-size: 12px; }
+    @media (max-width: 760px) { .sample-body { grid-template-columns: minmax(0, 1fr); } }
+    @media (max-width: 520px) { .help-header { align-items: flex-start; } .help-actions { flex-direction: column; align-items: stretch; } }
+  </style>
+</head>
+<body>
+  <header class="help-header">
+    <div class="help-title">
+      <img src="./icons/sprout68k.svg" alt="">
+      <h1>Sprout68k 作例集</h1>
+    </div>
+    <div class="help-actions">
+      <a href="./reference.html">関数リファレンス</a>
+      <a href="./help.html">使い方</a>
+      <a class="open-app" href="./index.html">アプリを開く</a>
+    </div>
+  </header>
+
+  <main>
+<nav class="toc">
+  <strong>もくじ</strong>
+  <ol>
+    <li><a href="#hello">はじめの1本</a> — <span class="sample-summary">画面に文字を出す</span></li>
+    <li><a href="#shapes">いろいろな形を描く</a> — <span class="sample-summary">点・線・四角・円を並べる</span></li>
+    <li><a href="#keyboard-input">どのキーが押されたか</a> — <span class="sample-summary">押したキーの名前を表示する</span></li>
+    <li><a href="#move">四角を動かす</a> — <span class="sample-summary">カーソルキーで動かす</span></li>
+    <li><a href="#catch">落ちてくる四角を受け止める</a> — <span class="sample-summary">当たり判定と点数</span></li>
+    <li><a href="#breakout">ブロック崩し</a> — <span class="sample-summary">ここまでの全部</span></li>
+    <li><a href="#stars">星空を流す</a> — <span class="sample-summary">96個の星が右から左へ</span></li>
+    <li><a href="#life">ライフゲーム</a> — <span class="sample-summary">3つの規則だけで模様が動く</span></li>
+  </ol>
+</nav>
+
+<section id="group-steps">
+  <h2>順に読む</h2>
+  <p class="group-lead">上から順に、1本ごとに覚えることが1つずつ増えます。写して動かして、少し変えてみるのがいちばん早い道です。</p>
+<article class="sample" id="hello">
+  <header class="sample-head">
+    <div class="sample-no">1</div>
+    <div class="sample-title">
+      <h3>はじめの1本</h3>
+      <p class="sample-summary">画面に文字を出す</p>
+    </div>
+    <div class="sample-learn"><span>おぼえること</span>プログラムの決まった形</div>
+  </header>
+  <div class="sample-body">
+    <div class="sample-left">
+      <img class="sample-shot" src="./samples/shots/hello.png" width="512" height="512" alt="はじめの1本の実行画面" loading="lazy">
+      <p class="sample-play"><span class="tag">遊び方</span>実行すると文字が出るだけです。&quot;HELLO X68000&quot; の中身を書き換えてみてください。</p>
+    </div>
+    <div class="sample-right">
+      <div class="sample-listing-head">
+        <h4>プログラム</h4><span class="sample-path">ide/samples/hello.c</span>
+        <a class="sample-open" href="./index.html?sample=hello">エディタで開く</a>
+      </div>
+      <pre class="sample-listing"><code>#include &quot;x68.h&quot;
+
+void main(void) {
+  printf(&quot;HELLO X68000&quot;);
+}</code></pre>
+      <div class="sample-walk"><h4>プログラム解説</h4><ol>
+        <li><strong>おまじないの2行</strong><ul>
+          <li>#include &quot;x68.h&quot; — この1行で、この環境の関数が全部使えるようになる</li>
+          <li>void main(void) — プログラムはここから始まる。int main ではないことに注意</li>
+        </ul></li>
+        <li><strong>文字を出す</strong><ul>
+          <li>printf() で文字を出す。普通の C と同じ書き方</li>
+          <li>main から抜けると停止するので、for (;;) は書かなくてよい</li>
+        </ul></li>
+      </ol></div>
+    </div>
+  </div>
+  <p class="sample-note"><span class="tag">ひとこと</span>まずこれが動けば、あとは足していくだけです。</p>
+</article>
+<article class="sample" id="shapes">
+  <header class="sample-head">
+    <div class="sample-no">2</div>
+    <div class="sample-title">
+      <h3>いろいろな形を描く</h3>
+      <p class="sample-summary">点・線・四角・円を並べる</p>
+    </div>
+    <div class="sample-learn"><span>おぼえること</span>絵を描く3つの決まりごと</div>
+  </header>
+  <div class="sample-body">
+    <div class="sample-left">
+      <img class="sample-shot" src="./samples/shots/shapes.png" width="512" height="512" alt="いろいろな形を描くの実行画面" loading="lazy">
+      <p class="sample-play"><span class="tag">遊び方</span>実行すると絵が出ます。座標や色の数字を変えると、そのまま見た目が変わります。</p>
+      <div class="sample-vars"><h4>変数の意味</h4><dl>
+        <dt><code>black / white</code></dt><dd>よく使う色。名前を付けておくと読みやすい</dd>
+        <dt><code>i</code></dt><dd>ループ用。位置と色を少しずつずらすのに使う</dd>
+      </dl></div>
+    </div>
+    <div class="sample-right">
+      <div class="sample-listing-head">
+        <h4>プログラム</h4><span class="sample-path">ide/samples/shapes.c</span>
+        <a class="sample-open" href="./index.html?sample=shapes">エディタで開く</a>
+      </div>
+      <pre class="sample-listing"><code>// Sprout68k 作例: いろいろな形を描く
+//
+// 絵を描くときの決まりごとは3つだけ。
+//   1. x68_screen_open() で画面を開く（最初に1回だけ）
+//   2. 描画関数で描く
+//   3. x68_screen_flip() で画面に出す
+// 3 を忘れると、いくら描いても画面は変わらない。絵が出ないときは
+// まずこの3段のどれかが抜けていないかを確かめる。
+//
+// 座標は左上が (0, 0)、右下が (511, 511)。y は下へ行くほど大きくなる。
+// 画面からはみ出した分は自動で切り取られるので、はみ出しを気にしなくてよい。
+
+#include &quot;x68.h&quot;
+
+void main(void) {
+  int black = x68_rgb(0, 0, 0);
+  int white = x68_rgb(255, 255, 255);
+  int i;
+
+  x68_screen_open();
+  x68_cls(black);
+
+  // 塗りつぶした四角。左から右へ色を変えていく。
+  for (i = 0; i &lt; 8; i++) {
+    x68_box_fill(24 + i * 58, 40, 48, 48, x68_rgb(255 - i * 30, i * 30, 180));
+  }
+
+  // 枠だけの四角。中は塗られない。
+  x68_box(24, 112, 464, 72, white);
+
+  // 1 点から放射状に線を引く。
+  for (i = 0; i &lt; 512; i += 32) {
+    x68_line(256, 296, i, 200, x68_rgb(0, 200, 255));
+  }
+
+  // 同心円。円は輪郭だけで、塗りつぶす関数は無い。
+  for (i = 24; i &lt;= 96; i += 24) {
+    x68_circle(256, 384, i, x68_rgb(255, 220, 0));
+  }
+
+  // 点を 1 つずつ打って線にする。まとまった面は box_fill のほうが速い。
+  for (i = 0; i &lt; 120; i++) {
+    x68_pset(24 + i, 470 + i / 8, white);
+  }
+
+  // 文字はグラフィックとは別の画面に出るので、絵の上に重なって見える。
+  x68_locate(0, 0);
+  printf(&quot;SHAPES&quot;);
+
+  x68_screen_flip();
+}</code></pre>
+      <div class="sample-walk"><h4>プログラム解説</h4><ol>
+        <li><strong>画面を開く</strong><ul>
+          <li>x68_screen_open() を最初に1回だけ呼ぶ</li>
+          <li>続けて x68_cls() で背景を塗る（開いた直後の画面の中身は決まっていない）</li>
+        </ul></li>
+        <li><strong>描く</strong><ul>
+          <li>x68_box_fill() で塗りつぶし、x68_box() で枠だけ</li>
+          <li>x68_line() は太さ1ドット。太くしたいときは少しずらして何本か引く</li>
+          <li>x68_circle() は輪郭だけ。塗りつぶす関数は無い</li>
+          <li>x68_pset() は点1つ。まとまった面は box_fill のほうが速い</li>
+        </ul></li>
+        <li><strong>画面に出す</strong><ul>
+          <li>x68_screen_flip() を呼んで初めて画面が変わる</li>
+          <li><strong>絵が出ないときは、まずこの3段のどれかが抜けていないかを疑う</strong></li>
+        </ul></li>
+      </ol></div>
+    </div>
+  </div>
+  <p class="sample-note"><span class="tag">ひとこと</span>座標は左上が (0,0)、右下が (511,511)。y は下へ行くほど大きくなります。</p>
+</article>
+<article class="sample" id="keyboard-input">
+  <header class="sample-head">
+    <div class="sample-no">3</div>
+    <div class="sample-title">
+      <h3>どのキーが押されたか</h3>
+      <p class="sample-summary">押したキーの名前を表示する</p>
+    </div>
+    <div class="sample-learn"><span>おぼえること</span>キーの読み方</div>
+  </header>
+  <div class="sample-body">
+    <div class="sample-left">
+      <img class="sample-shot" src="./samples/shots/keyboard-input.png" width="512" height="512" alt="どのキーが押されたかの実行画面" loading="lazy">
+      <p class="sample-play"><span class="tag">遊び方</span>実行画面をクリックしてから、カーソルキー・スペース・A・1 などを押してください。</p>
+    </div>
+    <div class="sample-right">
+      <div class="sample-listing-head">
+        <h4>プログラム</h4><span class="sample-path">ide/samples/keyboard-input.c</span>
+        <a class="sample-open" href="./index.html?sample=keyboard-input">エディタで開く</a>
+      </div>
+      <pre class="sample-listing"><code>#include &quot;x68.h&quot;
+
+enum {
+  kNoKey = 0,
+  kLeftKey,
+  kUpKey,
+  kRightKey,
+  kDownKey,
+  kSpaceKey,
+  kEnterKey,
+  kEscapeKey,
+  kAKey,
+  kOneKey,
+};
+
+static int ReadPressedKey(void) {
+  if (x68_key_down(X68_KEY_LEFT)) return kLeftKey;
+  if (x68_key_down(X68_KEY_UP)) return kUpKey;
+  if (x68_key_down(X68_KEY_RIGHT)) return kRightKey;
+  if (x68_key_down(X68_KEY_DOWN)) return kDownKey;
+  if (x68_key_down(X68_KEY_SPACE)) return kSpaceKey;
+  if (x68_key_down(X68_KEY_ENTER)) return kEnterKey;
+  if (x68_key_down(X68_KEY_ESC)) return kEscapeKey;
+  if (x68_key_down(X68_KEY_A)) return kAKey;
+  if (x68_key_down(X68_KEY_1)) return kOneKey;
+  return kNoKey;
+}
+
+static void PrintKeyName(int key) {
+  switch (key) {
+    case kNoKey:
+      printf(&quot;\n[RELEASE]&quot;);
+      break;
+    case kLeftKey:
+      printf(&quot;\n[LEFT]&quot;);
+      break;
+    case kUpKey:
+      printf(&quot;\n[UP]&quot;);
+      break;
+    case kRightKey:
+      printf(&quot;\n[RIGHT]&quot;);
+      break;
+    case kDownKey:
+      printf(&quot;\n[DOWN]&quot;);
+      break;
+    case kSpaceKey:
+      printf(&quot;\n[SPACE]&quot;);
+      break;
+    case kEnterKey:
+      printf(&quot;\n[ENTER]&quot;);
+      break;
+    case kEscapeKey:
+      printf(&quot;\n[ESC]&quot;);
+      break;
+    case kAKey:
+      printf(&quot;\n[A]&quot;);
+      break;
+    default:
+      printf(&quot;\n[1]&quot;);
+      break;
+  }
+}
+
+void main(void) {
+  int previous = kNoKey;
+
+  x68_screen_open();
+  printf(&quot;[READY]&quot;);
+  for (;;) {
+    int current = ReadPressedKey();
+    if (current != previous) {
+      PrintKeyName(current);
+      previous = current;
+    }
+  }
+}</code></pre>
+      <div class="sample-walk"><h4>プログラム解説</h4><ol>
+        <li><strong>キーを調べる</strong><ul>
+          <li>x68_key_down() は押している間ずっと真になる</li>
+          <li>調べたいキーの数だけ if を並べる</li>
+        </ul></li>
+        <li><strong>変わったときだけ表示する</strong><ul>
+          <li>前回の状態を覚えておき、違ったときだけ表示する</li>
+          <li>そうしないと、押しているあいだ延々と同じ文字が流れ続ける</li>
+        </ul></li>
+      </ol></div>
+    </div>
+  </div>
+  <p class="sample-note"><span class="tag">ひとこと</span>使えるキーの一覧は関数リファレンスの X68_KEY_* にあります。</p>
+</article>
+<article class="sample" id="move">
+  <header class="sample-head">
+    <div class="sample-no">4</div>
+    <div class="sample-title">
+      <h3>四角を動かす</h3>
+      <p class="sample-summary">カーソルキーで動かす</p>
+    </div>
+    <div class="sample-learn"><span>おぼえること</span>ゲームの1周の形</div>
+  </header>
+  <div class="sample-body">
+    <div class="sample-left">
+      <img class="sample-shot" src="./samples/shots/move.png" width="512" height="512" alt="四角を動かすの実行画面" loading="lazy">
+      <p class="sample-play"><span class="tag">遊び方</span>実行画面をクリックしてから、カーソルキーで動かします。左上に座標が出ます。</p>
+      <div class="sample-vars"><h4>変数の意味</h4><dl>
+        <dt><code>player_x / player_y</code></dt><dd>四角の左上の位置</dd>
+        <dt><code>kSize / kSpeed</code></dt><dd>四角の大きさと、1周で動く距離</dd>
+      </dl></div>
+    </div>
+    <div class="sample-right">
+      <div class="sample-listing-head">
+        <h4>プログラム</h4><span class="sample-path">ide/samples/move.c</span>
+        <a class="sample-open" href="./index.html?sample=move">エディタで開く</a>
+      </div>
+      <pre class="sample-listing"><code>// Sprout68k 作例: 四角を動かす
+//
+// 動くものを作るときは、この1周をずっと繰り返す。どのゲームでも形は同じ。
+//   1. 画面を消す
+//   2. キーを読む
+//   3. 位置を計算する
+//   4. 描く
+//   5. 画面に出す
+//
+// 5 の x68_screen_flip() が画面の書き換えを待つので、この1周は毎秒およそ
+// 55〜60回になる。速さを自分で調整する必要はない。
+
+#include &quot;x68.h&quot;
+
+enum {
+  kSize = 40,   // 四角の大きさ
+  kSpeed = 4,   // 1周で動く距離
+};
+
+static int player_x = 236;
+static int player_y = 236;
+
+// キーを読んで位置を動かす。
+// x68_key_down() は押している間ずっと真になるので、押しっぱなしで動き続ける。
+// 上下左右を別々に調べているため、2つ同時に押せば斜めに動く。
+static void MovePlayer(void) {
+  if (x68_key_down(X68_KEY_LEFT)) player_x -= kSpeed;
+  if (x68_key_down(X68_KEY_RIGHT)) player_x += kSpeed;
+  if (x68_key_down(X68_KEY_UP)) player_y -= kSpeed;
+  if (x68_key_down(X68_KEY_DOWN)) player_y += kSpeed;
+
+  // 動かしたあとで、画面からはみ出していたら引き戻す。
+  if (player_x &lt; 0) player_x = 0;
+  if (player_y &lt; 0) player_y = 0;
+  if (player_x + kSize &gt; X68_SCREEN_W) player_x = X68_SCREEN_W - kSize;
+  if (player_y + kSize &gt; X68_SCREEN_H) player_y = X68_SCREEN_H - kSize;
+}
+
+void main(void) {
+  int background = x68_rgb(0, 0, 48);
+  int player_color = x68_rgb(0, 255, 255);
+
+  x68_screen_open();
+  for (;;) {
+    x68_cls(background);
+    MovePlayer();
+    x68_box_fill(player_x, player_y, kSize, kSize, player_color);
+
+    // 末尾に空白を入れているのは、桁が減ったときに前の数字を消すため。
+    x68_locate(0, 0);
+    printf(&quot;X=%d Y=%d  &quot;, player_x, player_y);
+
+    x68_screen_flip();
+  }
+}</code></pre>
+      <div class="sample-walk"><h4>プログラム解説</h4><ol>
+        <li><strong>ゲームの1周</strong><ul>
+          <li>消す → キーを読む → 位置を計算する → 描く → 画面に出す</li>
+          <li>x68_screen_flip() が画面の書き換えを待つので、毎秒およそ55〜60周になる</li>
+          <li><strong>速さを自分で調整する必要はない</strong></li>
+        </ul></li>
+        <li><strong>キーで動かす</strong><ul>
+          <li>上下左右を別々に調べているので、2つ同時に押せば斜めに動く</li>
+          <li>動かしたあとで、はみ出していたら引き戻す</li>
+        </ul></li>
+      </ol></div>
+    </div>
+  </div>
+  <p class="sample-note"><span class="tag">ひとこと</span>kSpeed を大きくすると速くなります。まずここを変えてみてください。</p>
+</article>
+<article class="sample" id="catch">
+  <header class="sample-head">
+    <div class="sample-no">5</div>
+    <div class="sample-title">
+      <h3>落ちてくる四角を受け止める</h3>
+      <p class="sample-summary">当たり判定と点数</p>
+    </div>
+    <div class="sample-learn"><span>おぼえること</span>当たり判定</div>
+  </header>
+  <div class="sample-body">
+    <div class="sample-left">
+      <img class="sample-shot" src="./samples/shots/catch.png" width="512" height="512" alt="落ちてくる四角を受け止めるの実行画面" loading="lazy">
+      <p class="sample-play"><span class="tag">遊び方</span>実行画面をクリックしてから、左右キーで棒を動かして受け止めます。</p>
+      <div class="sample-vars"><h4>変数の意味</h4><dl>
+        <dt><code>player_x</code></dt><dd>棒の横位置。縦は動かさない</dd>
+        <dt><code>item_x / item_y</code></dt><dd>落ちてくる四角の位置</dd>
+        <dt><code>score</code></dt><dd>受け止めた数</dd>
+      </dl></div>
+    </div>
+    <div class="sample-right">
+      <div class="sample-listing-head">
+        <h4>プログラム</h4><span class="sample-path">ide/samples/catch.c</span>
+        <a class="sample-open" href="./index.html?sample=catch">エディタで開く</a>
+      </div>
+      <pre class="sample-listing"><code>// Sprout68k 作例: 落ちてくる四角を受け止める
+//
+// move.c のゲームの形に「当たり判定」と「点数」を足したもの。
+// 当たり判定は難しく見えるが、四角どうしなら4つの辺を比べるだけでよい。
+
+#include &quot;x68.h&quot;
+
+enum {
+  kPlayerW = 48,     // 棒の幅
+  kPlayerH = 12,     // 棒の高さ
+  kPlayerY = 460,    // 棒の縦位置（動かさない）
+  kItemSize = 16,    // 落ちてくる四角の大きさ
+  kPlayerSpeed = 6,  // 棒が1周で動く距離
+  kFallSpeed = 4,    // 四角が1周で落ちる距離
+};
+
+static int player_x = 232;
+static int item_x = 100;
+static int item_y = 0;
+static int score = 0;
+
+// 落ちてくる四角を、画面の上のどこかに置き直す。
+static void ResetItem(void) {
+  item_y = 0;
+  item_x = x68_rand_int(X68_SCREEN_W - kItemSize);
+}
+
+// キーを読んで棒を動かす。
+static void ReadInput(void) {
+  if (x68_key_down(X68_KEY_LEFT)) player_x -= kPlayerSpeed;
+  if (x68_key_down(X68_KEY_RIGHT)) player_x += kPlayerSpeed;
+  if (player_x &lt; 0) player_x = 0;
+  if (player_x + kPlayerW &gt; X68_SCREEN_W) player_x = X68_SCREEN_W - kPlayerW;
+}
+
+// 四角を落として、受け止めたかどうかを見る。
+static void UpdateItem(void) {
+  int caught;
+
+  item_y += kFallSpeed;
+
+  // 四角どうしの当たり判定。「重なっている」= 縦も横も重なっている。
+  caught = (item_y + kItemSize &gt;= kPlayerY) &amp;&amp;
+           (item_x + kItemSize &gt; player_x) &amp;&amp;
+           (item_x &lt; player_x + kPlayerW);
+  if (caught) score++;
+
+  // 受け止めたときも、下まで落ちきったときも、上に戻す。
+  if (caught || item_y &gt; X68_SCREEN_H) ResetItem();
+}
+
+static void Draw(void) {
+  x68_cls(x68_rgb(0, 0, 48));
+  x68_box_fill(player_x, kPlayerY, kPlayerW, kPlayerH, x68_rgb(0, 255, 255));
+  x68_box_fill(item_x, item_y, kItemSize, kItemSize, x68_rgb(255, 224, 0));
+  x68_locate(0, 0);
+  printf(&quot;SCORE %d  &quot;, score);
+}
+
+void main(void) {
+  x68_screen_open();
+
+  // 乱数の出発点。同じ値を渡すと毎回同じ並びになるので、動きを確かめる
+  // ときに便利。毎回違う動きにしたいときは、この行を消してみるとよい。
+  srand(20260823);
+  ResetItem();
+
+  for (;;) {
+    ReadInput();
+    UpdateItem();
+    Draw();
+    x68_screen_flip();
+  }
+}</code></pre>
+      <div class="sample-walk"><h4>プログラム解説</h4><ol>
+        <li><strong>落とす</strong><ul>
+          <li>1周ごとに item_y を増やすだけで落ちて見える</li>
+        </ul></li>
+        <li><strong>当たったか調べる</strong><ul>
+          <li>四角どうしなら、縦と横が重なっているかを &amp;&amp; で並べるだけ</li>
+          <li>難しく見えるが、4つの辺を比べているだけ</li>
+        </ul></li>
+        <li><strong>置き直す</strong><ul>
+          <li>受け止めたときも、下まで落ちきったときも、上へ戻す</li>
+          <li>横位置はそのつどくじを引く（x68_rand_int）</li>
+        </ul></li>
+      </ol></div>
+    </div>
+  </div>
+  <p class="sample-note"><span class="tag">ひとこと</span>srand() に渡す数を変えると、落ちてくる場所の並びが変わります。</p>
+</article>
+<article class="sample" id="breakout">
+  <header class="sample-head">
+    <div class="sample-no">6</div>
+    <div class="sample-title">
+      <h3>ブロック崩し</h3>
+      <p class="sample-summary">ここまでの全部</p>
+    </div>
+    <div class="sample-learn"><span>おぼえること</span>総合</div>
+  </header>
+  <div class="sample-body">
+    <div class="sample-left">
+      <img class="sample-shot" src="./samples/shots/breakout.png" width="512" height="512" alt="ブロック崩しの実行画面" loading="lazy">
+      <p class="sample-play"><span class="tag">遊び方</span>実行画面をクリックしてから、左右キーでパドルを動かします。</p>
+      <div class="sample-vars"><h4>変数の意味</h4><dl>
+        <dt><code>paddle_x</code></dt><dd>パドルの位置</dd>
+        <dt><code>ball_x / ball_y</code></dt><dd>ボールの位置</dd>
+        <dt><code>ball_dx / ball_dy</code></dt><dd>ボールの進む向き。跳ね返るときに符号を反転する</dd>
+        <dt><code>block_alive[][]</code></dt><dd>ブロックが残っているか。2次元配列</dd>
+      </dl></div>
+    </div>
+    <div class="sample-right">
+      <div class="sample-listing-head">
+        <h4>プログラム</h4><span class="sample-path">samples/breakout/block.c</span>
+        <a class="sample-open" href="./index.html?sample=breakout">エディタで開く</a>
+      </div>
+      <pre class="sample-listing"><code>// Sprout68k 作例: ブロック崩し
+//
+// 学習用ライブラリのL1と標準名の層だけを使う。
+// L0 (x68_iocs_* など) は直接呼ばない。文字列リテラル以外の
+// ポインタは使わず、配列と添字で書く。
+// 最初にブロックをすべて描く。
+// 以後は動いた部分だけ描き直す。
+
+#include &quot;x68.h&quot;
+
+enum {
+  kScreenWidth = X68_SCREEN_W,
+  kScreenHeight = X68_SCREEN_H,
+  kPaddleWidth = 64,
+  kPaddleHeight = 8,
+  kPaddleY = kScreenHeight - 24,
+  kPaddleSpeed = 4,
+  kBallSize = 8,
+  kBallSpeed = 2,
+  kBlockRows = 4,
+  kBlockColumns = 8,
+  kBlockWidth = 56,
+  kBlockHeight = 16,
+  kBlockGapX = 4,
+  kBlockGapY = 4,
+  kBlockStartX = 8,
+  kBlockStartY = 40,
+  kBlockColorCount = 4,
+};
+
+static int block_alive[kBlockRows][kBlockColumns];
+static int block_color_index[kBlockRows][kBlockColumns];
+
+static int paddle_x;
+static int ball_x;
+static int ball_y;
+static int ball_dx;
+static int ball_dy;
+static int score;
+static long last_destroyed_index;
+
+static int background_color;
+static int paddle_color;
+static int ball_color;
+static int block_color[kBlockColorCount];
+
+static void ResetBall(void) {
+  ball_x = kScreenWidth / 2 - kBallSize / 2;
+  ball_y = kScreenHeight / 2;
+  ball_dx = kBallSpeed;
+  ball_dy = -kBallSpeed;
+}
+
+void main(void) {
+  x68_screen_open();
+  srand(1);
+
+  paddle_x = (kScreenWidth - kPaddleWidth) / 2;
+  score = 0;
+  last_destroyed_index = -1;
+
+  background_color = x68_rgb(0, 0, 0);
+  paddle_color = x68_rgb(255, 255, 255);
+  ball_color = x68_rgb(255, 255, 0);
+  // ブロックの色は4色から乱数で選ぶ。
+  // 当たり判定や検証には
+  // 影響しない。x68_rand_intの使用例も兼ねている。
+  block_color[0] = x68_rgb(255, 64, 64);
+  block_color[1] = x68_rgb(64, 255, 64);
+  block_color[2] = x68_rgb(64, 64, 255);
+  block_color[3] = x68_rgb(255, 255, 64);
+
+  for (int row = 0; row &lt; kBlockRows; ++row) {
+    for (int column = 0; column &lt; kBlockColumns; ++column) {
+      block_alive[row][column] = 1;
+      block_color_index[row][column] = x68_rand_int(kBlockColorCount);
+    }
+  }
+
+  ResetBall();
+
+  // 動かないブロックは最初に一度だけ描く。
+  // 毎回32個を描き直すと
+  // 68000ではゲームの動きそのものが遅くなる。
+  x68_cls(background_color);
+  for (int row = 0; row &lt; kBlockRows; ++row) {
+    for (int column = 0; column &lt; kBlockColumns; ++column) {
+      int block_x =
+          kBlockStartX + column * (kBlockWidth + kBlockGapX);
+      int block_y = kBlockStartY + row * (kBlockHeight + kBlockGapY);
+      int color = block_color[block_color_index[row][column]];
+      x68_box_fill(block_x, block_y, kBlockWidth, kBlockHeight, color);
+    }
+  }
+  x68_box_fill(paddle_x, kPaddleY, kPaddleWidth, kPaddleHeight,
+               paddle_color);
+  x68_box_fill(ball_x, ball_y, kBallSize, kBallSize, ball_color);
+  x68_locate(0, 0);
+  printf(&quot;SCORE:%d&quot;, score);
+  x68_screen_flip();
+
+  for (;;) {
+    int old_paddle_x = paddle_x;
+    int old_ball_x = ball_x;
+    int old_ball_y = ball_y;
+
+    // 入力: パドル移動。
+    if (x68_key_down(X68_KEY_LEFT)) paddle_x -= kPaddleSpeed;
+    if (x68_key_down(X68_KEY_RIGHT)) paddle_x += kPaddleSpeed;
+    if (paddle_x &lt; 0) paddle_x = 0;
+    if (paddle_x &gt; kScreenWidth - kPaddleWidth) {
+      paddle_x = kScreenWidth - kPaddleWidth;
+    }
+
+    // ボール移動。
+    ball_x += ball_dx;
+    ball_y += ball_dy;
+    if (ball_x &lt;= 0) {
+      ball_x = 0;
+      ball_dx = -ball_dx;
+    }
+    if (ball_x &gt;= kScreenWidth - kBallSize) {
+      ball_x = kScreenWidth - kBallSize;
+      ball_dx = -ball_dx;
+    }
+    if (ball_y &lt;= 0) {
+      ball_y = 0;
+      ball_dy = -ball_dy;
+    }
+
+    // 下向きに落ちてきてパドルへ触れたら跳ね返す。
+    if (ball_dy &gt; 0 &amp;&amp; ball_y + kBallSize &gt;= kPaddleY &amp;&amp;
+        ball_y + kBallSize &lt;= kPaddleY + kPaddleHeight &amp;&amp;
+        ball_x + kBallSize &gt;= paddle_x &amp;&amp;
+        ball_x &lt;= paddle_x + kPaddleWidth) {
+      ball_dy = -ball_dy;
+    }
+
+    // 画面下に落ちたら中央へ戻す。
+    if (ball_y &gt; kScreenHeight) ResetBall();
+
+    // 最初に当たったブロック1個だけ壊す。
+    int hit = 0;
+    int hit_x = 0;
+    int hit_y = 0;
+    for (int row = 0; row &lt; kBlockRows &amp;&amp; !hit; ++row) {
+      for (int column = 0; column &lt; kBlockColumns &amp;&amp; !hit; ++column) {
+        if (!block_alive[row][column]) continue;
+        int block_x =
+            kBlockStartX + column * (kBlockWidth + kBlockGapX);
+        int block_y = kBlockStartY + row * (kBlockHeight + kBlockGapY);
+        if (ball_x + kBallSize &gt; block_x &amp;&amp;
+            ball_x &lt; block_x + kBlockWidth &amp;&amp;
+            ball_y + kBallSize &gt; block_y &amp;&amp;
+            ball_y &lt; block_y + kBlockHeight) {
+          block_alive[row][column] = 0;
+          ball_dy = -ball_dy;
+          score += 10;
+          last_destroyed_index =
+              (long)(row * kBlockColumns + column);
+          hit_x = block_x;
+          hit_y = block_y;
+          hit = 1;
+        }
+      }
+    }
+
+    // 前の動く物を消し、変わった所だけを描く。
+    x68_frame_begin();
+    x68_box_fill(old_paddle_x, kPaddleY, kPaddleWidth, kPaddleHeight,
+                 background_color);
+    x68_box_fill(old_ball_x, old_ball_y, kBallSize, kBallSize,
+                 background_color);
+    if (hit) {
+      x68_box_fill(hit_x, hit_y, kBlockWidth, kBlockHeight,
+                   background_color);
+    }
+    x68_box_fill(paddle_x, kPaddleY, kPaddleWidth, kPaddleHeight,
+                 paddle_color);
+    x68_box_fill(ball_x, ball_y, kBallSize, kBallSize, ball_color);
+
+    // &quot;SCORE:&quot; と数字4桁程度なので、画面の64桁に収まる。
+    if (hit) {
+      x68_locate(0, 0);
+      printf(&quot;SCORE:%d&quot;, score);
+    }
+
+    x68_screen_flip();
+  }
+}</code></pre>
+      <div class="sample-walk"><h4>プログラム解説</h4><ol>
+        <li><strong>跳ね返り</strong><ul>
+          <li>壁に当たったら、その向きの符号を反転するだけで跳ね返る</li>
+        </ul></li>
+        <li><strong>ブロックを消す</strong><ul>
+          <li>2次元配列で「残っているか」を持つ</li>
+          <li>当たったら 0 にして、描くときに飛ばす</li>
+        </ul></li>
+      </ol></div>
+    </div>
+  </div>
+  <p class="sample-note"><span class="tag">ひとこと</span>ここまでの作例で出てきたものの組み合わせです。読めるようになっていれば大丈夫。</p>
+</article>
+</section>
+
+<section id="group-works">
+  <h2>眺めて楽しむ</h2>
+  <p class="group-lead">短いのに見ていて楽しいものを集めました。数字をいじると見た目が変わるので、好きなように壊してみてください。</p>
+<article class="sample" id="stars">
+  <header class="sample-head">
+    <div class="sample-no">7</div>
+    <div class="sample-title">
+      <h3>星空を流す</h3>
+      <p class="sample-summary">96個の星が右から左へ</p>
+    </div>
+    <div class="sample-learn"><span>おぼえること</span>配列でまとめて動かす</div>
+  </header>
+  <div class="sample-body">
+    <div class="sample-left">
+      <img class="sample-shot" src="./samples/shots/stars.png" width="512" height="512" alt="星空を流すの実行画面" loading="lazy">
+      <p class="sample-play"><span class="tag">遊び方</span>実行するだけで流れ続けます。</p>
+      <div class="sample-vars"><h4>変数の意味</h4><dl>
+        <dt><code>star_x[] / star_y[]</code></dt><dd>星の位置。配列なので96個ぶん持てる</dd>
+        <dt><code>star_speed[]</code></dt><dd>星ごとの速さ。速い星ほど手前に見える</dd>
+      </dl></div>
+    </div>
+    <div class="sample-right">
+      <div class="sample-listing-head">
+        <h4>プログラム</h4><span class="sample-path">ide/samples/stars.c</span>
+        <a class="sample-open" href="./index.html?sample=stars">エディタで開く</a>
+      </div>
+      <pre class="sample-listing"><code>// Sprout68k 作例: 星空を流す
+//
+// 配列を使うと、たくさんの物をまとめて動かせる。ここでは星を220個持ち、
+// 1周ごとに全部を少しずつ左へずらしている。
+// 星ごとに速さを変えると、遠近感が出る（速い星ほど手前に見える）。
+
+#include &quot;x68.h&quot;
+
+enum {
+  kStarCount = 220,
+};
+
+static int star_x[kStarCount];
+static int star_y[kStarCount];
+static int star_speed[kStarCount];
+
+// 星を1つ、指定した横位置に置き直す。縦位置と速さはその都度くじを引く。
+static void ResetStar(int index, int x) {
+  star_x[index] = x;
+  star_y[index] = x68_rand_int(X68_SCREEN_H);
+  star_speed[index] = 1 + x68_rand_int(3);
+}
+
+void main(void) {
+  int background = x68_rgb(0, 0, 0);
+  int i;
+
+  x68_screen_open();
+  srand(20260823);
+
+  // 最初は画面のあちこちに散らばらせる。
+  for (i = 0; i &lt; kStarCount; i++) {
+    ResetStar(i, x68_rand_int(X68_SCREEN_W));
+  }
+
+  for (;;) {
+    x68_cls(background);
+    for (i = 0; i &lt; kStarCount; i++) {
+      star_x[i] -= star_speed[i];
+
+      // 左端まで来たら右端へ戻す。こうすると星が尽きない。
+      if (star_x[i] &lt; 0) ResetStar(i, X68_SCREEN_W - 1);
+
+      // 速い星ほど明るく描くと、手前にあるように見える。
+      x68_pset(star_x[i], star_y[i],
+               x68_rgb(70 * star_speed[i], 70 * star_speed[i],
+                       85 * star_speed[i]));
+    }
+    x68_screen_flip();
+  }
+}</code></pre>
+      <div class="sample-walk"><h4>プログラム解説</h4><ol>
+        <li><strong>配列にする</strong><ul>
+          <li>同じ扱いの物がたくさんあるときは配列にして、for でまとめて動かす</li>
+          <li>星を増やしたいときは kStarCount を変えるだけ</li>
+        </ul></li>
+        <li><strong>遠近感を出す</strong><ul>
+          <li>速さをばらけさせ、速い星ほど明るく描く</li>
+          <li>たったこれだけで奥行きが出る</li>
+        </ul></li>
+      </ol></div>
+    </div>
+  </div>
+  <p class="sample-note"><span class="tag">ひとこと</span>kStarCount を増やすと濃くなります。速さの範囲を広げるほど奥行きが出ます。</p>
+</article>
+<article class="sample" id="life">
+  <header class="sample-head">
+    <div class="sample-no">8</div>
+    <div class="sample-title">
+      <h3>ライフゲーム</h3>
+      <p class="sample-summary">3つの規則だけで模様が動く</p>
+    </div>
+    <div class="sample-learn"><span>おぼえること</span>2次元配列を2枚使う</div>
+  </header>
+  <div class="sample-body">
+    <div class="sample-left">
+      <img class="sample-shot" src="./samples/shots/life.png" width="512" height="512" alt="ライフゲームの実行画面" loading="lazy">
+      <p class="sample-play"><span class="tag">遊び方</span>実行するだけで世代が進みます。</p>
+      <div class="sample-vars"><h4>変数の意味</h4><dl>
+        <dt><code>cells[][]</code></dt><dd>今の世代。生きていれば1</dd>
+        <dt><code>work[][]</code></dt><dd>次の世代を書く紙。書き終わってから cells へ移す</dd>
+      </dl></div>
+    </div>
+    <div class="sample-right">
+      <div class="sample-listing-head">
+        <h4>プログラム</h4><span class="sample-path">ide/samples/life.c</span>
+        <a class="sample-open" href="./index.html?sample=life">エディタで開く</a>
+      </div>
+      <pre class="sample-listing"><code>// Sprout68k 作例: ライフゲーム
+//
+// 格子の上のマスが「生きている」か「死んでいる」かを、周りの8マスの数だけで
+// 決めていく。規則はこの3つだけ。
+//   ・生きているマスは、周りが2つか3つなら生き残る
+//   ・生きているマスは、それ以外なら死ぬ
+//   ・死んでいるマスは、周りがちょうど3つなら生まれる
+// たったこれだけで、模様が動いたり増えたりする。
+//
+// 2次元配列を2枚使うのが要点。今の世代を見ながら次の世代を別の紙に書き、
+// 書き終わってから入れ替える。1枚で書き換えると、まだ見ていないマスが
+// 書き換わってしまって規則が崩れる。
+
+#include &quot;x68.h&quot;
+
+enum {
+  kCols = 32,   // 横のマス数
+  kRows = 32,   // 縦のマス数
+  kCell = 16,   // 1マスの大きさ（ドット）
+};
+
+static char cells[kRows][kCols];
+static char work[kRows][kCols];
+
+// 周りの8マスのうち、生きている数を数える。
+// 画面の外は「死んでいる」として数えない。
+static int CountNeighbors(int row, int col) {
+  int count = 0;
+  int dr;
+  int dc;
+
+  for (dr = -1; dr &lt;= 1; dr++) {
+    for (dc = -1; dc &lt;= 1; dc++) {
+      int r = row + dr;
+      int c = col + dc;
+
+      if (dr == 0 &amp;&amp; dc == 0) continue;
+      if (r &lt; 0 || r &gt;= kRows || c &lt; 0 || c &gt;= kCols) continue;
+      if (cells[r][c]) count++;
+    }
+  }
+  return count;
+}
+
+// 次の世代を work に書き、書き終わってから cells へ移す。
+static void StepGeneration(void) {
+  int row;
+  int col;
+
+  for (row = 0; row &lt; kRows; row++) {
+    for (col = 0; col &lt; kCols; col++) {
+      int neighbors = CountNeighbors(row, col);
+
+      if (cells[row][col]) {
+        work[row][col] = (neighbors == 2 || neighbors == 3);
+      } else {
+        work[row][col] = (neighbors == 3);
+      }
+    }
+  }
+  memcpy(cells, work, sizeof(cells));
+}
+
+static void Draw(void) {
+  int alive = x68_rgb(0, 255, 128);
+  int row;
+  int col;
+
+  x68_cls(x68_rgb(0, 0, 32));
+  for (row = 0; row &lt; kRows; row++) {
+    for (col = 0; col &lt; kCols; col++) {
+      if (cells[row][col]) {
+        x68_box_fill(col * kCell, row * kCell, kCell - 1, kCell - 1, alive);
+      }
+    }
+  }
+}
+
+void main(void) {
+  int row;
+  int col;
+
+  x68_screen_open();
+  srand(20260823);
+
+  // 最初の世代をくじで決める。3回に1回くらい生きているようにする。
+  for (row = 0; row &lt; kRows; row++) {
+    for (col = 0; col &lt; kCols; col++) {
+      cells[row][col] = (x68_rand_int(3) == 0);
+    }
+  }
+
+  for (;;) {
+    Draw();
+    x68_screen_flip();
+    StepGeneration();
+  }
+}</code></pre>
+      <div class="sample-walk"><h4>プログラム解説</h4><ol>
+        <li><strong>規則は3つだけ</strong><ul>
+          <li>生きている → 周りが2つか3つなら生き残る</li>
+          <li>生きている → それ以外なら死ぬ</li>
+          <li>死んでいる → 周りがちょうど3つなら生まれる</li>
+        </ul></li>
+        <li><strong>紙を2枚使う理由</strong><ul>
+          <li>今の世代を見ながら、次の世代は別の紙に書く</li>
+          <li><strong>1枚で書き換えると、まだ見ていないマスが書き換わって規則が崩れる</strong></li>
+          <li>書き終わってから memcpy でまとめて移す</li>
+        </ul></li>
+      </ol></div>
+    </div>
+  </div>
+  <p class="sample-note"><span class="tag">ひとこと</span>kCell を小さくするとマスが増えて細かくなりますが、そのぶん遅くなります。</p>
+</article>
+</section>
+  </main>
+
+  <footer class="help-footer">
+    画面写真はどれも実際に動かして撮ったものです。
+    <a class="open-app" href="./index.html">アプリを開く</a>
+  </footer>
+
+  <script>
+    (function () {
+      if (new URLSearchParams(location.search).get('from') === 'app') {
+        var links = document.querySelectorAll('.open-app');
+        for (var i = 0; i < links.length; i++) links[i].hidden = true;
+      }
+    })();
+  </script>
+</body>
+</html>

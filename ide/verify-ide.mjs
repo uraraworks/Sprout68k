@@ -22,7 +22,7 @@ const root = dirname(fileURLToPath(import.meta.url));
 const forbidden = ['pc' + '98', 'n' + 'p2', 'pc' + '-98', 'free' + 'dos', 'na' + 'sm', 'smaller' + 'c', '98' + '01', '98' + '21'];
 const required = [
   'index.html', 'help.html', 'reference.html', 'api/reference.json', 'workbench.css', 'workbench.js', 'project-fs.mjs', 'source-view.mjs',
-  'sample-manifest.mjs', 'samples/shapes.c', 'samples/move.c', 'samples/catch.c',
+  'sample-manifest.mjs', 'samples.html', 'api/samples.json', 'samples/shapes.c', 'samples/move.c', 'samples/catch.c',
   'samples/stars.c', 'samples/life.c', 'split-layout.mjs', 'run-toggle.mjs', 'offline-support.mjs', 'browser-ui-verifier.mjs', 'x68k-adapter.mjs', 'samples/hello.c', 'samples/keyboard-input.c',
   'recovery-controller.mjs', 'screenshot-store.mjs', 'share-receive.mjs',
   'px68k-runtime.ts', 'px68k/libretro-host.ts', 'px68k/text-screen.ts',
@@ -678,6 +678,38 @@ for (const attribution of ['px68k-libretro', 'Workbench' + 'N' + 'P2', 'CodeMirr
 }
 if (!html.includes('./samples/hello.c') && !(await readFile(resolve(root, 'sample-manifest.mjs'), 'utf8')).includes('./samples/hello.c')) {
   throw new Error('C サンプル参照がありません');
+}
+
+/* --- 作例集(samples.html)と IDE の結線 ---
+ * 紹介ページの「エディタで開く」は ?sample=<id> で IDE を呼ぶ。**id が
+ * 食い違うと、押しても何も起きないボタンになる**（押せてしまうぶん、
+ * 壊れていても気づきにくい）。両側の id と、画面写真の有無を突き合わせる。 */
+{
+  const manifestSource = await readFile(resolve(root, 'sample-manifest.mjs'), 'utf8');
+  const manifestIds = [...manifestSource.matchAll(/id: '([^']+)'/g)].map((match) => match[1]);
+  const pageData = JSON.parse(await readFile(resolve(root, 'api/samples.json'), 'utf8'));
+  const pageIds = pageData.samples.map((sample) => sample.id);
+  if (manifestIds.join(',') !== pageIds.join(',')) {
+    throw new Error(`作例の id が食い違います: manifest=[${manifestIds}] page=[${pageIds}]`);
+  }
+  if (manifestIds.length === 0) throw new Error('作例の id を1件も抽出できません');
+  for (const sample of pageData.samples) {
+    await stat(resolve(root, '..', sample.path));                    // ソース本体
+    await stat(resolve(root, 'samples/shots', `${sample.id}.png`));  // 画面写真
+    if (!sample.walkthrough?.length) throw new Error(`${sample.id}: プログラム解説がありません`);
+    if (!sample.howToPlay || !sample.note) throw new Error(`${sample.id}: 遊び方かひとことがありません`);
+  }
+  /* IDE 側が ?sample= を実際に見ていること（生成ページ側だけ直しても動かない）。 */
+  if (!workbench.includes("get('sample')") || !workbench.includes('findSampleById')) {
+    throw new Error('IDE が ?sample= を処理していません');
+  }
+  const page = await readFile(resolve(root, 'samples.html'), 'utf8');
+  for (const sample of pageData.samples) {
+    if (!page.includes(`index.html?sample=${sample.id}`)) {
+      throw new Error(`作例集に「エディタで開く」リンクがありません: ${sample.id}`);
+    }
+  }
+  console.log(`verify-ide: samples page PASS (${pageIds.length} 作例, id一致, 画面写真, ?sample= の結線)`);
 }
 
 /* --- 共有リンクの受け取り ---

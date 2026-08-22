@@ -5,7 +5,7 @@ import {
   indentWithTab, keymap, lineNumbers, rectangularSelection, syntaxHighlighting, tags,
 } from './vendor/codemirror/codemirror.js';
 import { IndexedDbProjectFS, validatePath } from './project-fs.mjs';
-import { SAMPLE_FILES, loadSample } from './sample-manifest.mjs';
+import { SAMPLE_FILES, findSampleById, loadSample } from './sample-manifest.mjs';
 import { basename, sourceLanguage } from './source-view.mjs';
 import { createX68kAdapter } from './x68k-adapter.mjs';
 import { createRecoveryController } from './recovery-controller.mjs';
@@ -1038,8 +1038,18 @@ async function initialize() {
   // すぐ上書きされてしまう）。
   const shared = await receiveSharedLink();
   let restored = shared.openedEditor;
+  /* 作例集(samples.html)の「エディタで開く」から来た場合。共有リンクより弱く、
+   * 「前回開いていたファイル」より強い（利用者が今クリックした意図を優先する）。 */
+  if (!restored) {
+    const requested = new URLSearchParams(location.search).get('sample');
+    const sample = requested ? findSampleById(requested) : null;
+    if (sample) {
+      await openFile('sample', sample.path);
+      restored = true;
+    }
+  }
   try {
-    if (restored) throw new Error('共有リンクを開いたので前回の続きは復元しない');
+    if (restored) throw new Error('共有リンクか作例の指定があるので前回の続きは復元しない');
     const value = localStorage.getItem(LAST_PATH_KEY);
     const separator = value?.indexOf(':') ?? -1;
     if (separator > 0) {

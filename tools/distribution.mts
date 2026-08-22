@@ -8,6 +8,18 @@ export const CACHE_PREFIX = 'sprout68k-precache-';
 export const IDE_STATIC_FILES = [
   'help.html',
   'reference.html',
+  'samples.html',
+  // 作例の画面写真。**実際に動かして撮ったもの**(tools/capture_sample_shots.mts)。
+  // 1枚ずつ並べるのは、作例を増やしたときにここへ書き足す手が必要＝
+  // 気づかず抜けることを防ぐため。
+  'samples/shots/hello.png',
+  'samples/shots/shapes.png',
+  'samples/shots/keyboard-input.png',
+  'samples/shots/move.png',
+  'samples/shots/catch.png',
+  'samples/shots/breakout.png',
+  'samples/shots/stars.png',
+  'samples/shots/life.png',
   'manifest.webmanifest',
   'icons/sprout68k.svg',
   'icons/sprout68k-16.png',
