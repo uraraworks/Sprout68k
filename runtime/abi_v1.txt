@@ -1,0 +1,49 @@
+# Sprout68k 共有ランタイム ABI 第1版（2026-08-22 凍結）
+#
+# この並びがそのままジャンプテーブルの番地になる。
+#   番地 = ABI_TABLE_BASE + 6 * (0起点の行番号)
+#
+# **一度公開したら、既存の行は絶対に動かさない・消さない・並べ替えない。**
+# 共有リンクは永久に動く必要があり、URLに載った利用者コードは
+# この番地を直接 JSR している。関数を増やすときは末尾に足すだけにする
+# （末尾追加なら既存の番地は変わらないので、古いリンクも動き続ける）。
+#
+# 使わなくなった関数も消さない。中身を「何もしないで返る」に差し替える。
+#
+# 行の書式: 関数名（# で始まる行と空行は無視）
+# ---------------------------------------------------------------
+# 画面
+x68_screen_open
+x68_screen_flip
+x68_cls
+x68_frame_begin
+# 描画
+x68_pset
+x68_pget
+x68_box_fill
+x68_box
+x68_line
+x68_circle
+x68_rgb
+# 入力
+x68_key_down
+# 文字
+x68_locate
+puts
+printf
+# 標準名の層
+memcpy
+memset
+strlen
+abs
+srand
+rand
+x68_rand_int
+# 生の層(L0)
+x68_iocs_print
+x68_iocs_locate
+x68_iocs_bitsns
+x68_iocs_disk_read
+x68_vsync_wait
+x68_gvram_mode_65536_1page
+x68_gvram_copy_movem

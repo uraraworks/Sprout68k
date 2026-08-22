@@ -1,0 +1,153 @@
+#!/usr/bin/env node
+/* 共有ランタイム方式（第1版）の検証。
+ *
+ * 見るのは4点:
+ *   1. 生成物(ジャンプテーブル・番地表・リンカスクリプト)が入力から作った
+ *      ものと一致する
+ *   2. ABI表 runtime/abi_v1.txt が lib/include/x68.h の公開関数と一致し、
+ *      ジャンプテーブルの実番地が番地表どおりに並んでいる（実際にビルドした
+ *      ELF のシンボルで確かめる。表を読み合わせるだけにしない）
+ *   3. runtime/layout_v1.txt の不等式が、実際のビルド結果に対して成立する
+ *      （ランタイムが利用者領域に食い込まない・裏バッファがスタックを侵さない）
+ *   4. 共有ペイロードの往復（pack → unpack、base64url の往復）が元に戻る
+ * すべて故障注入つき。
+ *
+ * 前提: tools/build_shared.sh を1回通してあること（build/shared_obj/*.elf を見る）。
+ */
+import { execFileSync } from 'node:child_process';
+import { existsSync, readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { ROOT, ABI_SLOT_SIZE, abiAddress, readAbi, readLayout,
+         renderAbiLinkerScript, renderJumpTable, renderRuntimeLinkerScript, renderUserLinkerScript } from './build_abi.mts';
+import { DEFAULT_DISK, USER_HEADER_SIZE, packUserPayload, unpackUserPayload, toBase64Url, fromBase64Url } from './share_v1.mts';
+
+const NM = process.env.M68K_NM ?? `${process.env.HOME}/x68kdev-toolchain/bin/m68k-elf-nm`;
+const RUNTIME_ELF = resolve(ROOT, 'build/shared_obj/runtime.elf');
+const USER_ELF = resolve(ROOT, 'build/shared_obj/user.elf');
+
+const failures: string[] = [];
+function check(condition: boolean, message: string): void {
+  if (condition) console.log(`PASS: ${message}`);
+  else { console.log(`FAIL: ${message}`); failures.push(message); }
+}
+
+const layout = readLayout();
+const names = readAbi();
+
+/* ---- 1. 生成物が最新か ------------------------------------------- */
+const generated: [string, string][] = [
+  ['runtime/generated/jumptable_v1.S', renderJumpTable(names, layout)],
+  ['runtime/generated/abi_v1.ld', renderAbiLinkerScript(names, layout)],
+  ['runtime/generated/runtime_v1.ld', renderRuntimeLinkerScript(layout)],
+  ['runtime/generated/user_v1.ld', renderUserLinkerScript(layout)],
+];
+for (const [path, expected] of generated) {
+  check(readFileSync(resolve(ROOT, path), 'utf8') === expected, `${path} が入力から生成したものと一致する`);
+}
+
+/* ---- 2. ABI表と x68.h / 実ELF の突き合わせ ------------------------ */
+const header = readFileSync(resolve(ROOT, 'lib/include/x68.h'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+const declared = new Set<string>();
+for (const match of header.matchAll(/^(?:const\s+)?(?:unsigned\s+|signed\s+)?[a-z_][a-z0-9_]*\s+\*?([a-z_][a-z0-9_]*)\s*\([^;]*\)\s*;/gmi)) {
+  declared.add(match[1]);
+}
+const missing = [...declared].filter((name) => !names.includes(name));
+check(missing.length === 0, `x68.h の全関数が ABI 表にある (不足: ${missing.join(', ') || 'なし'})`);
+const strays = names.filter((name) => !declared.has(name));
+check(strays.length === 0, `ABI 表に x68.h 由来でない名前が無い (余分: ${strays.join(', ') || 'なし'})`);
+check(new Set(names).size === names.length, 'ABI 表に重複が無い');
+
+function symbols(elf: string): Map<string, number> {
+  const out = execFileSync(NM, [elf], { encoding: 'utf8' });
+  const table = new Map<string, number>();
+  for (const line of out.split('\n')) {
+    const match = /^([0-9a-f]+)\s+\S\s+(\S+)$/.exec(line.trim());
+    if (match) table.set(match[2], parseInt(match[1], 16));
+  }
+  return table;
+}
+
+if (!existsSync(RUNTIME_ELF) || !existsSync(USER_ELF)) {
+  check(false, `build/shared_obj の ELF が無い。先に tools/build_shared.sh を通すこと`);
+} else {
+  /* 利用者コード側で、各ライブラリ関数がジャンプテーブルの番地に解決されているか。
+   * 「表どおりのはず」ではなく、実際にリンクされた結果を見る。 */
+  const userSymbols = symbols(USER_ELF);
+  const wrong = names
+    .map((name, index) => ({ name, want: abiAddress(layout, index), got: userSymbols.get(name) }))
+    .filter((entry) => entry.got !== undefined && entry.got !== entry.want);
+  for (const entry of wrong) console.log(`  ${entry.name}: want=0x${entry.want.toString(16)} got=0x${entry.got!.toString(16)}`);
+  check(wrong.length === 0, `利用者コードの参照がジャンプテーブルの番地に解決されている (ずれ: ${wrong.length}件)`);
+
+  const resolvedCount = names.filter((name) => userSymbols.has(name)).length;
+  check(resolvedCount > 0, `利用者コードが実際にライブラリ関数を参照している (${resolvedCount}件)`);
+
+  /* ランタイム側に実体があるか（ジャンプテーブルが飛ぶ先） */
+  const runtimeSymbols = symbols(RUNTIME_ELF);
+  const noBody = names.filter((name) => !runtimeSymbols.has(name));
+  check(noBody.length === 0, `ABI の全関数がランタイムに実体を持つ (欠落: ${noBody.join(', ') || 'なし'})`);
+
+  /* ---- 3. 配置の不等式 ------------------------------------------- */
+  const runtimeEnd = runtimeSymbols.get('__runtime_end')!;
+  const bssEnd = runtimeSymbols.get('__bss_end')!;
+  check(runtimeEnd <= layout.get('USER_BASE')!,
+    `ランタイムが利用者領域に食い込まない (末尾=0x${runtimeEnd.toString(16)} <= USER_BASE=0x${layout.get('USER_BASE')!.toString(16)}, 余り ${layout.get('USER_BASE')! - runtimeEnd} バイト)`);
+  const stackFloor = layout.get('STACK_ADDR')! - layout.get('STACK_MARGIN')!;
+  check(bssEnd <= stackFloor,
+    `裏バッファがスタックを侵さない (bss末尾=0x${bssEnd.toString(16)} <= スタック-マージン=0x${stackFloor.toString(16)}, 余り ${stackFloor - bssEnd} バイト)`);
+  check(layout.get('STACK_ADDR')! < layout.get('RAM_SIZE')!, 'スタックが搭載RAMの内側にある');
+  check(layout.get('USER_LIMIT')! === layout.get('RUNTIME_BSS_BASE')!, '利用者領域の終端と裏バッファの先頭が接している');
+  check(layout.get('ABI_TABLE_BASE')! === layout.get('RUNTIME_BASE')! + 8, 'ジャンプテーブルがランタイム先頭+8にある');
+
+  const userEnd = symbols(USER_ELF).get('__bss_end')!;
+  check(userEnd <= layout.get('USER_LIMIT')!,
+    `利用者コードが利用者領域に収まる (末尾=0x${userEnd.toString(16)} <= USER_LIMIT=0x${layout.get('USER_LIMIT')!.toString(16)})`);
+}
+
+/* ---- 4. ペイロードの往復 ------------------------------------------ */
+const shareLayout = {
+  ABI_VERSION: layout.get('ABI_VERSION')!, RUNTIME_BASE: layout.get('RUNTIME_BASE')!,
+  USER_BASE: layout.get('USER_BASE')!, USER_LIMIT: layout.get('USER_LIMIT')!, ...DEFAULT_DISK,
+};
+const body = new Uint8Array(Array.from({ length: 777 }, (_, index) => (index * 37) & 0xff));
+const payload = packUserPayload(body, shareLayout);
+check(payload.length === USER_HEADER_SIZE + body.length, 'ヘッダ長ぶんだけ増えている');
+const restored = unpackUserPayload(fromBase64Url(toBase64Url(payload)), shareLayout);
+check(restored.length === body.length && restored.every((byte, index) => byte === body[index]),
+  'pack → base64url → 復号 → unpack で元のバイト列に戻る');
+
+function rejects(label: string, mutate: (bytes: Uint8Array) => void): void {
+  const broken = new Uint8Array(payload);
+  mutate(broken);
+  let rejected = false;
+  try { unpackUserPayload(broken, shareLayout); } catch { rejected = true; }
+  check(rejected, `故障注入: ${label} を弾く`);
+}
+rejects('目印の1バイト改変', (bytes) => { bytes[0] ^= 0xff; });
+rejects('ABI版の改変', (bytes) => { bytes[5] = 2; });
+rejects('本体バイト数の改変', (bytes) => { bytes[11] ^= 0x01; });
+{
+  let rejected = false;
+  try { unpackUserPayload(payload.subarray(0, payload.length - 1), shareLayout); } catch { rejected = true; }
+  check(rejected, '故障注入: 末尾1バイトが欠けたペイロードを弾く');
+}
+{
+  let rejected = false;
+  try { packUserPayload(new Uint8Array(layout.get('USER_LIMIT')! - layout.get('USER_BASE')!), shareLayout); } catch { rejected = true; }
+  check(rejected, '故障注入: 利用者領域に収まらない大きさを弾く');
+}
+/* 生成物の故障注入: ABI表を1行入れ替えたら番地表が変わることを確かめる
+ * （検査そのものが番地を見ていることの陽性対照）。 */
+{
+  const swapped = [...names];
+  [swapped[4], swapped[5]] = [swapped[5], swapped[4]];
+  check(renderAbiLinkerScript(swapped, layout) !== renderAbiLinkerScript(names, layout),
+    '故障注入: ABI表の並べ替えが番地表に現れる');
+}
+
+console.log(`\nABI v${layout.get('ABI_VERSION')}: ${names.length} 関数 / スロット ${ABI_SLOT_SIZE} バイト`);
+if (failures.length > 0) {
+  console.log(`不合格 ${failures.length} 件`);
+  process.exit(1);
+}
+console.log('すべて合格');

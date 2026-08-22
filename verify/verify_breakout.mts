@@ -33,6 +33,13 @@ const CORE_JS = resolve(WEBX68K_DIR, 'public/core/px68k_libretro.js');
 const IPL = resolve(WEBX68K_DIR, 'public/system/iplrom.dat');
 const CGROM = resolve(WEBX68K_DIR, 'public/system/cgrom.dat');
 
+/* BREAKOUT_IMG を指定すると、通常ビルドの代わりにその .xdf を5項目の実測に通す。
+ * 共有ランタイム方式(tools/build_shared.sh)で作った .xdf を、同じ台本・同じ
+ * 判定でそのまま検証するための入口。**指定しなければ従来と完全に同じ動作**
+ * (故障注入3件と速度測定もこれまで通り走る)。指定した場合は、故障版を
+ * ビルドする手段が無いのでそこだけ行わない。 */
+const OVERRIDE_IMG = process.env.BREAKOUT_IMG;
+
 /* --- 自前タイムアウト(既存verify_*.mtsを踏襲。バックグラウンドに投げず同期実行する) --- */
 const DEADLINE_BASE_MS = 60_000;
 const DEADLINE_MS_PER_FRAME = 20;
@@ -65,7 +72,9 @@ const CORE_OPTIONS_USED = {
 };
 
 /* --- HOSTVAR アドレス(samples/breakout/block.c と一致させること) --- */
-const HV3_BASE = 0x000da000;
+/* 自己申告の置き場。通常ビルドは $DA000 固定だが、配置が違うビルド経路
+ * (共有ランタイム方式)ではそちらのビルドが使う番地を環境変数で渡す。 */
+const HV3_BASE = process.env.HV3_BASE ? Number(process.env.HV3_BASE) : 0x000da000;
 const HV3_PROGRESS = HV3_BASE + 0x00;
 const HV3_PADDLE_X = HV3_BASE + 0x04;
 const HV3_BALL_X = HV3_BASE + 0x08;
@@ -140,6 +149,29 @@ function scoreVisibleInFramebuffer(img: Image | null): { visible: boolean; diffC
     }
   }
   return { visible: diffCount >= SCORE_TEXT_VISIBLE_MIN_DIFF_PIXELS, diffCount };
+}
+
+/* --- ゲーム画面に実際に絵が描かれているかの検査 ---
+ * 【背景(2026-08-22)】(4)の合格条件「破壊されたブロックの位置がGVRAM上で
+ * 背景色になっている」は、**GVRAMに一度も何も描かれていない状態を完璧に
+ * 満たしてしまう**（未描画のGVRAMは0＝黒＝背景色）。実際、共有ランタイム方式の
+ * 検証で x68_screen_flip の飛び先を x68_frame_begin にすげ替える故障注入をしたところ、
+ * 画面が一切更新されないのに5項目すべてが合格した。
+ * スコア表示はテキスト画面（グラフィックとは別系統）なので(5b)も素通りする。
+ * そこで「消えていること」だけでなく「描かれていること」を独立に数える。 */
+const GAME_AREA = { x0: 0, y0: 24, x1: 512, y1: 512 }; // スコア行(y<16)を除いたゲーム画面
+const GAME_DRAWN_MIN_PIXELS = 2000; // 実測: 通常ビルド 27456 / 未描画(故障注入) 0
+function gameDrawnPixels(img: Image | null): number {
+  if (!img) return 0;
+  let count = 0;
+  for (let y = GAME_AREA.y0; y < GAME_AREA.y1 && y < img.height; y++) {
+    for (let x = GAME_AREA.x0; x < GAME_AREA.x1 && x < img.width; x++) {
+      const idx = (y * img.width + x) * 4;
+      const px: [number, number, number] = [img.data[idx], img.data[idx + 1], img.data[idx + 2]];
+      if (distRgb(px, COLOR_BG_RGB) > SCORE_TEXT_VISIBLE_DIST_THRESHOLD) count++;
+    }
+  }
+  return count;
 }
 
 /* ============================================================
@@ -311,6 +343,7 @@ interface RunResult {
   // (5b) スコアがフレームバッファ上で実際に見えているか(Text VRAM直読みだけの
   // 穴を塞ぐ検査。docs/作例breakout_20260819.md参照)
   scoreVisibleOnFramebuffer: boolean;
+  gameDrawnPixels: number;
   scoreFbDiffCount: number;
   // 転送量実測
   flipBytesSamples: number[];
@@ -338,7 +371,7 @@ async function runFullCheck(label: string, diskBytes: Uint8Array, log: (s: strin
       ballMoved: false, dxFlipped: false, dyFlipped: false, reflectFrames: 0,
       blockDestroyed: false, blockCanvasOk: false, blockDestroyedFrame: -1,
       scoreTextOk: false, scoreTextObserved: '', scoreExpected: 0,
-      scoreVisibleOnFramebuffer: false, scoreFbDiffCount: 0,
+      scoreVisibleOnFramebuffer: false, scoreFbDiffCount: 0, gameDrawnPixels: 0,
       flipBytesSamples: [],
     };
   }
@@ -454,6 +487,8 @@ async function runFullCheck(label: string, diskBytes: Uint8Array, log: (s: strin
   // フレームバッファに一切現れない状態でもPASSしてしまう(今回の穴そのもの)。
   // verify_panic.mtsのtextVisibleInFramebuffer()と同じ方式で実測する。 ---
   const { visible: scoreVisibleOnFramebuffer, diffCount: scoreFbDiffCount } = scoreVisibleInFramebuffer(session.lastImage());
+  const drawnPixels = gameDrawnPixels(session.lastImage());
+  log(`  game drawn check: drawnPixels=${drawnPixels}(threshold=${GAME_DRAWN_MIN_PIXELS})`);
   log(`  score framebuffer check: visible=${scoreVisibleOnFramebuffer} diffCount=${scoreFbDiffCount}(threshold=${SCORE_TEXT_VISIBLE_MIN_DIFF_PIXELS})`);
 
   session.dispose();
@@ -462,7 +497,7 @@ async function runFullCheck(label: string, diskBytes: Uint8Array, log: (s: strin
     ballMoved, dxFlipped, dyFlipped, reflectFrames,
     blockDestroyed, blockCanvasOk, blockDestroyedFrame,
     scoreTextOk, scoreTextObserved, scoreExpected,
-    scoreVisibleOnFramebuffer, scoreFbDiffCount,
+    scoreVisibleOnFramebuffer, scoreFbDiffCount, gameDrawnPixels: drawnPixels,
     flipBytesSamples,
   };
 }
@@ -475,8 +510,9 @@ async function main(): Promise<void> {
 
   // === 通常ビルド: 5項目の実測 ===
   log('=== 通常ビルド ===');
-  const normalImg = resolve(DEV_ROOT, 'build/breakout_normal.xdf');
-  buildImage(normalImg, '');
+  const normalImg = OVERRIDE_IMG ? resolve(DEV_ROOT, OVERRIDE_IMG) : resolve(DEV_ROOT, 'build/breakout_normal.xdf');
+  if (OVERRIDE_IMG) log(`BREAKOUT_IMG=${normalImg} (ビルドせず、この .xdf を検証する)`);
+  else buildImage(normalImg, '');
   const r = await runFullCheck('normal', new Uint8Array(readFileSync(normalImg)), log);
 
   if (!r.booted) fail('起動しなかった');
@@ -505,6 +541,10 @@ async function main(): Promise<void> {
   if (!r.scoreVisibleOnFramebuffer) fail(`(5b) スコア表示がフレームバッファ上で見えていなかった(diffCount=${r.scoreFbDiffCount}, 閾値=${SCORE_TEXT_VISIBLE_MIN_DIFF_PIXELS})`);
   else log(`RESULT: SCORE_VISIBLE_ON_FRAMEBUFFER=true diffCount=${r.scoreFbDiffCount}`);
 
+  // (4b) 「消えている」だけでなく「描かれている」ことを独立に見る。
+  if (r.gameDrawnPixels < GAME_DRAWN_MIN_PIXELS) fail(`(4b) ゲーム画面に絵が描かれていなかった(drawnPixels=${r.gameDrawnPixels}, 閾値=${GAME_DRAWN_MIN_PIXELS})`);
+  else log(`RESULT: GAME_DRAWN_ON_FRAMEBUFFER=true drawnPixels=${r.gameDrawnPixels}`);
+
   // === 実負荷での転送量の実測(API設計_20260819.md「API実装時の宿題」1を閉じる) ===
   const bytes = r.flipBytesSamples;
   if (bytes.length > 0) {
@@ -522,6 +562,15 @@ async function main(): Promise<void> {
     }
   } else {
     fail('転送量の実測サンプルが1つも取れなかった');
+  }
+
+  if (OVERRIDE_IMG) {
+    // 故障注入と速度測定は「壊した版をビルドする」ことが前提なので、外から
+    // .xdf を渡された場合は行えない。ここで打ち切る(黙って飛ばさない)。
+    log('NOTE: BREAKOUT_IMG 指定のため、故障注入3件と速度測定は実行していない');
+    log(`RESULT: BREAKOUT_OVERALL_PASS=${overallOk}`);
+    if (!overallOk) process.exitCode = 1;
+    return;
   }
 
   // ==========================================================
