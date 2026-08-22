@@ -158,6 +158,10 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   writeFileSync(resolve(ROOT, 'runtime/generated/abi_v1.ld'), renderAbiLinkerScript(names, layout));
   writeFileSync(resolve(ROOT, 'runtime/generated/runtime_v1.ld'), renderRuntimeLinkerScript(layout));
   writeFileSync(resolve(ROOT, 'runtime/generated/user_v1.ld'), renderUserLinkerScript(layout));
+  /* ブラウザ側のビルド経路も同じ配置を使う。layout_v1.txt を二重に書き写さず、
+   * import できる形にして配る（値を持つ場所は layout_v1.txt ひとつだけにする）。 */
+  writeFileSync(resolve(ROOT, 'runtime/generated/layout_v1.json'),
+    `${JSON.stringify(Object.fromEntries(layout), null, 2)}\n`);
   const last = abiAddress(layout, names.length - 1);
   console.log(`ABI v${layout.get('ABI_VERSION')}: ${names.length} 関数, ${hex(layout.get('ABI_TABLE_BASE')!)}〜${hex(last)} (末尾+6=${hex(last + ABI_SLOT_SIZE)})`);
 }

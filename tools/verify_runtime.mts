@@ -17,6 +17,10 @@
 import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { deflateRawSync, inflateRawSync } from 'node:zlib';
+import { Builder } from './driver/builder.mts';
+import { NodeHostFs } from './driver/node_hostfs.mts';
+import { createNodeToolExecutors } from './driver/node_runner.mts';
+import { resolveNativeToolchain } from './driver/toolchain.mts';
 import { resolve } from 'node:path';
 import { ROOT, ABI_SLOT_SIZE, abiAddress, readAbi, readLayout,
          renderAbiLinkerScript, renderJumpTable, renderRuntimeLinkerScript, renderUserLinkerScript } from './build_abi.mts';
@@ -26,6 +30,8 @@ import { DEFAULT_DISK, SHARE_KEYS, SHARE_METHOD_DEFLATE_RAW, SHARE_METHOD_STORED
          SHARE_TAGS } from './share_v1.mts';
 
 const NM = process.env.M68K_NM ?? `${process.env.HOME}/x68kdev-toolchain/bin/m68k-elf-nm`;
+/* 正典（docs/コンパイラwasm化_20260820.md）。別の版でビルドすると出力が変わる。 */
+const CANONICAL_GCC_VERSION = '13.4.0';
 const RUNTIME_ELF = resolve(ROOT, 'build/shared_obj/runtime.elf');
 const USER_ELF = resolve(ROOT, 'build/shared_obj/user.elf');
 
@@ -154,6 +160,26 @@ rejects('本体バイト数の改変', (bytes) => { bytes[11] ^= 0x01; });
     '故障注入: ABI表の並べ替えが番地表に現れる');
 }
 
+/* ---- 4b. ディスク上の本体は「利用者コードの大きさによらず一定」か ----
+ * ここが崩れるとブートセクタの読むセクタ数が足りなくなり、**大きい作品でだけ**
+ * 起動しなくなる。ブロック崩しは1153バイトで54セクタに収まっていたため、
+ * 既存のテストでは絶対に症状が出なかった（2026-08-22 に実際に踏んだ）。 */
+{
+  const boot = new Uint8Array(16);
+  const runtime = new Uint8Array(4808);
+  const sizes = [1, 1153, shareLayout.USER_AREA_SIZE - USER_HEADER_SIZE];
+  const results = sizes.map((size) => assembleXdf(boot, runtime, packUserPayload(new Uint8Array(size), shareLayout), shareLayout));
+  const sectors = new Set(results.map((result) => result.sectorCount));
+  const bodies = new Set(results.map((result) => result.bodySize));
+  check(sectors.size === 1 && bodies.size === 1,
+    `利用者コードの大きさを変えても本体のセクタ数が変わらない (${[...sectors].join('/')} セクタ, ${[...bodies].join('/')} バイト)`);
+  check(results[0].sectorCount * shareLayout.SECTOR_SIZE >= results[0].bodySize,
+    `ブートセクタが読む量が本体を覆う (${results[0].sectorCount}×${shareLayout.SECTOR_SIZE} >= ${results[0].bodySize})`);
+  /* 故障注入: 領域を可変にすると（＝今回のバグの形）セクタ数が揺れることを確かめる */
+  const variable = sizes.map((size) => Math.ceil(((shareLayout.USER_BASE - shareLayout.RUNTIME_BASE) + USER_HEADER_SIZE + size) / shareLayout.SECTOR_SIZE));
+  check(new Set(variable).size > 1, `故障注入: 可変長にするとセクタ数が揺れる (${variable.join('/')})`);
+}
+
 /* ---- 5. 共有URLからの復元がビルド成果物とバイト一致するか --------- *
  * これが「合体処理はビルド経路と同じ」の実証。受信側は boot.bin と
  * runtime.bin を固定で持ち、URLから復元したペイロードを差し込むだけ。 */
@@ -276,6 +302,54 @@ if (![bootBin, runtimeBin, builtXdf, builtPayload].every(existsSync)) {
   check(normalizeTags(['ai', 'ai']).length === 1, '同じタグを2回書いても1つになる');
   const tagCost = tagged.length - noTag.length;
   console.log(`  タグ2件ぶんのURL増加: ${tagCost} 文字`);
+}
+
+/* ---- 7. 駆動層（ブラウザと共用）の共有ビルドが、シェル版と一致するか ----
+ * tools/build_shared.sh が正典で、tools/driver/builder.mts はブラウザでも
+ * 同じものを作れるようにした写し。**出力がバイト一致することを確かめる**
+ * （片方だけ直して静かに食い違う事故を防ぐ）。 */
+{
+  const shellRuntime = resolve(ROOT, 'build/shared_obj/runtime.bin');
+  const shellUser = resolve(ROOT, 'build/shared_obj/user.bin');
+  const shellBoot = resolve(ROOT, 'build/shared_obj/boot.bin');
+  if (![shellRuntime, shellUser, shellBoot].every(existsSync)) {
+    check(false, 'build/shared_obj が無い。先に tools/build_shared.sh を通すこと');
+  } else {
+    /* **どのツールチェーンで作ったかを先に確かめる。**
+     * PATH を通し忘れると別のGCC(Homebrew版など)で黙ってビルドされ、
+     * 「シェル版と一致しない」という誤った結論になる（2026-08-22 に実際に踏んだ。
+     * 4808→5004バイトと出力が変わった）。正典は gcc 13.4.0 + binutils 2.44。 */
+    const toolchain = resolveNativeToolchain();
+    const gccVersion = execFileSync(`${toolchain.cc1.replace(/\/libexec\/gcc\/.*$/, '')}/bin/m68k-elf-gcc`,
+      ['-dumpversion'], { encoding: 'utf8' }).trim();
+    console.log(`  ツールチェーン: ${toolchain.cc1}`);
+    check(gccVersion === CANONICAL_GCC_VERSION,
+      `正典のツールチェーンを使っている (gcc ${gccVersion}, 期待 ${CANONICAL_GCC_VERSION})`);
+
+    const hostFs = new NodeHostFs();
+    const modes = { cc1: 'native', as: 'native', ld: 'native', objcopy: 'native' } as const;
+    const builder = new Builder({
+      target: 'shared', output: resolve(ROOT, 'build/driver_shared.xdf'), root: ROOT, hostFs,
+      tools: toolchain,
+      executors: createNodeToolExecutors({ modes, hostFs, root: ROOT, wasmModules: {}, memfsModules: {} }),
+      userSource: { path: 'block.c', content: readFileSync(resolve(ROOT, 'samples/breakout/block.c'), 'utf8') },
+      sharedLayout: JSON.parse(readFileSync(resolve(ROOT, 'runtime/generated/layout_v1.json'), 'utf8')),
+      buildRoot: resolve(ROOT, 'build/driver_shared'),
+    });
+    const built = await builder.buildShared();
+    const same = (actual: Uint8Array, expectedPath: string) => {
+      const expected = new Uint8Array(readFileSync(expectedPath));
+      return actual.length === expected.length && actual.every((byte, index) => byte === expected[index]);
+    };
+    check(same(built.runtime, shellRuntime), `駆動層のランタイムがシェル版とバイト一致 (${built.runtime.length} バイト)`);
+    check(same(built.user, shellUser), `駆動層の利用者コードがシェル版とバイト一致 (${built.user.length} バイト)`);
+    check(same(built.boot, shellBoot), `駆動層のブートセクタがシェル版とバイト一致 (${built.boot.length} バイト)`);
+
+    /* 故障注入: 片方だけ1バイト変えたら一致検査が落ちること（陽性対照） */
+    const tampered = new Uint8Array(built.user);
+    tampered[0] ^= 0xff;
+    check(!same(tampered, shellUser), '故障注入: 1バイト変えた成果物は一致しない');
+  }
 }
 
 console.log(`\nABI v${layout.get('ABI_VERSION')}: ${names.length} 関数 / スロット ${ABI_SLOT_SIZE} バイト`);

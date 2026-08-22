@@ -8,7 +8,7 @@ const LOAD_ADDR = 0x3000;
 const STACK_MARGIN = 4096;
 const VALID_OPT_LEVELS = new Set(['-O0', '-O1', '-O2', '-O3', '-Os', '-Oz', '-Og', '-Ofast']);
 
-export type BuildTarget = 'stage_c' | 'breakout' | 'user';
+export type BuildTarget = 'stage_c' | 'breakout' | 'user' | 'shared';
 export interface BuildToolchain { cc1: string; as: string; ld: string; objcopy: string; libgcc: string; }
 export interface UserSource { path: string; content: string | Uint8Array; }
 
@@ -24,8 +24,12 @@ export interface BuildOptions {
   stackAddress?: string;
   ramSize?: string;
   buildRoot?: string;
-  /** user ターゲットでコンパイルする学習者の C ソース。 */
+  /** user / shared ターゲットでコンパイルする学習者の C ソース。 */
   userSource?: UserSource;
+  /** shared ターゲットの配置（runtime/generated/layout_v1.json）。 */
+  sharedLayout?: Record<string, number>;
+  /** shared ターゲットで、URLに載せる利用者ペイロードの書き出し先。 */
+  sharedPayloadOutput?: string;
 }
 
 export class Builder {
@@ -156,11 +160,95 @@ export class Builder {
 
   async buildBreakout(): Promise<void> { await this.buildLibraryProgram('breakout'); }
   async buildUser(): Promise<void> { await this.buildLibraryProgram('user'); }
+
+  /**
+   * 共有ランタイム方式のビルド。
+   *
+   * 通常ビルド(buildLibraryProgram)との違いは、ライブラリを利用者コードに
+   * リンクせず、ランタイム側の固定番地のジャンプテーブル越しに呼ばせること。
+   * そのため利用者側の成果物にライブラリ本体が入らず、URLに載る大きさになる。
+   *
+   * 手順そのものは tools/build_shared.sh と同じで、あちらが正典。ここは
+   * ブラウザでも同じものを作れるようにした写しなので、**出力が一致することを
+   * verify_runtime.mts がバイト比較で確かめる**（片方だけ直す事故を防ぐ）。
+   */
+  private async buildSharedProgram(): Promise<{ runtime: Uint8Array; user: Uint8Array }> {
+    const root = this.options.root;
+    const layout = this.options.sharedLayout;
+    if (!layout) throw new Error('shared ターゲットには配置(sharedLayout)が必要です');
+    const objdir = resolvePath(this.buildRoot, `shared${this.variantSuffix}`);
+    this.options.hostFs.mkdirp(objdir);
+    console.log(`== 共有ランタイム方式でビルド(opt=${this.optLevel}) ==`);
+
+    const generated = resolvePath(root, 'runtime/generated');
+    const include = ['-I', resolvePath(root, 'lib/include')];
+    const hex = (value: number) => `0x${value.toString(16).toUpperCase()}`;
+    const layoutDefines = [
+      '-D', `STACK_ADDR=${hex(layout.STACK_ADDR)}`,
+      '-D', `USER_BASE=${hex(layout.USER_BASE)}`,
+      '-D', `USER_LIMIT=${hex(layout.USER_LIMIT)}`,
+      '-D', `ABI_VERSION=${layout.ABI_VERSION}`,
+    ];
+
+    // --- ランタイム本体（ライブラリ全部入り。今回の利用者が呼んでいなくても、
+    //     次に共有される利用者コードが呼ぶので削らない） ---
+    for (const name of ['x68_std', 'x68_l0', 'x68_l1', 'x68_panic', 'x68_input']) {
+      await this.compileC(resolvePath(root, `lib/src/${name}.c`), resolvePath(objdir, `${name}.o`), include);
+    }
+    await this.assembleCpp('68000', resolvePath(generated, 'jumptable_v1.S'), resolvePath(objdir, 'jumptable.o'), layoutDefines);
+    await this.assembleCpp('68000', resolvePath(root, 'runtime/crt0_runtime.S'), resolvePath(objdir, 'crt0_runtime.o'), layoutDefines);
+    await this.assembleCpp('68000', resolvePath(root, 'lib/asm/x68_iocs.S'), resolvePath(objdir, 'x68_iocs.o'), layoutDefines);
+    await this.assembleCpp('68000', resolvePath(root, 'lib/asm/x68_gvram_copy.S'), resolvePath(objdir, 'x68_gvram_copy.o'), layoutDefines);
+    await this.assembleCpp('68020', resolvePath(root, 'lib/asm/x68_panic.S'), resolvePath(objdir, 'x68_panic_asm.o'), layoutDefines);
+    const runtimeElf = resolvePath(objdir, 'runtime.elf');
+    const runtimeBin = resolvePath(objdir, 'runtime.bin');
+    await this.run('ld', ['--no-warn-rwx-segments', '-T', resolvePath(generated, 'runtime_v1.ld'), '-o', runtimeElf,
+      resolvePath(objdir, 'jumptable.o'), resolvePath(objdir, 'crt0_runtime.o'),
+      ...['x68_std', 'x68_l0', 'x68_l1', 'x68_input', 'x68_panic'].map((name) => resolvePath(objdir, `${name}.o`)),
+      resolvePath(objdir, 'x68_iocs.o'), resolvePath(objdir, 'x68_gvram_copy.o'), resolvePath(objdir, 'x68_panic_asm.o'),
+      this.options.tools.libgcc]);
+    await this.run('objcopy', ['-O', 'binary', runtimeElf, runtimeBin]);
+
+    // --- 利用者コード（ライブラリはリンクしない） ---
+    const source = this.options.userSource;
+    if (!source || typeof source.path !== 'string' || !source.path.trim()) throw new Error('shared ターゲットには C ソースが必要です');
+    if (!/\.c$/i.test(source.path)) throw new Error('利用者ソースは .c ファイルで指定してください');
+    const mainSource = resolvePath(objdir, 'source', basenamePath(source.path));
+    this.options.hostFs.mkdirp(dirnamePath(mainSource));
+    this.options.hostFs.writeFile(mainSource, source.content);
+    await this.compileC(mainSource, resolvePath(objdir, 'user_main.o'), include);
+    await this.assembleCpp('68000', resolvePath(root, 'runtime/user_entry.S'), resolvePath(objdir, 'user_entry.o'), layoutDefines);
+    const userElf = resolvePath(objdir, 'user.elf');
+    const userBin = resolvePath(objdir, 'user.bin');
+    // -L は -T より前に置く（user_v1.ld の INCLUDE abi_v1.ld の探索に使われる）。
+    await this.run('ld', ['--no-warn-rwx-segments', '-L', generated, '-T', resolvePath(generated, 'user_v1.ld'),
+      '-o', userElf, resolvePath(objdir, 'user_entry.o'), resolvePath(objdir, 'user_main.o'), this.options.tools.libgcc]);
+    await this.run('objcopy', ['-O', 'binary', userElf, userBin]);
+
+    return {
+      runtime: this.options.hostFs.readFile(runtimeBin),
+      user: this.options.hostFs.readFile(userBin),
+    };
+  }
+
+  /** ブートセクタを作って共有ビルドの成果物を返す。.xdf の組み立ては呼び出し側。 */
+  async buildShared(): Promise<{ runtime: Uint8Array; user: Uint8Array; boot: Uint8Array }> {
+    const layout = this.options.sharedLayout!;
+    const { runtime, user } = await this.buildSharedProgram();
+    const objdir = resolvePath(this.buildRoot, `shared${this.variantSuffix}`);
+    // 本体は「ランタイム + 0詰め + 16KBの固定長ペイプロード領域」で常に同じ大きさ。
+    // 固定長なのでセクタ数も常に同じ（受信側がブートセクタを作り直せないため）。
+    const bodySize = (layout.USER_BASE - layout.RUNTIME_BASE) + layout.USER_AREA_SIZE;
+    const sectors = Math.max(1, Math.ceil(bodySize / SECTOR_SIZE));
+    await this.linkBoot(objdir, resolvePath(this.options.root, 'stage_d/boot/boot.S'), sectors);
+    return { runtime, user, boot: this.options.hostFs.readFile(resolvePath(objdir, 'boot.bin')) };
+  }
 }
 
 export async function build(options: BuildOptions): Promise<void> {
   const builder = new Builder(options);
   if (options.target === 'stage_c') await builder.buildStageC();
   else if (options.target === 'breakout') await builder.buildBreakout();
+  else if (options.target === 'shared') await builder.buildShared();
   else await builder.buildUser();
 }

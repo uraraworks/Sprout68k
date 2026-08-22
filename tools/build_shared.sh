@@ -82,20 +82,14 @@ m68k-elf-ld -L "$GEN" -T "$GEN/user_v1.ld" ${USER_LD_EXTRA[@]+"${USER_LD_EXTRA[@
 m68k-elf-objcopy -O binary "$OBJDIR/user.elf" "$OBJDIR/user.bin"
 
 echo "== ブートセクタのビルド =="
-# 本体は「ランタイム + 0詰め + 利用者ペイロード」の1本の連続した塊。
-# セクタ数は node 側が数えるので、いったん仮の値でアセンブルはせず、
-# 先に塊の大きさを求めてからブートセクタを作る。
-BODY_SIZE=$(node -e '
-import("'"$ROOT"'/tools/share_v1.mts").then(async (share) => {
-  const { readFileSync } = await import("node:fs");
-  const layout = { ABI_VERSION: '"$ABI_VERSION"', RUNTIME_BASE: '"$RUNTIME_BASE"', USER_BASE: '"$USER_BASE"',
-                   USER_LIMIT: '"$USER_LIMIT"', USER_AREA_SIZE: '"$USER_AREA_SIZE"', ...share.DEFAULT_DISK };
-  const user = share.packUserPayload(new Uint8Array(readFileSync("'"$OBJDIR"'/user.bin")), layout);
-  process.stdout.write(String(layout.USER_BASE - layout.RUNTIME_BASE + user.length));
-});
-')
+# 本体は「ランタイム + 0詰め + 固定長(USER_AREA_SIZE)のペイプロード領域」で、
+# **利用者コードの大きさによらず常に同じ大きさ**。だからセクタ数も常に同じで、
+# 受信側は boot.bin をそのまま持てる（受信側はアセンブラを持たない）。
+# ここを利用者コードの実サイズで数えると、大きい作品でブートセクタが
+# 読み足りなくなる（2026-08-22 に実際に踏んだ。駆動層との突き合わせで発覚）。
+BODY_SIZE=$(( (USER_BASE - RUNTIME_BASE) + USER_AREA_SIZE ))
 SECTOR_COUNT=$(( (BODY_SIZE + 1023) / 1024 ))
-echo "body=${BODY_SIZE} バイト -> ${SECTOR_COUNT} セクタ"
+echo "body=${BODY_SIZE} バイト(固定) -> ${SECTOR_COUNT} セクタ"
 
 m68k-elf-gcc "${ASFLAGS[@]}" -DSECTOR_COUNT="${SECTOR_COUNT}" -c "$ROOT/stage_d/boot/boot.S" -o "$OBJDIR/boot.o"
 m68k-elf-gcc -x assembler-with-cpp -m68020 -c "$ROOT/stage_c/boot/cache_flush.S" -o "$OBJDIR/cache_flush.o"
