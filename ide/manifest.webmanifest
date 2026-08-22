@@ -1,0 +1,22 @@
+{
+  "name": "Sprout68k",
+  "short_name": "Sprout68k",
+  "description": "ブラウザで学ぶ X68000 C プログラミング環境",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#1f1f1f",
+  "theme_color": "#111827",
+  "icons": [
+    {
+      "src": "/Sprout68k/ide/icons/sprout68k-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/Sprout68k/ide/icons/sprout68k-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}

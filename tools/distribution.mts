@@ -4,6 +4,14 @@ import { dirname, relative, resolve, sep } from 'node:path';
 
 export const APP_PATH = '/Sprout68k/';
 export const CACHE_PREFIX = 'sprout68k-precache-';
+export const IDE_STATIC_FILES = [
+  'manifest.webmanifest',
+  'icons/sprout68k.svg',
+  'icons/sprout68k-16.png',
+  'icons/sprout68k-32.png',
+  'icons/sprout68k-192.png',
+  'icons/sprout68k-512.png',
+] as const;
 
 interface AssetEntry { path: string; size: number; sha256: string }
 interface AssetManifest { version: number; files: AssetEntry[] }
@@ -246,6 +254,12 @@ export function stageDistribution(root: string, outDir: string, buildId: string)
     const destination = resolve(outDir, 'build/web-assets', name);
     mkdirSync(dirname(destination), { recursive: true });
     cpSync(resolve(assetRoot, name), destination);
+  }
+
+  for (const relativePath of IDE_STATIC_FILES) {
+    const destination = resolve(outDir, 'ide', relativePath);
+    mkdirSync(dirname(destination), { recursive: true });
+    cpSync(resolve(root, 'ide', relativePath), destination);
   }
 
   const toolFiles = filesBelow(resolve(root, 'build/wasm-tools'))

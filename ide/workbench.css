@@ -47,7 +47,7 @@ button:disabled { opacity: .45; cursor: default; }
 button:focus-visible, input:focus-visible { outline: 1px solid var(--vsc-focus); outline-offset: 1px; }
 .app-header { padding: var(--recovery-header-padding) 16px; color: var(--x68-header-text); background: var(--x68-header-bg); text-align: center; }
 .app-title-row { display: flex; justify-content: center; align-items: center; gap: 9px; }
-.app-icon { display: inline-grid; place-items: center; width: var(--recovery-title-height); height: var(--recovery-title-height); border: 1px solid #38bdf8; border-radius: 6px; color: #38bdf8; font: 700 15px ui-monospace, monospace; }
+.app-icon { width: var(--recovery-title-height); height: var(--recovery-title-height); object-fit: contain; }
 .app-header h1 { margin: 0; font-size: 16px; }
 .app-tagline { margin: var(--recovery-tagline-margin) 0 0; color: var(--x68-header-tagline); font-size: 11px; line-height: var(--recovery-tagline-height); }
 .app-recovery-actions { height: var(--recovery-control-height); margin-top: var(--recovery-actions-margin); display: flex; justify-content: center; gap: var(--recovery-actions-gap); }

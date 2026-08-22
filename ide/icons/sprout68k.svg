@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-labelledby="title">
+  <title id="title">Sprout68kの双葉</title>
+  <path
+    d="M32 58C28.5 46 28.5 36.5 30 30.5C19 33.5 10 25 8 10C20 8 29 15 32 27C35 15 44 8 56 10C54 25 45 33.5 34 30.5C35.5 36.5 35.5 46 36 58Z"
+    fill="#4ade80"
+    stroke="#dcfce7"
+    stroke-width="3"
+    stroke-linejoin="round"
+  />
+</svg>

@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { relative, resolve, sep } from 'node:path';
 import { runInNewContext } from 'node:vm';
-import { APP_PATH, CACHE_PREFIX, resolveWebAssetsRoot } from './distribution.mts';
+import { APP_PATH, CACHE_PREFIX, IDE_STATIC_FILES, resolveWebAssetsRoot } from './distribution.mts';
 
 const ROOT = resolve(import.meta.dirname, '..');
 const DIST = resolve(ROOT, 'build/web-page');
@@ -163,6 +163,22 @@ for (const htmlPath of ['ide/index.html', 'web/index.html']) {
     assert(listed.includes(target), `HTML参照先が公開物にありません: ${match[1]}`);
   }
 }
+
+const ideManifestPath = resolve(DIST, 'ide/manifest.webmanifest');
+const ideManifest = JSON.parse(readFileSync(ideManifestPath, 'utf8')) as {
+  icons: Array<{ src: string; sizes: string; type: string }>;
+};
+const expectedStatic = IDE_STATIC_FILES.map((path) => `ide/${path}`);
+for (const path of expectedStatic) {
+  assert(listed.includes(path) && statSync(resolve(DIST, path)).size > 0, `IDE静的資産が公開物にありません: ${path}`);
+}
+for (const icon of ideManifest.icons) {
+  assert(icon.src.startsWith(APP_PATH), `manifest iconがアプリscope外です: ${icon.src}`);
+  const path = icon.src.slice(APP_PATH.length);
+  assert(listed.includes(path) && statSync(resolve(DIST, path)).size > 0, `manifest iconが公開物にありません: ${icon.src}`);
+}
+assert(ideManifest.icons.some((icon) => icon.sizes === '192x192' && icon.type === 'image/png'), 'manifestに192px PNGがありません');
+assert(ideManifest.icons.some((icon) => icon.sizes === '512x512' && icon.type === 'image/png'), 'manifestに512px PNGがありません');
 
 /**
  * ブラウザのpreload実装そのものではなく、IDEが早期外部要求を持たず、文書確定後の
