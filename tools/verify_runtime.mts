@@ -15,6 +15,7 @@
  * 前提: tools/build_shared.sh を1回通してあること（build/shared_obj/*.elf を見る）。
  */
 import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { deflateRawSync, inflateRawSync } from 'node:zlib';
 import { Builder } from './driver/builder.mts';
@@ -302,6 +303,37 @@ if (![bootBin, runtimeBin, builtXdf, builtPayload].every(existsSync)) {
   check(normalizeTags(['ai', 'ai']).length === 1, '同じタグを2回書いても1つになる');
   const tagCost = tagged.length - noTag.length;
   console.log(`  タグ2件ぶんのURL増加: ${tagCost} 文字`);
+}
+
+/* ---- 6b. 配布するランタイムが、利用者コードに依存しないか ----------
+ * 受け取る側は deploy/runtime/v1/ の runtime.bin と boot.bin だけを持つ。
+ * **利用者コードが違ってもランタイムが同じ**でなければ、この前提が崩れて
+ * 「自分の環境では動くのに、共有リンクでは動かない」が起きる。 */
+{
+  const released = resolve(ROOT, `deploy/runtime/v${layout.get('ABI_VERSION')}`);
+  if (!existsSync(resolve(released, 'manifest.json'))) {
+    check(false, 'deploy/runtime が無い。先に tools/build_runtime_release.mts を通すこと');
+  } else {
+    const manifest = JSON.parse(readFileSync(resolve(released, 'manifest.json'), 'utf8'));
+    const releasedRuntime = new Uint8Array(readFileSync(resolve(released, 'runtime.bin')));
+    const releasedBoot = new Uint8Array(readFileSync(resolve(released, 'boot.bin')));
+    const digest = (bytes: Uint8Array) => createHash('sha256').update(bytes).digest('hex');
+    check(digest(releasedRuntime) === manifest.runtime.sha256 && releasedRuntime.length === manifest.runtime.size,
+      'ランタイム配布物が manifest と一致する');
+    check(digest(releasedBoot) === manifest.boot.sha256, 'ブートセクタ配布物が manifest と一致する');
+    check(manifest.abiVersion === layout.get('ABI_VERSION'), `manifest の ABI 版が配置と一致する (v${manifest.abiVersion})`);
+
+    /* 中身の無いソースでビルドした配布物と、ブロック崩しでビルドしたランタイムが
+     * 一致すること。ここが割れたら、配布したランタイムでは動かない作品ができる。 */
+    const shellRuntimeBytes = new Uint8Array(readFileSync(resolve(ROOT, 'build/shared_obj/runtime.bin')));
+    check(releasedRuntime.length === shellRuntimeBytes.length
+      && releasedRuntime.every((byte, index) => byte === shellRuntimeBytes[index]),
+      '配布ランタイムが、別の利用者コードでビルドしたものと一致する（利用者に依存しない）');
+    const shellBootBytes = new Uint8Array(readFileSync(resolve(ROOT, 'build/shared_obj/boot.bin')));
+    check(releasedBoot.length === shellBootBytes.length
+      && releasedBoot.every((byte, index) => byte === shellBootBytes[index]),
+      '配布ブートセクタが、別の利用者コードでビルドしたものと一致する');
+  }
 }
 
 /* ---- 7. 駆動層（ブラウザと共用）の共有ビルドが、シェル版と一致するか ----

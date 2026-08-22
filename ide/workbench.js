@@ -11,7 +11,11 @@ import { createX68kAdapter } from './x68k-adapter.mjs';
 import { createRecoveryController } from './recovery-controller.mjs';
 import { renderRunToggle } from './run-toggle.mjs';
 import { ScreenshotStore, captureCanvas } from './screenshot-store.mjs';
-import { SHARE_KEYS, SHARE_TAGS, SHARE_URL_SAFE_LIMIT, encodeShareFragment, encodeSourceText } from '../tools/share_v1.mts';
+import {
+  DEFAULT_DISK, SHARE_TAGS, SHARE_URL_SAFE_LIMIT, assembleXdf, decodeShareFragment,
+  decodeSourceText, encodeShareFragment, encodeSourceText, packUserPayload, unpackUserPayload,
+} from '../tools/share_v1.mts';
+import { hasShareFragment, nextSharedPath, tagSummaryText } from './share-receive.mjs';
 import { offlineStartupMode, offlineStatusPresentation } from './offline-support.mjs';
 import {
   MAX_SPLIT_RATIO, MIN_SPLIT_RATIO, clampSplitRatio, containedContentSize,
@@ -948,11 +952,94 @@ nodes.shareBuild.addEventListener('click', buildShareLinks);
 nodes.shareBinaryCopy.addEventListener('click', () => copyShareUrl(nodes.shareBinaryUrl));
 nodes.shareSourceCopy.addEventListener('click', () => copyShareUrl(nodes.shareSourceUrl));
 
+/* ============================================================
+ * 共有リンクを受け取る
+ *
+ * `#s1=` ソース → エディタに開く。**既存のファイルは上書きしない**（名前が
+ *                 ぶつかったら連番で逃がす）。受け取った人の作業を壊さない
+ * `#p1=` バイナリ → 配布ランタイム(deploy/runtime/v1)と合体して実行する。
+ *                 **コンパイラは要らない**ので、ツールチェーンの20MBを
+ *                 読み込まずに動き出せる
+ *
+ * 読み終えたらフラグメントを消す。リロードのたびに同じものが開き直すのと、
+ * 受け取った人が自分のリンクだと勘違いするのを防ぐ。
+ * ============================================================ */
+async function inflateRawBytes(bytes) {
+  const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream('deflate-raw'));
+  return new Uint8Array(await new Response(stream).arrayBuffer());
+}
+
+async function receiveSharedSource(bytes, tags) {
+  const source = decodeSourceText(bytes);
+  const path = nextSharedPath((await projectFS.list()).map((record) => record.path));
+  await projectFS.write(path, source);
+  await refreshFileTree();
+  await openFile('project', path);
+  return `共有されたコードを ${path} として開きました${tagSummaryText(tags)}`;
+}
+
+async function receiveSharedBinary(bytes, tags) {
+  const manifestUrl = new URL('../deploy/runtime/v1/manifest.json', import.meta.url);
+  const manifest = await (await fetch(manifestUrl)).json();
+  const fetchBin = async (name) => new Uint8Array(
+    await (await fetch(new URL(`../deploy/runtime/v1/${name}`, import.meta.url))).arrayBuffer(),
+  );
+  const [runtime, boot] = await Promise.all([fetchBin('runtime.bin'), fetchBin('boot.bin')]);
+  const layout = { ...manifest.layout, ...DEFAULT_DISK };
+  // ヘッダ検査はここで通す（版違いや壊れたURLをエミュレータへ渡さない）。
+  const user = unpackUserPayload(bytes, layout);
+  const { image } = assembleXdf(boot, runtime, packUserPayload(user, layout), layout);
+  // 実行は initialize の最後に回す（ここで走らせると、後続の初期化に
+  // 状態表示を上書きされるうえ、エミュレータの準備順とも噛み合わない）。
+  return {
+    message: `共有された作品を実行します${tagSummaryText(tags)}。ソースは含まれていません`,
+    xdf: image,
+  };
+}
+
+/**
+ * 戻り値:
+ *   handled      共有リンクを処理した（起動時のメッセージで上書きしない）
+ *   openedEditor エディタに開いた（「前回開いていたファイル」の復元をしない）
+ */
+async function receiveSharedLink() {
+  const none = { handled: false, openedEditor: false };
+  const fragment = location.hash;
+  if (!hasShareFragment(fragment)) return none;
+  // 読んだら消す。リロードで開き直さないため、また受け取った人が自分のリンクだと
+  // 勘違いしないため。**消せなくても処理は続ける**（履歴APIが使えない環境が
+  // あり、そこで止めると共有リンクごと開けなくなる）。
+  try {
+    history.replaceState(null, '', location.pathname + location.search);
+  } catch (error) {
+    console.warn('共有リンクのフラグメントを消せませんでした', error);
+  }
+  try {
+    const { kind, bytes, tags } = await decodeShareFragment(fragment, inflateRawBytes);
+    if (kind === 'source') {
+      return { handled: true, openedEditor: true, message: await receiveSharedSource(bytes, tags) };
+    }
+    // バイナリにはソースが無い。エディタは通常どおり開いて、受け取った作品は
+    // 実行画面で動かす（受け取った人がすぐ自分のコードを書き始められるように）。
+    const { message, xdf } = await receiveSharedBinary(bytes, tags);
+    return { handled: true, openedEditor: false, message, xdf };
+  } catch (error) {
+    nodes.buildStatus.classList.add('error');
+    console.error('共有リンクの展開に失敗', error);
+    return { handled: true, openedEditor: false, error: `共有リンクを開けませんでした: ${error.message}` };
+  }
+}
+
 async function initialize() {
   await projectFS.open();
   await refreshFileTree();
-  let restored = false;
+  // 共有リンクの処理を先に通す。**受け取ったファイルを開いたときは、
+  // 「前回開いていたファイル」の復元をしない**（せっかく開いたものが
+  // すぐ上書きされてしまう）。
+  const shared = await receiveSharedLink();
+  let restored = shared.openedEditor;
   try {
+    if (restored) throw new Error('共有リンクを開いたので前回の続きは復元しない');
     const value = localStorage.getItem(LAST_PATH_KEY);
     const separator = value?.indexOf(':') ?? -1;
     if (separator > 0) {
@@ -968,7 +1055,21 @@ async function initialize() {
   await adapter.initialize();
   /* 前に撮ったスクリーンショットはブラウザ内に残っているので起動時に出す。 */
   await renderShots();
-  nodes.buildStatus.textContent = '編集とブラウザ内保存を利用できます';
+  // 共有リンクの案内は**初期化がすべて終わってから**出す。途中で出すと、
+  // ファイルを開く処理やビルド状態の描画に上書きされて消える。
+  if (shared.error) {
+    nodes.buildStatus.classList.add('error');
+    nodes.buildStatus.textContent = shared.error;
+  } else if (shared.message) {
+    nodes.buildStatus.textContent = shared.message;
+  } else {
+    nodes.buildStatus.textContent = '編集とブラウザ内保存を利用できます';
+  }
+  // 受け取った作品の実行も、エミュレータの準備が済んでから。
+  if (shared.xdf) {
+    setEmulatorRunning(true);
+    await adapter.run({ xdf: shared.xdf });
+  }
   return true;
 }
 

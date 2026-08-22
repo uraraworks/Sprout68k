@@ -16,13 +16,14 @@ import { verifyBrowserUi } from './browser-ui-verifier.mjs';
 import { offlineStartupMode, offlineStatusPresentation } from './offline-support.mjs';
 import { SCREENSHOT_LIMIT, nextScreenshotName, pruneScreenshots, screenshotScale } from './screenshot-store.mjs';
 import { UNKNOWN_BUILD_DATE, formatBuildDate, formatBuildStamp } from '../tools/build-stamp.mjs';
+import { hasShareFragment, nextSharedPath, tagSummaryText } from './share-receive.mjs';
 
 const root = dirname(fileURLToPath(import.meta.url));
 const forbidden = ['pc' + '98', 'n' + 'p2', 'pc' + '-98', 'free' + 'dos', 'na' + 'sm', 'smaller' + 'c', '98' + '01', '98' + '21'];
 const required = [
   'index.html', 'help.html', 'reference.html', 'api/reference.json', 'workbench.css', 'workbench.js', 'project-fs.mjs', 'source-view.mjs',
   'sample-manifest.mjs', 'split-layout.mjs', 'run-toggle.mjs', 'offline-support.mjs', 'browser-ui-verifier.mjs', 'x68k-adapter.mjs', 'samples/hello.c', 'samples/keyboard-input.c',
-  'recovery-controller.mjs', 'screenshot-store.mjs',
+  'recovery-controller.mjs', 'screenshot-store.mjs', 'share-receive.mjs',
   'px68k-runtime.ts', 'px68k/libretro-host.ts', 'px68k/text-screen.ts',
   'px68k/keyboard.ts', 'px68k/key-repeat.ts', 'px68k/keyboard-input.ts',
   'core/px68k_libretro.js', 'core/px68k_libretro.wasm',
@@ -658,6 +659,34 @@ for (const attribution of ['px68k-libretro', 'Workbench' + 'N' + 'P2', 'CodeMirr
 }
 if (!html.includes('./samples/hello.c') && !(await readFile(resolve(root, 'sample-manifest.mjs'), 'utf8')).includes('./samples/hello.c')) {
   throw new Error('C サンプル参照がありません');
+}
+
+/* --- 共有リンクの受け取り ---
+ * いちばん怖いのは、受け取った人の作業を壊すこと。**既存のファイルは
+ * 絶対に上書きしない**（名前がぶつかったら連番で逃がす）。 */
+{
+  if (nextSharedPath([]) !== 'shared.c') throw new Error('最初の受け取り先が shared.c でない');
+  if (nextSharedPath(['shared.c']) !== 'shared-2.c') throw new Error('ぶつかったときに逃げていない');
+  if (nextSharedPath(['shared.c', 'shared-2.c']) !== 'shared-3.c') throw new Error('2回目の衝突で逃げていない');
+  /* 途中が空いていれば使う（無限に増えない） */
+  if (nextSharedPath(['shared.c', 'shared-3.c']) !== 'shared-2.c') throw new Error('空いている名前を使っていない');
+  /* 陽性対照: 既存の名前を返してしまっていないか */
+  const existing = ['shared.c', 'shared-2.c', 'shared-3.c'];
+  if (existing.includes(nextSharedPath(existing))) throw new Error('既存のファイルを上書きする名前を返した');
+
+  /* 共有データが無いフラグメントには反応しない（普通のアンカーリンクを壊さない） */
+  for (const fragment of ['', '#', '#section', '#p2=abc', '#q1=abc', undefined, null]) {
+    if (hasShareFragment(fragment)) throw new Error(`共有でないフラグメントに反応した: ${fragment}`);
+  }
+  for (const fragment of ['#p1=abc', '#s1=abc', '#s1=abc&t=ai', 'p1=abc']) {
+    if (!hasShareFragment(fragment)) throw new Error(`共有フラグメントを見落とした: ${fragment}`);
+  }
+
+  /* 知らないタグは表示しない（語彙を増やす前の版でも壊れない） */
+  if (tagSummaryText(['ai']) !== '（AIを使って作った）') throw new Error(`タグ表示が違う: ${tagSummaryText(['ai'])}`);
+  if (tagSummaryText(['zzz']) !== '') throw new Error('知らないタグを表示している');
+  if (tagSummaryText([]) !== '') throw new Error('タグ無しで余計なものを出している');
+  console.log('verify-ide: share receive PASS (上書き回避, フラグメント判定, 未知タグの無視)');
 }
 
 /* --- フッタのビルド表記 ---

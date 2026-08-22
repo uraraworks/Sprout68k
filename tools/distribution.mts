@@ -18,6 +18,11 @@ export const IDE_STATIC_FILES = [
 export const ROOT_STATIC_FILES = [
   'CONTRIBUTING.md',
   'docs/IDEキーボード入力_20260822.md',
+  // 共有リンクの受け取りに使うランタイム。**受け取る側にコンパイラは要らない。**
+  // 過去の版は消さないこと（古い共有リンクが動かなくなる）。
+  'deploy/runtime/v1/runtime.bin',
+  'deploy/runtime/v1/boot.bin',
+  'deploy/runtime/v1/manifest.json',
 ] as const;
 
 interface AssetEntry { path: string; size: number; sha256: string }
