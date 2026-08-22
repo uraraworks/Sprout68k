@@ -175,7 +175,44 @@ export const SHARE_KEYS: Record<ShareKind, string> = { binary: 'p1', source: 's1
 /** X に貼っても「リンク」として扱われる安全圏（実測値。超えると生の文字列になる）。 */
 export const SHARE_URL_SAFE_LIMIT = 4000;
 
-export async function encodeShareFragment(kind: ShareKind, bytes: Uint8Array, deflate: Deflate): Promise<string> {
+/* ------------------------------------------------------------
+ * タグ（作者の自己申告）
+ *
+ * `#p1=...&t=ai,beg` のように、データ部とは別のパラメータで運ぶ。
+ *
+ * **語彙は固定する。** 自由入力にすると表記ゆれ(AI / ai / Ａｉ)で集計できなくなり、
+ * URLも伸びる。そのかわり**知らないタグは黙って捨てる**ので、後から語彙を
+ * 増やしても、古い受信側が壊れない（増やす側だけを直せばよい）。
+ *
+ * **タグは検証できない自己申告**であることを忘れないこと。付けない人は付けない。
+ * ただし ai だけは、AIエージェント向けのツールが常に付けて返すことで、
+ * 人間の付け忘れを構造的になくせる。
+ * ------------------------------------------------------------ */
+
+/** 第一版の語彙。**この並び順が出力順**（同じタグの組み合わせなら常に同じURLになる）。 */
+export const SHARE_TAGS = [
+  { code: 'ai', label: 'AIを使って作った' },
+  { code: 'beg', label: 'はじめて作った' },
+  { code: 'mod', label: '誰かの作品を改造した' },
+] as const;
+
+export type ShareTag = typeof SHARE_TAGS[number]['code'];
+
+const TAG_KEY = 't';
+
+/** 語彙にあるものだけを、語彙の順に並べて返す（重複と未知は捨てる）。 */
+export function normalizeTags(tags: readonly string[]): ShareTag[] {
+  const given = new Set(tags);
+  return SHARE_TAGS.map((tag) => tag.code).filter((code) => given.has(code)) as ShareTag[];
+}
+
+export function tagLabel(code: string): string | null {
+  return SHARE_TAGS.find((tag) => tag.code === code)?.label ?? null;
+}
+
+export async function encodeShareFragment(
+  kind: ShareKind, bytes: Uint8Array, deflate: Deflate, tags: readonly string[] = [],
+): Promise<string> {
   const compressed = new Uint8Array(await deflate(bytes));
   /* 縮まなかったら無圧縮で載せる（短いプログラムでは圧縮が増やすことがある）。 */
   const useCompressed = compressed.length < bytes.length;
@@ -183,13 +220,17 @@ export async function encodeShareFragment(kind: ShareKind, bytes: Uint8Array, de
   const data = new Uint8Array(1 + body.length);
   data[0] = useCompressed ? SHARE_METHOD_DEFLATE_RAW : SHARE_METHOD_STORED;
   data.set(body, 1);
-  return `${SHARE_KEYS[kind]}=${toBase64Url(data)}`;
+  const normalized = normalizeTags(tags);
+  const suffix = normalized.length > 0 ? `&${TAG_KEY}=${normalized.join(',')}` : '';
+  return `${SHARE_KEYS[kind]}=${toBase64Url(data)}${suffix}`;
 }
 
 export async function decodeShareFragment(
   fragment: string, inflate: Inflate,
-): Promise<{ kind: ShareKind; bytes: Uint8Array }> {
+): Promise<{ kind: ShareKind; bytes: Uint8Array; tags: ShareTag[] }> {
   const text = fragment.startsWith('#') ? fragment.slice(1) : fragment;
+  const tagMatch = new RegExp(`(?:^|&)${TAG_KEY}=([A-Za-z0-9_,-]*)`).exec(text);
+  const tags = normalizeTags(tagMatch ? tagMatch[1].split(',') : []);
   for (const [kind, key] of Object.entries(SHARE_KEYS) as [ShareKind, string][]) {
     /* 鍵は先頭に来る想定だが、他のパラメータと & で並んでいても拾えるようにする。 */
     const match = new RegExp(`(?:^|&)${key}=([A-Za-z0-9_-]+)`).exec(text);
@@ -198,8 +239,8 @@ export async function decodeShareFragment(
     if (data.length < 1) throw new Error('共有データが空です');
     const method = data[0];
     const body = data.subarray(1);
-    if (method === SHARE_METHOD_STORED) return { kind, bytes: new Uint8Array(body) };
-    if (method === SHARE_METHOD_DEFLATE_RAW) return { kind, bytes: new Uint8Array(await inflate(body)) };
+    if (method === SHARE_METHOD_STORED) return { kind, bytes: new Uint8Array(body), tags };
+    if (method === SHARE_METHOD_DEFLATE_RAW) return { kind, bytes: new Uint8Array(await inflate(body)), tags };
     throw new Error(`知らない圧縮方式です (0x${method.toString(16)})`);
   }
   throw new Error('共有データが見つかりません');

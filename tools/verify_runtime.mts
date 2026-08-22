@@ -22,7 +22,8 @@ import { ROOT, ABI_SLOT_SIZE, abiAddress, readAbi, readLayout,
          renderAbiLinkerScript, renderJumpTable, renderRuntimeLinkerScript, renderUserLinkerScript } from './build_abi.mts';
 import { DEFAULT_DISK, SHARE_KEYS, SHARE_METHOD_DEFLATE_RAW, SHARE_METHOD_STORED, SHARE_URL_SAFE_LIMIT, USER_HEADER_SIZE, assembleXdf,
          decodeShareFragment, decodeSourceText, encodeShareFragment, encodeSourceText,
-         packUserPayload, unpackUserPayload, toBase64Url, fromBase64Url } from './share_v1.mts';
+         normalizeTags, packUserPayload, tagLabel, unpackUserPayload, toBase64Url, fromBase64Url,
+         SHARE_TAGS } from './share_v1.mts';
 
 const NM = process.env.M68K_NM ?? `${process.env.HOME}/x68kdev-toolchain/bin/m68k-elf-nm`;
 const RUNTIME_ELF = resolve(ROOT, 'build/shared_obj/runtime.elf');
@@ -247,6 +248,34 @@ if (![bootBin, runtimeBin, builtXdf, builtPayload].every(existsSync)) {
   rejected = false;
   try { await decodeShareFragment(`${SHARE_KEYS.source}=${toBase64Url(new Uint8Array([0x7f, 1, 2, 3]))}`, inflate); } catch { rejected = true; }
   check(rejected, '故障注入: 知らない圧縮方式(0x7f)を弾く');
+
+  /* ---- タグ（作者の自己申告） ---- */
+  const tagged = await encodeShareFragment('binary', payloadBytes, deflate, ['mod', 'ai']);
+  const taggedBack = await decodeShareFragment(`#${tagged}`, inflate);
+  check(taggedBack.tags.join(',') === 'ai,mod', `タグが語彙の順に正規化されて戻る (${taggedBack.tags.join(',')})`);
+  check(taggedBack.bytes.length === payloadBytes.length, 'タグを付けてもデータ部は変わらない');
+
+  /* 知らないタグは黙って捨てる。これがあるので、後から語彙を増やしても
+   * 古い受信側が壊れない（＝増やす側だけ直せばよい）。 */
+  const withUnknown = await decodeShareFragment(`${SHARE_KEYS.binary}=${tagged.split('=')[1].split('&')[0]}&t=ai,zzz,beg`, inflate);
+  check(withUnknown.tags.join(',') === 'ai,beg', `知らないタグを捨てて残りを活かす (${withUnknown.tags.join(',')})`);
+
+  /* 同じ組み合わせなら常に同じURLになること（順序で別物にならない） */
+  const orderA = await encodeShareFragment('binary', payloadBytes, deflate, ['beg', 'ai']);
+  const orderB = await encodeShareFragment('binary', payloadBytes, deflate, ['ai', 'beg']);
+  check(orderA === orderB, '同じタグの組み合わせなら並べ方が違っても同じURLになる');
+
+  /* タグ無しのときは余計なものを足さない（短いほうが良い） */
+  const noTag = await encodeShareFragment('binary', payloadBytes, deflate, []);
+  check(!noTag.includes('&'), 'タグが無ければURLに何も足さない');
+  check((await decodeShareFragment(noTag, inflate)).tags.length === 0, 'タグ無しは空で戻る');
+
+  /* 語彙は表示できること（受信側でバッジにする） */
+  check(SHARE_TAGS.every((tag) => tagLabel(tag.code)), '全タグに表示名がある');
+  check(tagLabel('zzz') === null, '知らないタグには表示名が無い');
+  check(normalizeTags(['ai', 'ai']).length === 1, '同じタグを2回書いても1つになる');
+  const tagCost = tagged.length - noTag.length;
+  console.log(`  タグ2件ぶんのURL増加: ${tagCost} 文字`);
 }
 
 console.log(`\nABI v${layout.get('ABI_VERSION')}: ${names.length} 関数 / スロット ${ABI_SLOT_SIZE} バイト`);
