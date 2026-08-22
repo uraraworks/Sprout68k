@@ -16,11 +16,13 @@
  */
 import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
-import { gunzipSync, gzipSync } from 'node:zlib';
+import { deflateRawSync, inflateRawSync } from 'node:zlib';
 import { resolve } from 'node:path';
 import { ROOT, ABI_SLOT_SIZE, abiAddress, readAbi, readLayout,
          renderAbiLinkerScript, renderJumpTable, renderRuntimeLinkerScript, renderUserLinkerScript } from './build_abi.mts';
-import { DEFAULT_DISK, USER_HEADER_SIZE, assembleXdf, packUserPayload, unpackUserPayload, toBase64Url, fromBase64Url } from './share_v1.mts';
+import { DEFAULT_DISK, SHARE_KEYS, SHARE_METHOD_DEFLATE_RAW, SHARE_METHOD_STORED, SHARE_URL_SAFE_LIMIT, USER_HEADER_SIZE, assembleXdf,
+         decodeShareFragment, decodeSourceText, encodeShareFragment, encodeSourceText,
+         packUserPayload, unpackUserPayload, toBase64Url, fromBase64Url } from './share_v1.mts';
 
 const NM = process.env.M68K_NM ?? `${process.env.HOME}/x68kdev-toolchain/bin/m68k-elf-nm`;
 const RUNTIME_ELF = resolve(ROOT, 'build/shared_obj/runtime.elf');
@@ -105,6 +107,10 @@ if (!existsSync(RUNTIME_ELF) || !existsSync(USER_ELF)) {
     `利用者コードが利用者領域に収まる (末尾=0x${userEnd.toString(16)} <= USER_LIMIT=0x${layout.get('USER_LIMIT')!.toString(16)})`);
 }
 
+/* Node 側の圧縮実装。ブラウザは CompressionStream('deflate-raw') を使う。 */
+const deflate = (bytes: Uint8Array) => new Uint8Array(deflateRawSync(bytes, { level: 9 }));
+const inflate = (bytes: Uint8Array) => new Uint8Array(inflateRawSync(bytes));
+
 /* ---- 4. ペイロードの往復 ------------------------------------------ */
 const shareLayout = {
   ABI_VERSION: layout.get('ABI_VERSION')!, RUNTIME_BASE: layout.get('RUNTIME_BASE')!,
@@ -158,14 +164,15 @@ if (![bootBin, runtimeBin, builtXdf, builtPayload].every(existsSync)) {
   check(false, 'build/shared_breakout.xdf 等が無い。先に tools/build_shared.sh を通すこと');
 } else {
   const payloadBytes = new Uint8Array(readFileSync(builtPayload));
-  /* 送信側と同じ道: gzip → base64url */
-  const url = toBase64Url(new Uint8Array(gzipSync(payloadBytes, { level: 9 })));
+  /* 送信側と同じ道を通す（鍵と圧縮方式の選択まで含めて encodeShareFragment に任せる）。 */
+  const fragment = await encodeShareFragment('binary', payloadBytes, deflate);
+  const url = fragment.slice(SHARE_KEYS.binary.length + 1);
   console.log(`  共有URLのデータ部: ${url.length} 文字 (X の安全圏 4000 文字の ${(url.length / 40).toFixed(0)}%)`);
   check(url.length <= 4000, `共有URLがXの安全圏(4000文字)に収まる (${url.length} 文字)`);
   check(/^[A-Za-z0-9_-]+$/.test(url), '共有URLのデータ部がURLで安全な文字だけでできている');
 
   /* 受信側の道: base64url復号 → gunzip → 検査 → 組み立て */
-  const received = unpackUserPayload(new Uint8Array(gunzipSync(fromBase64Url(url))), shareLayout);
+  const received = unpackUserPayload((await decodeShareFragment(fragment, inflate)).bytes, shareLayout);
   const rebuilt = assembleXdf(
     new Uint8Array(readFileSync(bootBin)), new Uint8Array(readFileSync(runtimeBin)),
     packUserPayload(received, shareLayout), shareLayout,
@@ -179,7 +186,8 @@ if (![bootBin, runtimeBin, builtXdf, builtPayload].every(existsSync)) {
   check(brokenUrl !== url, '故障注入: URLを実際に1文字書き換えた（陽性対照）');
   let detected = false;
   try {
-    const broken = unpackUserPayload(new Uint8Array(gunzipSync(fromBase64Url(brokenUrl))), shareLayout);
+    const broken = unpackUserPayload(
+      (await decodeShareFragment(`${SHARE_KEYS.binary}=${brokenUrl}`, inflate)).bytes, shareLayout);
     const image = assembleXdf(
       new Uint8Array(readFileSync(bootBin)), new Uint8Array(readFileSync(runtimeBin)),
       packUserPayload(broken, shareLayout), shareLayout,
@@ -187,6 +195,58 @@ if (![bootBin, runtimeBin, builtXdf, builtPayload].every(existsSync)) {
     detected = !image.every((byte, index) => byte === built[index]);
   } catch { detected = true; }
   check(detected, '故障注入: URLを1文字書き換えると復元結果が変わる（または弾かれる）');
+}
+
+/* ---- 6. 共有フラグメントの2種類（バイナリ / ソース） --------------- */
+{
+  /* ソース共有: 日本語コメント入りのソースがそのまま戻ること。
+   * ソースはUTF-8で載せるので、ここで壊れると学習者のコメントが化ける。 */
+  const source = readFileSync(resolve(ROOT, 'samples/breakout/block.c'), 'utf8');
+  const fragment = await encodeShareFragment('source', encodeSourceText(source), deflate);
+  const decoded = await decodeShareFragment(`#${fragment}`, inflate);
+  check(decoded.kind === 'source', `ソースのフラグメントが source として判別される (鍵=${SHARE_KEYS.source})`);
+  check(decodeSourceText(decoded.bytes) === source, 'ソース共有が1文字も変わらずに戻る');
+  const length = fragment.length - SHARE_KEYS.source.length - 1;
+  console.log(`  ソース共有のデータ部: ${length} 文字 (安全圏 ${SHARE_URL_SAFE_LIMIT} の ${(length / SHARE_URL_SAFE_LIMIT * 100).toFixed(0)}%)`);
+  check(length <= SHARE_URL_SAFE_LIMIT, `ブロック崩しのソース共有が安全圏に収まる (${length} 文字)`);
+
+  /* 圧縮が効かない小さいソースでは無圧縮が選ばれ、それでも往復すること。
+   * 「縮まなければ無圧縮」の分岐が実際に踏まれることを、方式バイトで確かめる。 */
+  const tiny = 'x';
+  const tinyFragment = await encodeShareFragment('source', encodeSourceText(tiny), deflate);
+  const tinyMethod = fromBase64Url(tinyFragment.split('=')[1])[0];
+  check(tinyMethod === SHARE_METHOD_STORED, `圧縮が効かない入力では無圧縮が選ばれる (方式=0x${tinyMethod.toString(16)})`);
+  check(decodeSourceText((await decodeShareFragment(tinyFragment, inflate)).bytes) === tiny, '無圧縮のまま往復する');
+  const bigMethod = fromBase64Url(fragment.split('=')[1])[0];
+  check(bigMethod === SHARE_METHOD_DEFLATE_RAW, `よく縮む入力では deflate-raw が選ばれる (方式=0x${bigMethod.toString(16)})`);
+
+  /* 日本語を含む短いソースでも往復すること（陽性対照として別の入力でも見る） */
+  const japanese = '#include "x68.h"\n\n// 星をばらまく（日本語コメント）\nvoid main(void) { x68_screen_open(); }\n';
+  const roundTrip = decodeSourceText((await decodeShareFragment(
+    await encodeShareFragment('source', encodeSourceText(japanese), deflate), inflate)).bytes);
+  check(roundTrip === japanese, '日本語コメント入りの短いソースも往復する');
+
+  /* バイナリ共有がソースと取り違えられないこと */
+  const payloadBytes = new Uint8Array(readFileSync(resolve(ROOT, 'build/shared_breakout.payload')));
+  const binaryFragment = await encodeShareFragment('binary', payloadBytes, deflate);
+  const binaryDecoded = await decodeShareFragment(`#${binaryFragment}`, inflate);
+  check(binaryDecoded.kind === 'binary', `バイナリのフラグメントが binary として判別される (鍵=${SHARE_KEYS.binary})`);
+  check(binaryDecoded.bytes.length === payloadBytes.length
+    && binaryDecoded.bytes.every((byte, index) => byte === payloadBytes[index]), 'バイナリ共有が元のバイト列に戻る');
+
+  /* 故障注入 */
+  let rejected = false;
+  try { await decodeShareFragment('#q9=AAAA', inflate); } catch { rejected = true; }
+  check(rejected, '故障注入: 知らない鍵のフラグメントを弾く');
+  rejected = false;
+  try { await decodeShareFragment('#', inflate); } catch { rejected = true; }
+  check(rejected, '故障注入: 空のフラグメントを弾く');
+  rejected = false;
+  try { decodeSourceText(new Uint8Array([0xff, 0xfe, 0xfd])); } catch { rejected = true; }
+  check(rejected, '故障注入: UTF-8として壊れたソースを弾く');
+  rejected = false;
+  try { await decodeShareFragment(`${SHARE_KEYS.source}=${toBase64Url(new Uint8Array([0x7f, 1, 2, 3]))}`, inflate); } catch { rejected = true; }
+  check(rejected, '故障注入: 知らない圧縮方式(0x7f)を弾く');
 }
 
 console.log(`\nABI v${layout.get('ABI_VERSION')}: ${names.length} 関数 / スロット ${ABI_SLOT_SIZE} バイト`);

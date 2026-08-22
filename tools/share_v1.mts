@@ -133,3 +133,83 @@ export function fromBase64Url(text: string): Uint8Array {
   for (let index = 0; index < binary.length; index++) bytes[index] = binary.charCodeAt(index);
   return bytes;
 }
+
+/* ============================================================
+ * 共有URLのフラグメント（第1版）
+ *
+ * 2種類あり、開く先が違う。**どちらもサーバへは送られない**
+ * （# 以降はブラウザの中だけに留まる）。
+ *
+ *   #p1=<データ>  利用者コードのバイナリ。WebX68k で「遊ぶ」ためのもの。
+ *                 受け手に要るのは px68k だけ。ただしランタイムのABI版に
+ *                 縛られるので、過去版のランタイムを捨ててはいけない。
+ *   #s1=<データ>  ソースそのもの。Sprout68k で「読む・直す」ためのもの。
+ *                 受け手にコンパイラ(20MB)が要るかわりに、**ABI版に縛られない**
+ *                 （受け取った側でコンパイルし直すため、ランタイムが
+ *                 v2, v3 と進んでも動き続ける）。
+ *
+ * データ部の中身は [方式1バイト] + [本体] を base64url にしたもの。
+ *   方式 0x00 … 無圧縮
+ *   方式 0x01 … deflate-raw
+ * gzip ではなく deflate-raw を使うのは、ヘッダ・フッタ・CRC の18バイトが
+ * 丸ごと不要になるため（実測: 全ケースで18バイト＝base64で24文字ぶん小さい）。
+ * 小さいプログラムは圧縮がほとんど効かない（実測: hello.c は 64→63バイト）ので、
+ * 縮まなければ無圧縮を選ぶ。**この判断は送信側が行い、方式バイトで受信側に伝える**
+ * （受信側が推測しなくて済むようにする）。
+ * 圧縮の実装はブラウザ(CompressionStream)とNode(zlib)で違うので、この層では
+ * 関数として受け取る（このファイルは受信側と共用するため node 組み込みを import しない）。
+ * ============================================================ */
+
+export type Deflate = (bytes: Uint8Array) => Promise<Uint8Array> | Uint8Array;
+export type Inflate = (bytes: Uint8Array) => Promise<Uint8Array> | Uint8Array;
+
+/** データ部の先頭1バイト。**一度公開したら値の意味を変えない**。 */
+export const SHARE_METHOD_STORED = 0x00;
+export const SHARE_METHOD_DEFLATE_RAW = 0x01;
+
+export type ShareKind = 'binary' | 'source';
+
+/** フラグメントの鍵。**一度公開したら変えない**（古いリンクが開けなくなる）。 */
+export const SHARE_KEYS: Record<ShareKind, string> = { binary: 'p1', source: 's1' };
+
+/** X に貼っても「リンク」として扱われる安全圏（実測値。超えると生の文字列になる）。 */
+export const SHARE_URL_SAFE_LIMIT = 4000;
+
+export async function encodeShareFragment(kind: ShareKind, bytes: Uint8Array, deflate: Deflate): Promise<string> {
+  const compressed = new Uint8Array(await deflate(bytes));
+  /* 縮まなかったら無圧縮で載せる（短いプログラムでは圧縮が増やすことがある）。 */
+  const useCompressed = compressed.length < bytes.length;
+  const body = useCompressed ? compressed : bytes;
+  const data = new Uint8Array(1 + body.length);
+  data[0] = useCompressed ? SHARE_METHOD_DEFLATE_RAW : SHARE_METHOD_STORED;
+  data.set(body, 1);
+  return `${SHARE_KEYS[kind]}=${toBase64Url(data)}`;
+}
+
+export async function decodeShareFragment(
+  fragment: string, inflate: Inflate,
+): Promise<{ kind: ShareKind; bytes: Uint8Array }> {
+  const text = fragment.startsWith('#') ? fragment.slice(1) : fragment;
+  for (const [kind, key] of Object.entries(SHARE_KEYS) as [ShareKind, string][]) {
+    /* 鍵は先頭に来る想定だが、他のパラメータと & で並んでいても拾えるようにする。 */
+    const match = new RegExp(`(?:^|&)${key}=([A-Za-z0-9_-]+)`).exec(text);
+    if (!match) continue;
+    const data = fromBase64Url(match[1]);
+    if (data.length < 1) throw new Error('共有データが空です');
+    const method = data[0];
+    const body = data.subarray(1);
+    if (method === SHARE_METHOD_STORED) return { kind, bytes: new Uint8Array(body) };
+    if (method === SHARE_METHOD_DEFLATE_RAW) return { kind, bytes: new Uint8Array(await inflate(body)) };
+    throw new Error(`知らない圧縮方式です (0x${method.toString(16)})`);
+  }
+  throw new Error('共有データが見つかりません');
+}
+
+/** ソースはUTF-8で載せる（日本語のコメントをそのまま運ぶため）。 */
+export function encodeSourceText(source: string): Uint8Array {
+  return new TextEncoder().encode(source);
+}
+
+export function decodeSourceText(bytes: Uint8Array): string {
+  return new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+}
