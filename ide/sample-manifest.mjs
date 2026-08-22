@@ -1,9 +1,11 @@
 import helloSource from './samples/hello.c?raw';
+import shapesSource from './samples/shapes.c?raw';
 import keyboardInputSource from './samples/keyboard-input.c?raw';
 import breakoutSource from '../samples/breakout/block.c?raw';
 
 export const SAMPLE_FILES = [
   { path: 'samples/hello.c', source: helloSource },
+  { path: 'samples/shapes.c', source: shapesSource },
   { path: 'samples/keyboard-input.c', source: keyboardInputSource },
   { path: 'samples/breakout/block.c', source: breakoutSource },
 ];

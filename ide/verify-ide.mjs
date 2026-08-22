@@ -22,7 +22,7 @@ const root = dirname(fileURLToPath(import.meta.url));
 const forbidden = ['pc' + '98', 'n' + 'p2', 'pc' + '-98', 'free' + 'dos', 'na' + 'sm', 'smaller' + 'c', '98' + '01', '98' + '21'];
 const required = [
   'index.html', 'help.html', 'reference.html', 'api/reference.json', 'workbench.css', 'workbench.js', 'project-fs.mjs', 'source-view.mjs',
-  'sample-manifest.mjs', 'split-layout.mjs', 'run-toggle.mjs', 'offline-support.mjs', 'browser-ui-verifier.mjs', 'x68k-adapter.mjs', 'samples/hello.c', 'samples/keyboard-input.c',
+  'sample-manifest.mjs', 'samples/shapes.c', 'split-layout.mjs', 'run-toggle.mjs', 'offline-support.mjs', 'browser-ui-verifier.mjs', 'x68k-adapter.mjs', 'samples/hello.c', 'samples/keyboard-input.c',
   'recovery-controller.mjs', 'screenshot-store.mjs', 'share-receive.mjs',
   'px68k-runtime.ts', 'px68k/libretro-host.ts', 'px68k/text-screen.ts',
   'px68k/keyboard.ts', 'px68k/key-repeat.ts', 'px68k/keyboard-input.ts',
@@ -642,6 +642,7 @@ for (const demonstratedKey of ['SPACE', 'ENTER', 'ESC', 'A', '1']) {
 }
 const learnerSamples = [
   ['hello.c', await readFile(resolve(root, 'samples/hello.c'), 'utf8')],
+  ['shapes.c', await readFile(resolve(root, 'samples/shapes.c'), 'utf8')],
   ['keyboard-input.c', keyboardSample],
   ['block.c', await readFile(resolve(root, '../samples/breakout/block.c'), 'utf8')],
 ];
@@ -655,7 +656,7 @@ for (const [name, source] of learnerSamples) {
 for (const helper of ['ReadPressedKey', 'PrintKeyName', 'ResetBall']) {
   if (!learnerSamples.some(([, source]) => source.includes(`${helper}(`))) throw new Error(`Google流のサンプル内関数名がありません: ${helper}`);
 }
-console.log('verify-ide: sample style PASS (3 files, no tabs, <=80 chars, same-line braces, sample helpers CamelCase)');
+console.log(`verify-ide: sample style PASS (${learnerSamples.length} files, no tabs, <=80 chars, same-line braces, sample helpers CamelCase)`);
 for (const id of ['license-gpl', 'license-codemirror', 'license-ipl', 'license-cgrom']) {
   if (!html.includes(`id="${id}"`) || !workbench.includes(`#${id}`)) throw new Error(`ライセンス参照がありません: ${id}`);
 }
