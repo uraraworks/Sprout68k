@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Sprout68k 作例「ブロック崩し」の素のコード(samples/breakout/main.c)を、
+# Sprout68k 作例「ブロック崩し」の素のコード(samples/breakout/block.c)を、
 # 検証用パッチを一切当てずにそのままビルドする。
 #
 # tools/build_breakout.sh は verify/patches/breakout_verify.patch を当てた
@@ -15,6 +15,7 @@
 set -euo pipefail
 
 OUT_XDF="${1:?output.xdf が必要}"
+FAULT="${2:-}"
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "$HERE/.." && pwd)"
@@ -31,10 +32,16 @@ RAM_SIZE_DEC=$((RAM_SIZE))
 STACK_MARGIN=$((4096))
 
 CFLAGS=(-m68000 -Os -ffreestanding -nostdlib -fomit-frame-pointer -fno-builtin -Wall -I"$ROOT/lib/include")
+L0_FAULT_DEFINE=()
+case "$FAULT" in
+  "") ;;
+  crtc_768_wide) L0_FAULT_DEFINE=(-DX68_FAULT_CRTC_768_WIDE) ;;
+  *) echo "ERROR: 未知のfault指定: ${FAULT}" >&2; exit 1 ;;
+esac
 
 echo "== ライブラリ本体のビルド =="
 m68k-elf-gcc "${CFLAGS[@]}" -c "$ROOT/lib/src/x68_std.c" -o "$OBJDIR/x68_std.o"
-m68k-elf-gcc "${CFLAGS[@]}" -c "$ROOT/lib/src/x68_l0.c" -o "$OBJDIR/x68_l0.o"
+m68k-elf-gcc "${CFLAGS[@]}" ${L0_FAULT_DEFINE[@]+"${L0_FAULT_DEFINE[@]}"} -c "$ROOT/lib/src/x68_l0.c" -o "$OBJDIR/x68_l0.o"
 m68k-elf-gcc "${CFLAGS[@]}" -c "$ROOT/lib/src/x68_l1.c" -o "$OBJDIR/x68_l1.o"
 m68k-elf-gcc "${CFLAGS[@]}" -c "$ROOT/lib/src/x68_panic.c" -o "$OBJDIR/x68_panic.o"
 m68k-elf-gcc "${CFLAGS[@]}" -c "$ROOT/lib/src/x68_input.c" -o "$OBJDIR/x68_input.o"
@@ -43,7 +50,7 @@ m68k-elf-gcc -x assembler-with-cpp -m68000 -c "$ROOT/lib/asm/x68_gvram_copy.S" -
 m68k-elf-gcc -x assembler-with-cpp -m68020 -c "$ROOT/lib/asm/x68_panic.S" -o "$OBJDIR/x68_panic_asm.o"
 
 echo "== ブロック崩し本体(素のコード、C)のビルド =="
-m68k-elf-gcc "${CFLAGS[@]}" -c "$ROOT/samples/breakout/main.c" -o "$OBJDIR/main.o"
+m68k-elf-gcc "${CFLAGS[@]}" -c "$ROOT/samples/breakout/block.c" -o "$OBJDIR/main.o"
 m68k-elf-gcc -x assembler-with-cpp -m68000 -DSTACK_ADDR="${STACK_ADDR}" -c "$ROOT/stage_c/crt0/crt0.S" -o "$OBJDIR/crt0.o"
 
 LIBGCC="$(m68k-elf-gcc -m68000 -print-libgcc-file-name)"

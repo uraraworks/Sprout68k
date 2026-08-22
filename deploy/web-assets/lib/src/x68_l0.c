@@ -18,6 +18,8 @@ void x68_vsync_wait(void) {
     while (MFP_GPIP & 0x10) { }
 }
 
+#define CRTC_R02 (*(x68_vu16 *)0x00E80004)
+#define CRTC_R03 (*(x68_vu16 *)0x00E80006)
 #define CRTC_R20 (*(x68_vu8 *)0x00E80028)
 #define VC_R0    (*(x68_vu8 *)0x00E82401)
 #define VC_R2    (*(x68_vu8 *)0x00E82601)
@@ -33,6 +35,13 @@ void x68_vsync_wait(void) {
  * テキストが同時に見え、重なった位置ではテキストが手前になることが確定した
  * ため、この値を採用する(推測ではなく実測値)。 */
 void x68_gvram_mode_65536_1page(void) {
+#ifndef X68_FAULT_CRTC_768_WIDE
+    /* IPL のテキスト画面は表示区間が 96文字=768dot のままなので、512dot幅の
+     * GVRAM は px68k の走査時に x=512 で折り返され、右側へ再表示される。
+     * 左端(R02=28)を保ち、右端を 28+64=92 として表示幅を512dotに揃える。 */
+    CRTC_R02 = 28;
+    CRTC_R03 = 92;
+#endif
     CRTC_R20 = 0x08;
     VC_R0 = 0x03;
 #ifdef X68_FAULT_VC_TEXT_HIDDEN

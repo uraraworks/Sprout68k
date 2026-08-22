@@ -18,7 +18,7 @@ void main(void)
         else if (x68_key_down(X68_KEY_1)) current = 9;
 
         if (current != previous) {
-            if (current == 0) printf("\n[REL]");
+            if (current == 0) printf("\n[RELEASE]");
             else if (current == 1) printf("\n[LEFT]");
             else if (current == 2) printf("\n[UP]");
             else if (current == 3) printf("\n[RIGHT]");

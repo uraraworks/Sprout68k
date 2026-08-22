@@ -1,8 +1,8 @@
 /*
- * Sprout68k 作例「ブロック崩し」の素のコード(samples/breakout/main.c、検証用の
+ * Sprout68k 作例「ブロック崩し」の素のコード(samples/breakout/block.c、検証用の
  * パッチを一切当てていない版)がそれ単体でゲームとして成立することの実測。
  *
- * 背景: samples/breakout/main.c から検証用HOSTVARの書き出しと故障注入マクロを
+ * 背景: samples/breakout/block.c から検証用HOSTVARの書き出しと故障注入マクロを
  * 除去し、verify/patches/breakout_verify.patch を当てて検証用の版を組み立てる
  * 方式へ分離した(docs/作例breakout_20260819.md「作例と検証の分離」参照)。
  * 分離そのものが見本を壊していないかを確認するため、本スクリプトは
@@ -67,7 +67,7 @@ const CORE_OPTIONS_USED = {
   px68k_no_wait_mode: 'enabled',
 };
 
-/* --- samples/breakout/main.c と一致させること(ブロック領域の座標だけ、
+/* --- samples/breakout/block.c と一致させること(ブロック領域の座標だけ、
  * canvas上の走査に必要) --- */
 const BLOCK_ROWS = 4;
 const BLOCK_COLS = 8;
@@ -141,6 +141,31 @@ function countBlockInk(img: Image): number {
   return n;
 }
 
+function analyzeFullBlockBand(img: Image): { ink: number; rightInk: number; columnRuns: string; runCount: number } {
+  const columns: number[] = [];
+  let ink = 0;
+  let rightInk = 0;
+  for (let x = 0; x < img.width; x++) {
+    let columnInk = 0;
+    for (let y = BLOCK_REGION.y0; y < BLOCK_REGION.y1 && y < img.height; y++) {
+      if (distRgb(samplePixel(img, x, y), COLOR_BG) > PIXEL_DIST_THRESHOLD) columnInk++;
+    }
+    if (columnInk > 0) {
+      columns.push(x);
+      ink += columnInk;
+      if (x >= 512) rightInk += columnInk;
+    }
+  }
+  const runs: string[] = [];
+  for (let i = 0; i < columns.length;) {
+    let j = i;
+    while (j + 1 < columns.length && columns[j + 1] === columns[j] + 1) j++;
+    runs.push(`${columns[i]}-${columns[j]}`);
+    i = j + 1;
+  }
+  return { ink, rightInk, columnRuns: runs.join(','), runCount: runs.length };
+}
+
 /* BALL_REGION内で2枚のcanvasが異なる画素数を数える(ボールの移動を検出する
  * ための差分指標。パドルは入力していないので動かない前提)。 */
 function countDiffInBallRegion(a: Image, b: Image): number {
@@ -162,10 +187,17 @@ async function main(): Promise<void> {
   log(`WEBX68K_DIR=${WEBX68K_DIR}`);
 
   const imgPath = resolve(DEV_ROOT, 'build/breakout_plain.xdf');
-  execFileSync('bash', [resolve(DEV_ROOT, 'tools/build_breakout_plain.sh'), imgPath], { cwd: DEV_ROOT });
+  execFileSync('bash', [resolve(DEV_ROOT, 'tools/build_breakout_plain.sh'), imgPath, process.env.BREAKOUT_PLAIN_FAULT ?? ''], { cwd: DEV_ROOT });
   const diskBytes = new Uint8Array(readFileSync(imgPath));
 
-  const { LibretroHost } = await import(pathToFileURL(resolve(WEBX68K_DIR, 'src/libretro-host.ts')).href);
+  const { LibretroHost } = await import(pathToFileURL(resolve(DEV_ROOT, 'ide/px68k/libretro-host.ts')).href);
+  let videoMeta = { width: 0, height: 0, pitch: 0 };
+  const hostPrototype = LibretroHost.prototype as any;
+  const originalVideoRefresh = hostPrototype.handleVideoRefresh;
+  hostPrototype.handleVideoRefresh = function (data: number, width: number, height: number, pitch: number) {
+    if (data && width && height) videoMeta = { width, height, pitch };
+    return originalVideoRefresh.call(this, data, width, height, pitch);
+  };
   (globalThis as any).window = { PX68K: loadFactory() };
   let lastImg: Image | null = null;
   const context = {
@@ -203,6 +235,8 @@ async function main(): Promise<void> {
   let ballMoved = false;
   let ballMovedFrame = -1;
   let ballMovedDiff = 0;
+  let fullBandAtStart: ReturnType<typeof analyzeFullBlockBand> | null = null;
+  let framebufferWidthAtStart = 0;
 
   // ゲーム開始(ブロック32個がフル描画された状態)を検出できるだけの十分な
   // インク量の閾値。満杯時の理論値28672に対し、アンチエイリアシング等の
@@ -228,7 +262,11 @@ async function main(): Promise<void> {
         startInk = ink;
         minInkAfterStart = ink;
         minInkFrame = i;
-        log(`  game started: frame=${i} blockInk=${ink}(threshold=${FULL_BLOCKS_THRESHOLD})`);
+        const fullBand = analyzeFullBlockBand(img);
+        fullBandAtStart = fullBand;
+        framebufferWidthAtStart = img.width;
+        log(`  game started: frame=${i} blockInk=${ink}(threshold=${FULL_BLOCKS_THRESHOLD}) fullBandInk=${fullBand.ink} rightInk=${fullBand.rightInk} columns=${fullBand.columnRuns} framebuffer=${img.width}x${img.height} pitch=${videoMeta.pitch}`);
+        log(`  AV fps=${host.avInfo?.fps}`);
       }
       continue;
     }
@@ -264,6 +302,12 @@ async function main(): Promise<void> {
     fail(`ゲーム開始(ブロックのフル描画)を検出できなかった(FRAME_BUDGET=${FRAME_BUDGET}以内)`);
   } else {
     log(`RESULT: BREAKOUT_PLAIN_STARTED=true startFrame=${startFrame} startInk=${startInk}`);
+  }
+
+  if (started && (framebufferWidthAtStart !== 512 || fullBandAtStart?.rightInk !== 0 || fullBandAtStart?.ink !== BLOCK_REGION_MAX_PX || fullBandAtStart?.runCount !== BLOCK_COLS)) {
+    fail(`ブロック帯の重複/欠落を検出(framebufferWidth=${framebufferWidthAtStart} fullBandInk=${fullBandAtStart?.ink} expected=${BLOCK_REGION_MAX_PX} rightInk=${fullBandAtStart?.rightInk} columnRuns=${fullBandAtStart?.runCount})`);
+  } else if (started) {
+    log(`RESULT: BREAKOUT_BLOCK_LAYOUT_UNIQUE=true count=${BLOCK_ROWS * BLOCK_COLS} ink=${fullBandAtStart?.ink} rightInk=${fullBandAtStart?.rightInk}`);
   }
 
   if (started && !ballMoved) {

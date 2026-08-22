@@ -438,7 +438,7 @@ for (const focusContract of ['keyboard-active', 'キーボード入力: X68000�
   }
 }
 const sampleManifest = await readFile(resolve(root, 'sample-manifest.mjs'), 'utf8');
-if (!sampleManifest.includes('../samples/breakout/main.c?raw')) throw new Error('ブロック崩しサンプル参照がありません');
+if (!sampleManifest.includes('../samples/breakout/block.c?raw')) throw new Error('ブロック崩しサンプル参照がありません');
 const x68Header = await readFile(resolve(root, '../lib/include/x68.h'), 'utf8');
 for (const learnerKey of ['ENTER', 'ESC', ...'ABCDEFGHIJKLMNOPQRSTUVWXYZ', ...'0123456789']) {
   if (!x68Header.includes(`#define X68_KEY_${learnerKey} `)) {

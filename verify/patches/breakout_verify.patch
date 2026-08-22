@@ -1,28 +1,17 @@
---- a/samples/breakout/main.c
-+++ b/samples/breakout/main.c
-@@ -5,6 +5,21 @@
+--- a/samples/breakout/block.c
++++ b/samples/breakout/block.c
+@@ -5,6 +5,10 @@
   * (文字列リテラルを除く。docs/API設計_20260819.md「L1の設計原則」2)。
   *
-  * ループの形は素直に x68_cls() → 描画 → x68_screen_flip()。
+  * 最初にブロックを全部描き、以後は動いた部分だけを描き直す。
 + *
-+ * 【この版について】ここより下の「検証用HOSTVAR」「X68_FAULT_BREAKOUT_*」に
-+ * 関わる部分は、素の見本(samples/breakout/main.c)には存在しない。この版は
-+ * `verify/patches/breakout_verify.patch` を素のmain.cへ適用して生成される
-+ * 検証専用の版であり、`tools/build_breakout.sh`がビルド時に自動生成する
-+ * (直接編集しないこと。編集する場合はsamples/breakout/main.cを直し、
-+ * `tools/gen_breakout_verify_patch.sh`でパッチを再生成する。
-+ * docs/作例breakout_20260819.md「作例と検証の分離」参照)。
-+ *
-+ * ビルド時に以下のマクロを定義すると、検証用に意図的に壊した版を作れる
-+ * (故障注入。tools/build_breakout.sh の fault 引数が渡す。通常ビルドでは
-+ * 一切定義されない):
-+ *   X68_FAULT_BREAKOUT_PADDLE_IGNORE_INPUT  パドルがキー入力を無視する
-+ *   X68_FAULT_BREAKOUT_BLOCK_NO_HIT         ブロックの当たり判定が常に外れる
-+ *   X68_FAULT_BREAKOUT_BALL_FROZEN          ボールが静止したまま動かない
++ * 【検証専用版】HOSTVARとX68_FAULT_BREAKOUT_*は素の見本には含まれない。
++ * tools/build_breakout.sh が verify/patches/breakout_verify.patch を適用して
++ * 生成する。編集時は samples/breakout/block.c とこの差分を更新すること。
   */
  #include "x68.h"
  
-@@ -31,6 +46,30 @@
+@@ -31,6 +35,30 @@
  #define BLOCK_X0 8
  #define BLOCK_Y0 40
  
@@ -53,7 +42,7 @@
  static int block_alive[BLOCK_ROWS][BLOCK_COLS];
  static int block_color_idx[BLOCK_ROWS][BLOCK_COLS];
  
-@@ -49,6 +88,16 @@
+@@ -49,6 +77,16 @@
      ball_dy = -BALL_SPEED;
  }
  
@@ -70,15 +59,20 @@
  void main(void) {
      x68_screen_open();
      srand(1);
-@@ -76,16 +125,24 @@
- 
-     reset_ball();
+@@ -92,20 +130,28 @@
+     printf("SCORE:%d", score);
+     x68_screen_flip();
  
 +    HV3_PROGRESS = 0;
 +    HV3_LAST_DESTROYED = -1;
-+
 +    unsigned long loop_count = 0;
++
      for (;;) {
+         int old_paddle_x = paddle_x;
+         int old_ball_x = ball_x;
+         int old_ball_y = ball_y;
+-
++        /* 入力故障注入は検証専用版だけで有効。 */
          /* --- 入力: パドル移動 --- */
 +#ifndef X68_FAULT_BREAKOUT_PADDLE_IGNORE_INPUT
          if (x68_key_down(X68_KEY_LEFT)) paddle_x -= PADDLE_SPEED;
@@ -95,26 +89,33 @@
          if (ball_x <= 0) { ball_x = 0; ball_dx = -ball_dx; }
          if (ball_x >= SCREEN_W - BALL_SIZE) { ball_x = SCREEN_W - BALL_SIZE; ball_dx = -ball_dx; }
          if (ball_y <= 0) { ball_y = 0; ball_dy = -ball_dy; }
-@@ -103,6 +160,7 @@
-         }
- 
-         /* --- ブロックとの当たり判定(最初に当たった1個だけ壊す) --- */
-+#ifndef X68_FAULT_BREAKOUT_BLOCK_NO_HIT
+@@ -126,6 +172,7 @@
          int hit = 0;
+         int hit_x = 0;
+         int hit_y = 0;
++#ifndef X68_FAULT_BREAKOUT_BLOCK_NO_HIT
          for (int r = 0; r < BLOCK_ROWS && !hit; r++) {
              for (int c = 0; c < BLOCK_COLS && !hit; c++) {
-@@ -119,6 +177,7 @@
+                 if (!block_alive[r][c]) continue;
+@@ -143,8 +190,10 @@
                  }
              }
          }
 +#endif
  
-         /* --- 描画: cls → 描画 → flip の素直な形 --- */
-         x68_cls(color_bg);
-@@ -141,5 +200,18 @@
-         printf("SCORE:%d", score);
+         /* --- 描画: 前の動く物を消し、変わった所だけを描く --- */
++#ifndef X68_MEASURE_BREAKOUT_NO_DRAW
+         x68_frame_begin();
+         x68_box_fill(old_paddle_x, PADDLE_Y, PADDLE_W, PADDLE_H, color_bg);
+         x68_box_fill(old_ball_x, old_ball_y, BALL_SIZE, BALL_SIZE, color_bg);
+@@ -160,5 +209,22 @@
+         }
  
          x68_screen_flip();
++#else
++        /* 速度の処理別実測用。同期だけを残し、描画の寄与をホストフレームで測る。 */
++        x68_vsync_wait();
++#endif
 +
 +        /* --- 検証用HOSTVAR更新 --- */
 +        loop_count++;

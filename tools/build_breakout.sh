@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Sprout68k 作例「ブロック崩し」を検証用に組み立ててビルドする。
 #
-# samples/breakout/main.c は入門者が読む「素のコード」で、検証用HOSTVARの
+# samples/breakout/block.c は入門者が読む「素のコード」で、検証用HOSTVARの
 # 書き出しや故障注入マクロを一切含まない。本スクリプトは、その素のコードへ
 # verify/patches/breakout_verify.patch を当てて検証専用の版(HOSTVAR書き出し+
 # X68_FAULT_BREAKOUT_*マクロ入り)を生成し、それをビルドする。patchが当たらない
@@ -57,6 +57,7 @@ case "$FAULT" in
   paddle_ignore_input) FAULT_DEFINE=(-DX68_FAULT_BREAKOUT_PADDLE_IGNORE_INPUT) ;;
   block_no_hit) FAULT_DEFINE=(-DX68_FAULT_BREAKOUT_BLOCK_NO_HIT) ;;
   ball_frozen) FAULT_DEFINE=(-DX68_FAULT_BREAKOUT_BALL_FROZEN) ;;
+  measure_no_draw) FAULT_DEFINE=(-DX68_MEASURE_BREAKOUT_NO_DRAW) ;;
   vc_text_hidden) L0_FAULT_DEFINE=(-DX68_FAULT_VC_TEXT_HIDDEN) ;;
   *) echo "ERROR: 未知のfault指定: ${FAULT}" >&2; exit 1 ;;
 esac
@@ -76,9 +77,9 @@ m68k-elf-gcc -x assembler-with-cpp -m68000 -c "$ROOT/lib/asm/x68_gvram_copy.S" -
 m68k-elf-gcc -x assembler-with-cpp -m68020 -c "$ROOT/lib/asm/x68_panic.S" -o "$OBJDIR/x68_panic_asm.o"
 
 echo "== 素のコードへ検証用パッチを適用(verify/patches/breakout_verify.patch) =="
-cp "$ROOT/samples/breakout/main.c" "$OBJDIR/main_verify.c"
+cp "$ROOT/samples/breakout/block.c" "$OBJDIR/main_verify.c"
 if ! patch "$OBJDIR/main_verify.c" "$ROOT/verify/patches/breakout_verify.patch"; then
-  echo "ERROR: breakout_verify.patch が samples/breakout/main.c(素のコード)に当たらなかった。" >&2
+  echo "ERROR: breakout_verify.patch が samples/breakout/block.c(素のコード)に当たらなかった。" >&2
   echo "       main.c を編集したなら、tools/gen_breakout_verify_patch.sh でパッチを再生成すること。" >&2
   exit 1
 fi

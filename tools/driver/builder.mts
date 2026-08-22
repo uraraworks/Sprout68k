@@ -127,7 +127,7 @@ export class Builder {
     this.options.hostFs.mkdirp(objdir); console.log(`== ${target} を駆動層でビルド(opt=${this.optLevel}) ==`);
     const include = ['-I', resolvePath(root, 'lib/include')];
     for (const name of ['x68_std', 'x68_l0', 'x68_l1', 'x68_panic', 'x68_input']) await this.compileC(resolvePath(root, `lib/src/${name}.c`), resolvePath(objdir, `${name}.o`), include);
-    let mainSource = resolvePath(root, 'samples/breakout/main.c');
+    let mainSource = resolvePath(root, 'samples/breakout/block.c');
     if (target === 'user') {
       const source = this.options.userSource;
       if (!source || typeof source.path !== 'string' || !source.path.trim()) throw new Error('user ターゲットには C ソースが必要です');

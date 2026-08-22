@@ -69,8 +69,8 @@ long x68_iocs_disk_read(unsigned long d1, unsigned long d2,
 void x68_vsync_wait(void);
 
 /* 65536色1ページモード(512x512、GVRAM $00C00000起点、1ライン=512ワード)を
- * 設定する。CRTC R20=$08 / VC R0=$03 / VC R2=$01 の3レジスタを実測済みの
- * 順序・値のまま設定する(Stage B/E-1 で実測確定。docs/StageE-1_実測_20260819.md)。
+ * 設定する。CRTC R02=28 / R03=92で表示幅も512dotへ揃え、R20=$08、
+ * VC R0=$03、VC R2=$21を設定する(docs/StageE-1_実測_20260819.md)。
  * 裏バッファの確保・転送量の管理はしない(L1の仕事)。 */
 void x68_gvram_mode_65536_1page(void);
 
@@ -117,6 +117,10 @@ void x68_screen_flip(void);
  *   - x68_screen_open() 後、一度も x68_cls を呼んでいない(初回)
  *   - 直前に x68_cls へ渡した color と異なる(背景色が変わった) */
 void x68_cls(int color);
+
+/* 裏バッファを消さず、今フレームの描画命令一覧だけを空にする。動かない絵を
+ * 残したまま、前の位置を背景色で消して新しい位置だけ描く場合に使う。 */
+void x68_frame_begin(void);
 
 /* 範囲外(x<0/x>=X68_SCREEN_W/y<0/y>=X68_SCREEN_H)は何もしない。 */
 void x68_pset(int x, int y, int color);

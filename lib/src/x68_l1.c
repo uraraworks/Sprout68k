@@ -308,6 +308,11 @@ void x68_cls(int color) {
     bg_valid = 1;
 }
 
+void x68_frame_begin(void) {
+    if (!screen_opened) return;
+    cmdlist_reset(&curCmds);
+}
+
 void x68_pset(int x, int y, int color) {
     if (!screen_opened) return;
     X68Rect r;

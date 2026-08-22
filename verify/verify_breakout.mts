@@ -1,5 +1,5 @@
 /*
- * Sprout68k 作例「ブロック崩し」(samples/breakout/main.c)の検証。
+ * Sprout68k 作例「ブロック崩し」(samples/breakout/block.c)の検証。
  *
  * ホストが実際にキーを押してゲームを動かし(Stage E-4で確定した経路。
  * setKey()→runFrame()に一貫して1フレームの配送遅延があることを踏まえて
@@ -64,7 +64,7 @@ const CORE_OPTIONS_USED = {
   px68k_no_wait_mode: 'enabled',
 };
 
-/* --- HOSTVAR アドレス(samples/breakout/main.c と一致させること) --- */
+/* --- HOSTVAR アドレス(samples/breakout/block.c と一致させること) --- */
 const HV3_BASE = 0x000da000;
 const HV3_PROGRESS = HV3_BASE + 0x00;
 const HV3_PADDLE_X = HV3_BASE + 0x04;
@@ -77,7 +77,7 @@ const HV3_BLOCKS_ALIVE = HV3_BASE + 0x1c;
 const HV3_LAST_DESTROYED = HV3_BASE + 0x20;
 const HV3_FLIP_BYTES = HV3_BASE + 0x24;
 
-/* --- ブロック崩し本体の定数(samples/breakout/main.c と一致させること) --- */
+/* --- ブロック崩し本体の定数(samples/breakout/block.c と一致させること) --- */
 const BLOCK_ROWS = 4;
 const BLOCK_COLS = 8;
 const BLOCK_W = 56;
@@ -124,15 +124,13 @@ const COLOR_BG_RGB = decode16to24(COLOR_BG16);
  * verify_panic.mtsのtextVisibleInFramebuffer()と同じ方式(実際にレンダリング
  * されたcanvas上で、背景から変化した画素が一定数以上あるかを見る)を使う。 */
 const SCORE_TEXT_REGION = { x0: 0, y0: 0, x1: 80, y1: 16 }; // "SCORE:####"が入る桁0-9・行0
-const SCORE_TEXT_REF_POINT = { x: 600, y: 450 }; // グラフィック面(x<512)・ブロック/パドル/ボールの可動域の外
 const SCORE_TEXT_VISIBLE_DIST_THRESHOLD = 40; // verify_panic.mtsと同じ閾値
 const SCORE_TEXT_VISIBLE_MIN_DIFF_PIXELS = 50; // 実測(通常ビルドで170、故障注入版で0)を踏まえた閾値
 function scoreVisibleInFramebuffer(img: Image | null): { visible: boolean; diffCount: number } {
-  if (!img || img.width <= SCORE_TEXT_REF_POINT.x || img.height <= SCORE_TEXT_REF_POINT.y) {
+  if (!img) {
     return { visible: false, diffCount: 0 };
   }
-  const refIdx = (SCORE_TEXT_REF_POINT.y * img.width + SCORE_TEXT_REF_POINT.x) * 4;
-  const ref: [number, number, number] = [img.data[refIdx], img.data[refIdx + 1], img.data[refIdx + 2]];
+  const ref: [number, number, number] = COLOR_BG_RGB;
   let diffCount = 0;
   for (let y = SCORE_TEXT_REGION.y0; y < SCORE_TEXT_REGION.y1 && y < img.height; y++) {
     for (let x = SCORE_TEXT_REGION.x0; x < SCORE_TEXT_REGION.x1 && x < img.width; x++) {
@@ -149,6 +147,7 @@ function scoreVisibleInFramebuffer(img: Image | null): { visible: boolean; diffC
  * ============================================================ */
 interface Image { width: number; height: number; data: Uint8ClampedArray; }
 interface Session {
+  fps: number;
   runFrame(): void;
   peekByte(addr: number): number;
   peekU32(addr: number): number;
@@ -183,9 +182,10 @@ async function bootSession(label: string, diskBytes: Uint8Array): Promise<Sessio
   const diskPath = host.writeDiskImage(`fdd0_${label}.xdf`, diskBytes);
   host.writeFile('/game/boot.cmd', new TextEncoder().encode(`px68k "${diskPath}" ""\n`));
   if (!host.loadGame('/game/boot.cmd')) throw new Error(`${label}: loadGame失敗`);
-  host.fetchAvInfo();
+  const avInfo = host.fetchAvInfo();
 
   return {
+    get fps() { return host.avInfo?.fps ?? avInfo.fps; },
     runFrame() { host.runFrame(); },
     peekByte(addr: number) { return host.peekByte(addr); },
     peekU32(addr: number) {
@@ -207,6 +207,35 @@ async function bootSession(label: string, diskBytes: Uint8Array): Promise<Sessio
 
 function buildImage(outPath: string, fault: string): void {
   execFileSync('bash', [resolve(DEV_ROOT, 'tools/build_breakout.sh'), outPath, fault], { cwd: DEV_ROOT });
+}
+
+async function measureHostFramesPerLoop(label: string, diskBytes: Uint8Array): Promise<{ hostFramesPerLoop: number; secondsPerLoop: number; loops: number; fps: number }> {
+  const session = await bootSession(`speed_${label}`, diskBytes);
+  let bootFrames = 0;
+  while (snapshot(session).progress === 0 && bootFrames < 3000) {
+    session.runFrame();
+    bootFrames++;
+  }
+  if (snapshot(session).progress === 0) throw new Error(`${label}: 速度測定の起動に失敗`);
+
+  /* 時間軸はhost.runFrame()の呼び出し回数。ゲストへ時刻カウンタは加えず、
+   * ゲーム本来のball_xが変化した回数だけをループ完了の目印にする。 */
+  const hostFrames = 400;
+  let previousBallX = snapshot(session).ballX;
+  let loops = 0;
+  for (let frame = 0; frame < hostFrames; frame++) {
+    session.runFrame();
+    const ballX = snapshot(session).ballX;
+    if (ballX !== previousBallX) {
+      loops++;
+      previousBallX = ballX;
+    }
+  }
+  const fps = session.fps;
+  session.dispose();
+  if (loops === 0) throw new Error(`${label}: ボール位置の変化を観測できませんでした`);
+  const hostFramesPerLoop = hostFrames / loops;
+  return { hostFramesPerLoop, secondsPerLoop: hostFramesPerLoop / fps, loops, fps };
 }
 
 interface Snapshot {
@@ -525,7 +554,7 @@ async function main(): Promise<void> {
     },
     {
       // 今回の穴そのものの故障注入: VC R2($E82601)を旧値(0x01、テキストが
-      // 隠れる)に戻す(lib/src/x68_l0.cへの注入、samples/breakout/main.cは
+      // 隠れる)に戻す(lib/src/x68_l0.cへの注入、samples/breakout/block.cは
       // 変更しない)。scoreTextOk(Text VRAM直読み)は影響を受けず引き続きtrueの
       // ままになるはずだが、scoreVisibleOnFramebuffer(今回追加した検査)は
       // falseになるはず。「Text VRAMだけの検査では見逃す」ことを再現する。
@@ -553,6 +582,26 @@ async function main(): Promise<void> {
     log(`RESULT: FAULT_${f.name.toUpperCase()} detected_fail=${failed} (${detail})`);
     if (!failed) fail(`故障注入(${f.name})を検査が検出できなかった(検査が空振りしている)`);
   }
+
+  // 処理別速度: host側で400フレームを数え、ゲーム本来のボール位置変化を数える。
+  const speedCases = [
+    { key: 'full', fault: '' },
+    { key: 'no_input', fault: 'paddle_ignore_input' },
+    { key: 'no_collision', fault: 'block_no_hit' },
+    { key: 'no_draw', fault: 'measure_no_draw' },
+  ] as const;
+  const speed = new Map<string, Awaited<ReturnType<typeof measureHostFramesPerLoop>>>();
+  for (const speedCase of speedCases) {
+    const img = resolve(DEV_ROOT, `build/breakout_speed_${speedCase.key}.xdf`);
+    buildImage(img, speedCase.fault);
+    speed.set(speedCase.key, await measureHostFramesPerLoop(speedCase.key, new Uint8Array(readFileSync(img))));
+  }
+  const full = speed.get('full')!;
+  const noInput = speed.get('no_input')!;
+  const noCollision = speed.get('no_collision')!;
+  const noDraw = speed.get('no_draw')!;
+  log(`RESULT: BREAKOUT_SPEED hostFrames=400 fps=${full.fps.toFixed(3)} full=${full.hostFramesPerLoop.toFixed(3)}frames/${full.secondsPerLoop.toFixed(4)}s no_input=${noInput.hostFramesPerLoop.toFixed(3)} no_collision=${noCollision.hostFramesPerLoop.toFixed(3)} no_draw=${noDraw.hostFramesPerLoop.toFixed(3)}`);
+  log(`RESULT: BREAKOUT_SPEED_COMPONENTS drawing=${(full.hostFramesPerLoop - noDraw.hostFramesPerLoop).toFixed(3)} collision=${(full.hostFramesPerLoop - noCollision.hostFramesPerLoop).toFixed(3)} input=${(full.hostFramesPerLoop - noInput.hostFramesPerLoop).toFixed(3)} hostFrames/loop (vsync込みの差分)`);
 
   log(`RESULT: BREAKOUT_OVERALL_PASS=${overallOk}`);
   if (!overallOk) process.exitCode = 1;

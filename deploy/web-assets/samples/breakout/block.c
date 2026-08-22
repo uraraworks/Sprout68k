@@ -4,7 +4,7 @@
  * L0(x68_iocs_* 等)は直接呼ばない。ポインタは使わず、配列と添字だけで書く
  * (文字列リテラルを除く。docs/API設計_20260819.md「L1の設計原則」2)。
  *
- * ループの形は素直に x68_cls() → 描画 → x68_screen_flip()。
+ * 最初にブロックを全部描き、以後は動いた部分だけを描き直す。
  */
 #include "x68.h"
 
@@ -76,7 +76,27 @@ void main(void) {
 
     reset_ball();
 
+    /* 動かないブロックは最初に一度だけ描く。毎回32個を消して描き直すと、
+     * 68000ではゲームの動きそのものが遅くなるため。 */
+    x68_cls(color_bg);
+    for (int r = 0; r < BLOCK_ROWS; r++) {
+        for (int c = 0; c < BLOCK_COLS; c++) {
+            int bx = BLOCK_X0 + c * (BLOCK_W + BLOCK_GAP_X);
+            int by = BLOCK_Y0 + r * (BLOCK_H + BLOCK_GAP_Y);
+            x68_box_fill(bx, by, BLOCK_W, BLOCK_H, color_block[block_color_idx[r][c]]);
+        }
+    }
+    x68_box_fill(paddle_x, PADDLE_Y, PADDLE_W, PADDLE_H, color_paddle);
+    x68_box_fill(ball_x, ball_y, BALL_SIZE, BALL_SIZE, color_ball);
+    x68_locate(0, 0);
+    printf("SCORE:%d", score);
+    x68_screen_flip();
+
     for (;;) {
+        int old_paddle_x = paddle_x;
+        int old_ball_x = ball_x;
+        int old_ball_y = ball_y;
+
         /* --- 入力: パドル移動 --- */
         if (x68_key_down(X68_KEY_LEFT)) paddle_x -= PADDLE_SPEED;
         if (x68_key_down(X68_KEY_RIGHT)) paddle_x += PADDLE_SPEED;
@@ -104,6 +124,8 @@ void main(void) {
 
         /* --- ブロックとの当たり判定(最初に当たった1個だけ壊す) --- */
         int hit = 0;
+        int hit_x = 0;
+        int hit_y = 0;
         for (int r = 0; r < BLOCK_ROWS && !hit; r++) {
             for (int c = 0; c < BLOCK_COLS && !hit; c++) {
                 if (!block_alive[r][c]) continue;
@@ -115,30 +137,27 @@ void main(void) {
                     ball_dy = -ball_dy;
                     score += 10;
                     last_destroyed_index = (long)(r * BLOCK_COLS + c);
+                    hit_x = bx;
+                    hit_y = by;
                     hit = 1;
                 }
             }
         }
 
-        /* --- 描画: cls → 描画 → flip の素直な形 --- */
-        x68_cls(color_bg);
-
-        for (int r = 0; r < BLOCK_ROWS; r++) {
-            for (int c = 0; c < BLOCK_COLS; c++) {
-                if (!block_alive[r][c]) continue;
-                int bx = BLOCK_X0 + c * (BLOCK_W + BLOCK_GAP_X);
-                int by = BLOCK_Y0 + r * (BLOCK_H + BLOCK_GAP_Y);
-                x68_box_fill(bx, by, BLOCK_W, BLOCK_H, color_block[block_color_idx[r][c]]);
-            }
-        }
-
+        /* --- 描画: 前の動く物を消し、変わった所だけを描く --- */
+        x68_frame_begin();
+        x68_box_fill(old_paddle_x, PADDLE_Y, PADDLE_W, PADDLE_H, color_bg);
+        x68_box_fill(old_ball_x, old_ball_y, BALL_SIZE, BALL_SIZE, color_bg);
+        if (hit) x68_box_fill(hit_x, hit_y, BLOCK_W, BLOCK_H, color_bg);
         x68_box_fill(paddle_x, PADDLE_Y, PADDLE_W, PADDLE_H, color_paddle);
         x68_box_fill(ball_x, ball_y, BALL_SIZE, BALL_SIZE, color_ball);
 
         /* スコア表示。桁63までに収める(グラフィック面は512ドット=64桁ぶん)。
          * "SCORE:" + 数字4桁程度で桁10前後なので十分収まる。 */
-        x68_locate(0, 0);
-        printf("SCORE:%d", score);
+        if (hit) {
+            x68_locate(0, 0);
+            printf("SCORE:%d", score);
+        }
 
         x68_screen_flip();
     }

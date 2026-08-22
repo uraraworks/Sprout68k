@@ -16,7 +16,7 @@ const hostFs = new NodeHostFs();
 const tools = resolveNativeToolchain();
 const modes = { cc1: 'native', as: 'native', ld: 'native', objcopy: 'native' } as const;
 const executors = createNodeToolExecutors({ modes, hostFs, root: ROOT });
-const sourcePath = resolve(ROOT, 'samples/breakout/main.c');
+const sourcePath = resolve(ROOT, 'samples/breakout/block.c');
 const source = readFileSync(sourcePath);
 
 async function buildTarget(target: 'breakout' | 'user', output: string, content = source): Promise<Uint8Array> {

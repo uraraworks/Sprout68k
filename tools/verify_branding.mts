@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 const ROOT = resolve(import.meta.dirname, '..');
@@ -20,8 +20,8 @@ const allowedRetainedCounts = new Map<string, number>([
   ['verify/verify_ide_keyboard.mts', 1],
   ['verify/verify_ide_recovery.mts', 1],
 ]);
-const tracked = execFileSync('git', ['ls-files', '-z'], { cwd: ROOT })
-  .toString('utf8').split('\0').filter(Boolean);
+const tracked = execFileSync('git', ['ls-files', '-z', '--cached', '--others', '--exclude-standard'], { cwd: ROOT })
+  .toString('utf8').split('\0').filter((path) => path && existsSync(resolve(ROOT, path)));
 // コミット前にも、この新設検査自身を走査対象へ含める。
 const scanned = [...new Set([...tracked, 'tools/verify_branding.mts'])];
 const hits: string[] = [];

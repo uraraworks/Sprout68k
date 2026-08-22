@@ -123,23 +123,23 @@ for (const testCase of cases) {
   const before = count(textScreen(), token);
   host.setKey(testCase.retrok, true);
   runUntil(() => count(textScreen(), token) === before + 1);
-  const releaseBefore = count(textScreen(), '[REL]');
+  const releaseBefore = count(textScreen(), '[RELEASE]');
   host.setKey(testCase.retrok, false);
-  runUntil(() => count(textScreen(), '[REL]') === releaseBefore + 1);
-  console.log(`PASS(ゲスト画面): ${testCase.name} -> ${token}, release -> [REL]`);
+  runUntil(() => count(textScreen(), '[RELEASE]') === releaseBefore + 1);
+  console.log(`PASS(ゲスト画面): ${testCase.name} -> ${token}, release -> [RELEASE]`);
 }
 
 // releaseを1フレーム配送した直後に同じキーを再押下しても、押下が消えないことを確認する。
 const leftBefore = count(textScreen(), '[LEFT]');
 host.setKey(RETROK.LEFT, true);
 runUntil(() => count(textScreen(), '[LEFT]') === leftBefore + 1);
-const relBefore = count(textScreen(), '[REL]');
+const relBefore = count(textScreen(), '[RELEASE]');
 host.setKey(RETROK.LEFT, false);
 host.runFrame();
 host.setKey(RETROK.LEFT, true);
-runUntil(() => count(textScreen(), '[REL]') === relBefore + 1 && count(textScreen(), '[LEFT]') === leftBefore + 2);
+runUntil(() => count(textScreen(), '[RELEASE]') === relBefore + 1 && count(textScreen(), '[LEFT]') === leftBefore + 2);
 host.setKey(RETROK.LEFT, false);
-runUntil(() => count(textScreen(), '[REL]') === relBefore + 2);
+runUntil(() => count(textScreen(), '[RELEASE]') === relBefore + 2);
 console.log('PASS(押下・解放): releaseを1フレーム配送後の再押下と再解放をゲスト画面で確認');
 
 // 短押下の境界: retro_runを挟まない0フレーム押下は見えず、1フレームなら見える。
@@ -150,23 +150,23 @@ for (let frame = 0; frame < 60; frame++) host.runFrame();
 if (count(textScreen(), '[A]') !== zeroFrameABefore) throw new Error('0フレーム押下がゲストに残りました');
 
 const oneFrameABefore = count(textScreen(), '[A]');
-const oneFrameRelBefore = count(textScreen(), '[REL]');
+const oneFrameRelBefore = count(textScreen(), '[RELEASE]');
 host.setKey(RETROK.a, true);
 host.runFrame();
 host.setKey(RETROK.a, false);
 runUntil(() => count(textScreen(), '[A]') === oneFrameABefore + 1
-  && count(textScreen(), '[REL]') === oneFrameRelBefore + 1);
+  && count(textScreen(), '[RELEASE]') === oneFrameRelBefore + 1);
 console.log('PASS(短押下境界): 0フレームは未検出、1フレームはゲスト画面で検出');
 
 // 押している限りはラッチ時間で切れず、少なくとも120フレーム状態が維持される。
 const heldOneBefore = count(textScreen(), '[1]');
-const heldRelBefore = count(textScreen(), '[REL]');
+const heldRelBefore = count(textScreen(), '[RELEASE]');
 host.setKey(RETROK[1], true);
 runUntil(() => count(textScreen(), '[1]') === heldOneBefore + 1);
 for (let frame = 0; frame < 120; frame++) host.runFrame();
-if (count(textScreen(), '[REL]') !== heldRelBefore) throw new Error('押下中にゲストが解放を検出しました');
+if (count(textScreen(), '[RELEASE]') !== heldRelBefore) throw new Error('押下中にゲストが解放を検出しました');
 host.setKey(RETROK[1], false);
-runUntil(() => count(textScreen(), '[REL]') === heldRelBefore + 1);
+runUntil(() => count(textScreen(), '[RELEASE]') === heldRelBefore + 1);
 console.log('PASS(保持時間): keyupまで少なくとも120フレーム押下を維持');
 
 // 陽性対照: ENTERを期待する場面でAを送ると、Aだけが出てENTER条件は失敗する。
@@ -175,8 +175,8 @@ const faultABefore = count(textScreen(), '[A]');
 host.setKey(RETROK.a, true);
 runUntil(() => count(textScreen(), '[A]') === faultABefore + 1);
 host.setKey(RETROK.a, false);
-const faultRelBefore = count(textScreen(), '[REL]');
-runUntil(() => count(textScreen(), '[REL]') === faultRelBefore + 1);
+const faultRelBefore = count(textScreen(), '[RELEASE]');
+runUntil(() => count(textScreen(), '[RELEASE]') === faultRelBefore + 1);
 let faultDetected = false;
 try {
   runUntil(() => count(textScreen(), '[ENTER]') === enterBefore + 1, 60);

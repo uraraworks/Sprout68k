@@ -333,7 +333,7 @@ C編集、IndexedDB保存、利用者ソース1本のブラウザ内ビルド、
 バイトの `user.xdf` ダウンロード、同梱px68kへの受渡しとcanvas実行まで接続済みである。
 Chromium系ブラウザ1種では、ページ非表示のまま同期プローブで800フレーム進め、
 テキスト画面の `HELLO X68000` を確認した。コンパイル失敗時にも編集中ソースは保持された。
-利用者ターゲットは、`samples/breakout/main.c` と同一内容を渡すと既存breakoutのnative
+利用者ターゲットは、`samples/breakout/block.c` と同一内容を渡すと既存breakoutのnative
 正典XDFとバイト一致することをNode検証で確認している。詳細と再現手順は
 [`docs/IDE実装_20260822.md`](docs/IDE実装_20260822.md)と
 [`docs/コンパイル診断注釈_20260822.md`](docs/コンパイル診断注釈_20260822.md)を参照。
