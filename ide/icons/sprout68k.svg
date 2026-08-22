@@ -1,10 +1,35 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-labelledby="title">
   <title id="title">Sprout68kの双葉</title>
-  <path
-    d="M32 58C28.5 46 28.5 36.5 30 30.5C19 33.5 10 25 8 10C20 8 29 15 32 27C35 15 44 8 56 10C54 25 45 33.5 34 30.5C35.5 36.5 35.5 46 36 58Z"
-    fill="#4ade80"
-    stroke="#dcfce7"
-    stroke-width="3"
-    stroke-linejoin="round"
-  />
+  <defs>
+    <linearGradient id="left-leaf" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#b7ff20"/>
+      <stop offset=".52" stop-color="#42e51a"/>
+      <stop offset="1" stop-color="#09a83c"/>
+    </linearGradient>
+    <linearGradient id="right-leaf" x1="1" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#b7ff20"/>
+      <stop offset=".52" stop-color="#42e51a"/>
+      <stop offset="1" stop-color="#09a83c"/>
+    </linearGradient>
+    <linearGradient id="stem" x1="0" y1="0" x2="0" y2="1">
+      <stop stop-color="#7af20d"/>
+      <stop offset="1" stop-color="#20c934"/>
+    </linearGradient>
+  </defs>
+  <g transform="translate(32 32) scale(.88) translate(-32 -32)">
+  <path d="M31.5 33C23 34 13 31.5 8.5 25C4 18.5 6.5 10.5 13 8C21.5 4.8 30.2 11.5 32.5 25.5C33.1 28.7 32.5 31 31.5 33Z"
+    fill="url(#left-leaf)" stroke="#243b64" stroke-width="3.2" stroke-linejoin="round"/>
+  <path d="M32.5 33C41 34 51 31.5 55.5 25C60 18.5 57.5 10.5 51 8C42.5 4.8 33.8 11.5 31.5 25.5C30.9 28.7 31.5 31 32.5 33Z"
+    fill="url(#right-leaf)" stroke="#243b64" stroke-width="3.2" stroke-linejoin="round"/>
+  <path d="M28.8 25C30 34 29 45 29.4 55C29.6 59.5 34.4 59.5 34.6 55C35 45 34 34 35.2 25Z" fill="url(#stem)"/>
+  <path d="M28.8 25C30 34 29 45 29.4 55C29.6 59.5 34.4 59.5 34.6 55C35 45 34 34 35.2 25"
+    fill="none" stroke="#243b64" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M32 40C31.5 34 29.5 30 26 27M32 40C32.5 34 34.5 30 38 27"
+    fill="none" stroke="#52e51a" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M29.5 31C25 26 20.5 21.5 14 17" fill="none" stroke="#08752b" stroke-width="2.4" stroke-linecap="round"/>
+  <path d="M34.5 31C39 26 43.5 21.5 50 17" fill="none" stroke="#08752b" stroke-width="2.4" stroke-linecap="round"/>
+  <path d="M12.5 13.5C17 9.5 23 10.5 27 14" fill="none" stroke="#c8ff5f" stroke-width="2" stroke-linecap="round" opacity=".9"/>
+  <path d="M51.5 13.5C47 9.5 41 10.5 37 14" fill="none" stroke="#c8ff5f" stroke-width="2" stroke-linecap="round" opacity=".9"/>
+  <path d="M32 38L31.9 53" fill="none" stroke="#bfff5f" stroke-width="1.5" stroke-linecap="round" opacity=".9"/>
+  </g>
 </svg>

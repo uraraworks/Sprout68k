@@ -18,6 +18,20 @@ function filesBelow(root: string): string[] {
 function digest(file: string): string { return createHash('sha256').update(readFileSync(file)).digest('hex'); }
 function assert(condition: unknown, message: string): asserts condition { if (!condition) throw new Error(message); }
 
+function verifySvgHasNoEmbeddedRaster(source: string): void {
+  assert(!source.toLowerCase().includes('base64'), 'SVGにbase64埋め込みがあります');
+  assert(!/<image(?:\s|>)/i.test(source), 'SVGにimage要素があります');
+}
+
+const iconSvg = readFileSync(resolve(ROOT, 'ide/icons/sprout68k.svg'), 'utf8');
+verifySvgHasNoEmbeddedRaster(iconSvg);
+let embeddedRasterRejected = false;
+try {
+  verifySvgHasNoEmbeddedRaster(iconSvg.replace('</svg>', '<image href="data:image/png;base64,AA=="/></svg>'));
+} catch { embeddedRasterRejected = true; }
+assert(embeddedRasterRejected, 'SVG画像埋め込みの故障注入を検出できません');
+console.log('PASS(故障注入): SVGのbase64 image埋め込みを拒否');
+
 const workbench = readFileSync(resolve(ROOT, 'ide/workbench.js'), 'utf8');
 const sw = readFileSync(resolve(DIST, 'sprout68k-sw.js'), 'utf8');
 const offline = JSON.parse(readFileSync(resolve(DIST, 'offline-manifest.json'), 'utf8')) as OfflineManifest;
