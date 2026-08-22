@@ -1,5 +1,6 @@
 import { loadBrowserToolchain } from '../web/browser-toolchain.ts';
 import { rewriteBuildDiagnostic } from '../tools/driver/diagnostics.mts';
+import { annotateBuildDiagnostics } from '../tools/driver/diagnostic_annotations.mts';
 import { basenamePath, resolvePath } from '../tools/driver/hostfs.mts';
 import { X68kRuntime } from './px68k-runtime.ts';
 
@@ -47,9 +48,11 @@ export function createX68kAdapter({ report, canvas }) {
         const xdf = await toolchain.build('user', output, { path: source.path, content: source.text });
         if (xdf.length !== 1_261_568) throw new Error(`XDF サイズが不正です: ${xdf.length} bytes`);
         report(`ビルド完了: user.xdf (${xdf.length} bytes)`, false);
+        const diagnostics = rawDiagnostics.map((text) => rewriteBuildDiagnostic(text, diagnosticOptions));
         return {
           ok: true, xdf, filename: 'user.xdf',
-          diagnostics: rawDiagnostics.map((text) => rewriteBuildDiagnostic(text, diagnosticOptions)),
+          diagnostics,
+          annotations: annotateBuildDiagnostics(diagnostics.join('\n')).annotations,
         };
       } catch (error) {
         // 内部モード・資産パス・cause は開発者コンソールに残し、学習者UIには出さない。
@@ -62,7 +65,10 @@ export function createX68kAdapter({ report, canvas }) {
           ? 'コンパイルでエラーが出ました'
           : 'ビルドに失敗しました';
         report(`ビルド失敗: ${message}`, true);
-        return { ok: false, message, diagnostics };
+        return {
+          ok: false, message, diagnostics,
+          annotations: annotateBuildDiagnostics(diagnostics.join('\n')).annotations,
+        };
       }
     },
 

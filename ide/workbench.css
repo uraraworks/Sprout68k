@@ -21,6 +21,9 @@
   --vsc-line-number: #6e7681;
   --vsc-selection: #264f78;
   --vsc-scrollbar: rgba(121, 121, 121, .4);
+  --diagnostic-panel-height: 230px;
+  --diagnostic-annotation-max-height: 200px;
+  --diagnostic-scroll-margin: 8px;
 }
 * { box-sizing: border-box; scrollbar-color: var(--vsc-scrollbar) transparent; }
 body { min-height: 100vh; margin: 0; display: flex; flex-direction: column; color: var(--vsc-fg); background: var(--vsc-editor-bg); }
@@ -69,8 +72,18 @@ button:focus-visible, input:focus-visible { outline: 1px solid var(--vsc-focus);
 .editor-toolbar #run:hover { background: var(--vsc-accent-hover); }
 #build-status, #machine-status { min-height: 34px; padding: 8px 12px; color: var(--vsc-fg-dim); background: var(--vsc-ui-bg); font-size: 12px; }
 #build-status.error, #machine-status.error { color: #f14c4c; }
-#build-output { min-height: 54px; max-height: 150px; margin: 0; padding: 8px 12px; overflow: auto; border-top: 1px solid var(--vsc-border); color: #f1b7b7; background: #151515; font: 11px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre-wrap; }
+#build-output { height: var(--diagnostic-panel-height); min-height: var(--diagnostic-panel-height); max-height: var(--diagnostic-panel-height); margin: 0; padding: 8px 12px; overflow: auto; border-top: 1px solid var(--vsc-border); color: var(--vsc-fg); background: #151515; font: 11px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; }
 #build-output:empty::before { color: var(--vsc-fg-dim); content: "コンパイル診断はここに表示されます"; }
+.diagnostic-original-group { border: 1px solid #4b5563; background: #111827; }
+.diagnostic-group-label { padding: 3px 8px; border-bottom: 1px solid #4b5563; color: #cbd5e1; background: #1f2937; font-weight: 700; }
+.diagnostic-original { margin: 0; padding: 8px; overflow: visible; color: #f1b7b7; font: inherit; white-space: pre-wrap; }
+.diagnostic-annotation { max-height: var(--diagnostic-annotation-max-height); margin-top: 7px; padding: 7px 9px; overflow: auto; scroll-margin-block: var(--diagnostic-scroll-margin); border-left: 4px solid; background: #172033; }
+.diagnostic-annotation.error { border-color: #f87171; }
+.diagnostic-annotation.warning { border-color: #fbbf24; }
+.diagnostic-annotation-heading { color: #f8fafc; font-weight: 700; }
+.diagnostic-annotation.error .diagnostic-annotation-heading { color: #fecaca; }
+.diagnostic-annotation.warning .diagnostic-annotation-heading { color: #fde68a; }
+.diagnostic-annotation p { margin: 3px 0 0; color: #e2e8f0; white-space: normal; }
 .screen-shell { min-height: 360px; margin: 12px; display: grid; place-items: center; overflow: hidden; border: 1px solid #475569; border-radius: 5px; background: #000; }
 #x68k-screen { display: block; width: 100%; height: auto; max-height: 66vh; object-fit: contain; image-rendering: pixelated; }
 .app-footer { min-height: 29px; display: flex; justify-content: space-between; gap: 12px; padding: 6px 16px; border-top: 1px solid var(--vsc-border); background: var(--vsc-chrome-bg); color: var(--vsc-fg-dim); font-size: 11px; }
@@ -81,6 +94,10 @@ button:focus-visible, input:focus-visible { outline: 1px solid var(--vsc-focus);
 .app-footer a { color: inherit; text-decoration: none; }
 .app-footer a:hover { text-decoration: underline; }
 @media (max-width: 900px) {
+  :root {
+    --diagnostic-panel-height: 200px;
+    --diagnostic-annotation-max-height: 170px;
+  }
   .workspace-grid { grid-template-columns: 1fr; }
   .sidebar { max-height: 240px; }
   #editor { height: 430px; }

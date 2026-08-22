@@ -14,6 +14,7 @@ const required = [
   'system/iplrom.dat', 'system/cgrom.dat',
   'system/IPLROM-LICENSE.txt', 'system/CGROM-NOTICE.md',
   '../web/browser-toolchain.ts', '../tools/driver/builder.mts', '../tools/driver/diagnostics.mts',
+  '../tools/driver/diagnostic_annotations.mts', '../tools/driver/verify_diagnostic_annotations.mts',
   '../verify/verify_ide_boot.mts', '../COPYING', '../README.md',
   'vendor/codemirror/codemirror.js', 'vendor/codemirror/LICENSE.CodeMirror',
 ];
@@ -45,6 +46,7 @@ for (const [file, expectedSize, expectedSha256] of coreFiles) {
 }
 
 const html = await readFile(resolve(root, 'index.html'), 'utf8');
+const css = await readFile(resolve(root, 'workbench.css'), 'utf8');
 for (const match of html.matchAll(/(?:src|href)="(\.\/[^"?#]+)"/g)) {
   await stat(resolve(root, match[1]));
 }
@@ -75,6 +77,57 @@ if (!adapterSource.includes("./px68k-runtime.ts") || !adapterSource.includes('ru
 }
 for (const boundary of ['rewriteBuildDiagnostic', 'コンパイルでエラーが出ました', 'console.error']) {
   if (!adapterSource.includes(boundary)) throw new Error(`診断境界がありません: ${boundary}`);
+}
+for (const annotationUi of ['annotateBuildDiagnostics', '日本語の説明', '何が起きたか', '次にすること']) {
+  if (!adapterSource.includes(annotationUi) && !workbench.includes(annotationUi)) {
+    throw new Error(`日本語注釈UIがありません: ${annotationUi}`);
+  }
+}
+
+// 診断到達性の静的な幾何検査。失敗時の scrollIntoView で固定高パネル全体を
+// 画面下端へ入れ、注釈はパネル内へ入る最大高に制限される、という契約を測る。
+for (const revealStep of [
+  "firstAnnotation ?? nodes.buildOutput.firstElementChild)?.scrollIntoView({ block: 'nearest'",
+  "nodes.buildOutput.scrollIntoView({ block: 'end'",
+]) {
+  if (!workbench.includes(revealStep)) throw new Error(`診断の自動表示がありません: ${revealStep}`);
+}
+if (html.indexOf('id="editor"') >= html.indexOf('id="build-output"')) {
+  throw new Error('診断パネルがエディタより前にあり、同時表示を保証できません');
+}
+for (const cssContract of [
+  'height: var(--diagnostic-panel-height)',
+  'max-height: var(--diagnostic-annotation-max-height)',
+  'scroll-margin-block: var(--diagnostic-scroll-margin)',
+]) {
+  if (!css.includes(cssContract)) throw new Error(`診断到達性の CSS 契約がありません: ${cssContract}`);
+}
+function pixelValues(variable) {
+  return [...css.matchAll(new RegExp(`${variable}:\\s*(\\d+)px`, 'g'))].map((match) => Number(match[1]));
+}
+const panelHeights = pixelValues('--diagnostic-panel-height');
+const annotationHeights = pixelValues('--diagnostic-annotation-max-height');
+const [scrollMargin] = pixelValues('--diagnostic-scroll-margin');
+if (panelHeights.length !== 2 || annotationHeights.length !== 2 || !scrollMargin) {
+  throw new Error('診断到達性の CSS 数値を一意に取得できません');
+}
+const reachabilityCases = [
+  { name: '1280x900', viewportHeight: 900, panelHeight: panelHeights[0], annotationHeight: annotationHeights[0] },
+  { name: '800x600', viewportHeight: 600, panelHeight: panelHeights[1], annotationHeight: annotationHeights[1] },
+];
+for (const testCase of reachabilityCases) {
+  const panelTop = testCase.viewportHeight - testCase.panelHeight;
+  const annotationTop = testCase.viewportHeight - 8 - testCase.annotationHeight;
+  const annotationBottom = testCase.viewportHeight - 8;
+  // ツールバー＋状態行を実寸より大きい 120px と見積もった残りを、ソース可視域とする。
+  const sourceVisibleHeight = panelTop - 120;
+  if (panelTop < 0 || annotationTop < panelTop + scrollMargin || annotationBottom > testCase.viewportHeight) {
+    throw new Error(`${testCase.name}: 注釈が初期ビューポート内に収まりません`);
+  }
+  if (sourceVisibleHeight < 160) {
+    throw new Error(`${testCase.name}: 診断表示時のソース可視域が不足します (${sourceVisibleHeight}px)`);
+  }
+  console.log(`verify-ide: reachability ${testCase.name} annotation=${annotationTop}..${annotationBottom}px source>=${sourceVisibleHeight}px`);
 }
 const runtimeSource = await readFile(resolve(root, 'px68k-runtime.ts'), 'utf8');
 for (const member of ['window.x68kdevEmulatorProbe', 'readTextScreen', 'getFrameCount', 'getState', 'runFrames']) {

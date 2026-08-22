@@ -109,14 +109,59 @@ function updateSaveState() {
   renderTabs();
 }
 
-function renderBuildResult() {
+function renderBuildResult({ revealDiagnostics = false } = {}) {
   const result = activeTab()?.build;
   nodes.downloadXdf.disabled = !result?.ok;
-  nodes.buildOutput.textContent = result?.diagnostics?.join('\n') ?? '';
+  const firstAnnotation = renderDiagnosticOutput(result);
   nodes.buildStatus.classList.toggle('error', result?.ok === false);
   if (result?.ok) nodes.buildStatus.textContent = `ビルド完了: ${result.filename} (${result.xdf.length} bytes)`;
   else if (result?.ok === false) nodes.buildStatus.textContent = `ビルド失敗: ${result.message}`;
   else nodes.buildStatus.textContent = '未ビルド';
+
+  if (revealDiagnostics && result?.ok === false) {
+    // まず内側のスクロール領域で注釈を見せ、次に診断パネル全体を
+    // ビューポートへ入れる。ソースは直前に残り、成功時には移動しない。
+    (firstAnnotation ?? nodes.buildOutput.firstElementChild)?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    nodes.buildOutput.scrollIntoView({ block: 'end', inline: 'nearest' });
+  }
+}
+
+function renderDiagnosticOutput(result) {
+  nodes.buildOutput.replaceChildren();
+  const original = result?.diagnostics?.join('\n') ?? '';
+  if (!original) return null;
+
+  const originalGroup = document.createElement('section');
+  originalGroup.className = 'diagnostic-original-group';
+  const originalLabel = document.createElement('div');
+  originalLabel.className = 'diagnostic-group-label';
+  originalLabel.textContent = 'GCC / ld 原文';
+  const originalText = document.createElement('pre');
+  originalText.className = 'diagnostic-original';
+  originalText.textContent = original;
+  originalGroup.append(originalLabel, originalText);
+  nodes.buildOutput.append(originalGroup);
+
+  let firstAnnotation = null;
+  for (const annotation of result.annotations ?? []) {
+    const note = document.createElement('section');
+    note.className = `diagnostic-annotation ${annotation.severity}`;
+    const heading = document.createElement('div');
+    heading.className = 'diagnostic-annotation-heading';
+    const kind = annotation.severity === 'warning' ? '警告' : 'エラー';
+    const location = annotation.file
+      ? ` · ${annotation.file}${annotation.line ? `:${annotation.line}:${annotation.column}` : ''}`
+      : '';
+    heading.textContent = `日本語の説明（${kind}）${location}`;
+    const what = document.createElement('p');
+    what.textContent = `何が起きたか: ${annotation.what}`;
+    const next = document.createElement('p');
+    next.textContent = `次にすること: ${annotation.next}`;
+    note.append(heading, what, next);
+    nodes.buildOutput.append(note);
+    firstAnnotation ??= note;
+  }
+  return firstAnnotation;
 }
 
 function renderTabs() {
@@ -343,7 +388,7 @@ async function buildCurrent() {
     nodes.buildStatus.textContent = `${tab.path}: ビルド中…`;
     const result = await adapter.build({ path: tab.path, text: tab.text });
     tab.build = result;
-    renderBuildResult();
+    renderBuildResult({ revealDiagnostics: true });
     return result;
   } finally {
     nodes.build.disabled = false;
