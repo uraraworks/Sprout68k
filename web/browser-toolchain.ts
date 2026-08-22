@@ -14,6 +14,11 @@ export interface BrowserToolchainOptions {
 const ROOT = '/workspace';
 const TOOL_NAMES = ['cc1', 'as', 'ld', 'objcopy'] as const;
 const factoryCache = new Map<string, Promise<EmscriptenFactory>>();
+const PUBLIC_BASE_URL = new URL(import.meta.env.BASE_URL, location.origin);
+
+export function publicAssetUrl(path: string): string {
+  return new URL(path.replace(/^\//, ''), PUBLIC_BASE_URL).href;
+}
 
 export async function fetchBytes(url: string): Promise<Uint8Array> {
   const response = await fetch(url);
@@ -59,7 +64,7 @@ async function populateAssets(hostFs: MemoryHostFs, manifest: AssetManifest, onS
   hostFs.mkdirp(ROOT);
   for (const [index, entry] of manifest.files.entries()) {
     onStatus(`アセット読込 ${index + 1}/${manifest.files.length}: ${entry.path}`);
-    const data = await fetchBytes(`/build/web-assets/${entry.path}`);
+    const data = await fetchBytes(publicAssetUrl(`build/web-assets/${entry.path}`));
     if (data.length !== entry.size || await sha256(data) !== entry.sha256) throw new Error(`manifest 不一致: ${entry.path}`);
     const destination = resolvePath(ROOT, entry.path);
     hostFs.mkdirp(dirnamePath(destination));
@@ -85,8 +90,8 @@ async function createExecutors(hostFs: MemoryHostFs, onStderr?: (text: string) =
   for (const tool of TOOL_NAMES) {
     const name = `m68k-elf-${tool}.memfs`;
     const modulePath = `/tools/${name}.js`;
-    const jsUrl = `/build/wasm-tools/${name}.js`;
-    const wasmUrl = new URL(`/build/wasm-tools/${name}.wasm`, location.href).href;
+    const jsUrl = publicAssetUrl(`build/wasm-tools/${name}.js`);
+    const wasmUrl = publicAssetUrl(`build/wasm-tools/${name}.wasm`);
     const [jsMarker, wasm] = await Promise.all([fetchBytes(jsUrl), fetchBytes(wasmUrl)]);
     hostFs.mkdirp(dirnamePath(modulePath));
     hostFs.writeFile(modulePath, jsMarker);
@@ -132,7 +137,7 @@ export class BrowserToolchain {
 
 export async function loadBrowserToolchain(options: BrowserToolchainOptions = {}): Promise<BrowserToolchain> {
   const onStatus = options.onStatus ?? (() => {});
-  const manifest = await fetchJson<AssetManifest>('/build/web-assets/manifest.json');
+  const manifest = await fetchJson<AssetManifest>(publicAssetUrl('build/web-assets/manifest.json'));
   if (manifest.version !== 1) throw new Error('manifest の版が不正です');
   const hostFs = new MemoryHostFs();
   await populateAssets(hostFs, manifest, onStatus);

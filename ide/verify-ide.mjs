@@ -20,6 +20,7 @@ const required = [
   '../verify/verify_ide_boot.mts', '../verify/verify_ide_recovery.mts',
   '../verify/verify_ide_keyboard.mts',
   '../docs/IDEキーボード入力_20260822.md', '../lib/include/x68.h', '../COPYING', '../README.md',
+  '../tools/distribution.mts',
   'vendor/codemirror/codemirror.js', 'vendor/codemirror/LICENSE.CodeMirror',
 ];
 
@@ -70,9 +71,20 @@ if (!fsSource.includes("databaseName = 'X68kDevProjectFS'")) throw new Error('�
 const workbench = await readFile(resolve(root, 'workbench.js'), 'utf8');
 if (!workbench.includes('window.x68kdevWorkbench')) throw new Error('公開 API 名がありません');
 if (!workbench.includes('cpp()')) throw new Error('C 言語ハイライトがありません');
-for (const id of ['build-output', 'download-xdf', 'run', 'stop-emulator', 'recover-emulator', 'machine-status', 'keyboard-status', 'x68k-screen']) {
+for (const id of ['build-output', 'download-xdf', 'run', 'stop-emulator', 'recover-emulator', 'machine-status', 'keyboard-status', 'x68k-screen', 'build-id', 'offline-status']) {
   if (!html.includes(`id="${id}"`)) throw new Error(`必要な DOM 要素がありません: ${id}`);
   if (!workbench.includes(`#${id}`)) throw new Error(`DOM 要素の参照がありません: ${id}`);
+}
+for (const contract of [
+  "const X68KDEV_SCOPE_PATH = '/X68kDev/'",
+  'scope: X68KDEV_SCOPE_PATH',
+  "updateViaCache: 'none'",
+  'build: ${__BUILD_ID__}',
+  "'オフラインでも使えます'",
+  "'オフライン準備に失敗しました'",
+  "type: 'X68KDEV_CHECK_CACHE'",
+]) {
+  if (!workbench.includes(contract)) throw new Error(`配布UI契約がありません: ${contract}`);
 }
 const recoverySource = await readFile(resolve(root, 'recovery-controller.mjs'), 'utf8');
 for (const contract of ['rememberSuccessfulBuild', 'buildFallback', 'captureSource', '復帰中に編集中のソースが変化しました']) {
@@ -286,8 +298,8 @@ for (const demonstratedKey of ['SPACE', 'ENTER', 'ESC', 'A', '1']) {
     throw new Error(`入力サンプルでキーを確認できません: ${demonstratedKey}`);
   }
 }
-for (const reference of ['../COPYING', './system/IPLROM-LICENSE.txt', './system/CGROM-NOTICE.md']) {
-  if (!html.includes(`href="${reference}"`)) throw new Error(`ライセンス参照がありません: ${reference}`);
+for (const id of ['license-gpl', 'license-codemirror', 'license-ipl', 'license-cgrom']) {
+  if (!html.includes(`id="${id}"`) || !workbench.includes(`#${id}`)) throw new Error(`ライセンス参照がありません: ${id}`);
 }
 for (const reference of ['../COPYING?url', './vendor/codemirror/LICENSE.CodeMirror?url', './system/IPLROM-LICENSE.txt?url', './system/CGROM-NOTICE.md?url']) {
   if (!workbench.includes(reference)) throw new Error(`配布物のライセンス資産参照がありません: ${reference}`);

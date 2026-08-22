@@ -90,6 +90,7 @@ button:focus-visible, input:focus-visible { outline: 1px solid var(--vsc-focus);
 .editor-toolbar #run:hover { background: var(--vsc-accent-hover); }
 #build-status, #machine-status { min-height: 34px; padding: 8px 12px; color: var(--vsc-fg-dim); background: var(--vsc-ui-bg); font-size: 12px; }
 #build-status.error, #machine-status.error { color: #f14c4c; }
+#offline-status.error { color: #f14c4c; }
 #keyboard-status { min-height: 30px; padding: 7px 12px; color: #fbbf24; background: var(--vsc-ui-bg); font-size: 11px; }
 .machine-card.keyboard-active #keyboard-status { color: #86efac; font-weight: 700; }
 .machine-card.keyboard-active .screen-shell { border-color: #22c55e; box-shadow: 0 0 0 2px #22c55e55; }

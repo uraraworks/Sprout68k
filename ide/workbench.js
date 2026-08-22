@@ -37,9 +37,71 @@ const nodes = {
   keyboardStatus: document.querySelector('#keyboard-status'),
   machineCard: document.querySelector('.machine-card'),
   screen: document.querySelector('#x68k-screen'),
+  buildId: document.querySelector('#build-id'),
+  offlineStatus: document.querySelector('#offline-status'),
 };
 
 const LAST_PATH_KEY = 'x68kdev:last-path';
+const X68KDEV_SCOPE_PATH = '/X68kDev/';
+
+nodes.buildId.textContent = `build: ${__BUILD_ID__}`;
+function showOfflineStatus(state, detail = '') {
+  nodes.offlineStatus.textContent = state === 'ready'
+    ? 'オフラインでも使えます'
+    : state === 'error' ? 'オフライン準備に失敗しました' : 'オフライン: 準備中';
+  nodes.offlineStatus.title = detail;
+  nodes.offlineStatus.classList.toggle('error', state === 'error');
+}
+
+function checkOfflineCache(worker) {
+  const channel = new MessageChannel();
+  channel.port1.onmessage = ({ data }) => {
+    if (data?.type === 'X68KDEV_OFFLINE_STATUS') showOfflineStatus(data.state, data.detail);
+  };
+  worker.postMessage({ type: 'X68KDEV_CHECK_CACHE' }, [channel.port2]);
+}
+
+function checkCurrentOfflineWorker() {
+  const worker = navigator.serviceWorker.controller;
+  if (worker) checkOfflineCache(worker);
+}
+
+async function initializeOfflineSupport() {
+  if (!('serviceWorker' in navigator) || !location.pathname.startsWith(X68KDEV_SCOPE_PATH)) {
+    showOfflineStatus('error', 'この環境ではService Workerを利用できません');
+    return;
+  }
+  navigator.serviceWorker.addEventListener('message', ({ data }) => {
+    if (data?.type === 'X68KDEV_OFFLINE_STATUS') showOfflineStatus(data.state, data.detail);
+  });
+  try {
+    const serviceWorkerUrl = new URL('x68kdev-sw.js', `${location.origin}${X68KDEV_SCOPE_PATH}`);
+    const registration = await navigator.serviceWorker.register(serviceWorkerUrl, {
+      scope: X68KDEV_SCOPE_PATH,
+      updateViaCache: 'none',
+    });
+    const active = navigator.serviceWorker.controller || registration.active;
+    if (active) checkOfflineCache(active);
+    const candidate = registration.installing || registration.waiting;
+    const inspectCandidate = () => {
+      if (candidate.state === 'activated') checkOfflineCache(candidate);
+      if (candidate.state === 'redundant') showOfflineStatus('error', 'Service Workerのinstallに失敗しました。開発者コンソールを確認してください');
+    };
+    if (candidate) {
+      inspectCandidate();
+      candidate.addEventListener('statechange', inspectCandidate);
+    }
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (navigator.serviceWorker.controller) checkOfflineCache(navigator.serviceWorker.controller);
+    });
+    window.addEventListener('online', checkCurrentOfflineWorker);
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    console.error('X68kDev Service Worker の登録に失敗しました', error);
+    showOfflineStatus('error', detail);
+  }
+}
+void initializeOfflineSupport();
 
 // 開発サーバーだけでなく production build にもライセンス本文を資産として含める。
 document.querySelector('#license-gpl').href = gplLicenseUrl;

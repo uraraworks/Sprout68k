@@ -1,4 +1,4 @@
-import { fetchJson, loadBrowserToolchain, sha256 } from './browser-toolchain.ts';
+import { fetchJson, loadBrowserToolchain, publicAssetUrl, sha256 } from './browser-toolchain.ts';
 import type { BrowserToolchain } from './browser-toolchain.ts';
 import { resolvePath } from '../tools/driver/hostfs.mts';
 
@@ -42,7 +42,7 @@ async function main(): Promise<void> {
   let detected = false;
   try {
     const [expected, toolchain] = await Promise.all([
-      fetchJson<Expected>('/build/web-assets/expected.json'),
+      fetchJson<Expected>(publicAssetUrl('build/web-assets/expected.json')),
       loadBrowserToolchain({
         onStatus: (message) => { statusElement.textContent = message; },
         onStderr: (text) => { console.error(text); },
