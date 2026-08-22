@@ -185,6 +185,7 @@ export function renderSamplesPage(root = ROOT): string {
       <h1>Sprout68k 作例集</h1>
     </div>
     <div class="help-actions">
+      <a href="./about.html">Sprout68kとは</a>
       <a href="./reference.html">関数リファレンス</a>
       <a href="./help.html">使い方</a>
       <a class="open-app" href="./index.html">アプリを開く</a>

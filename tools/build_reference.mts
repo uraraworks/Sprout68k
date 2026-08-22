@@ -213,6 +213,8 @@ export function renderReference(root = ROOT): string {
       <h1>${escapeHtml(document_.title)}</h1>
     </div>
     <div class="help-actions">
+      <a href="./about.html">Sprout68kとは</a>
+      <a href="./samples.html">作例集</a>
       <a href="./help.html">使い方</a>
       <a class="open-app" href="./index.html">アプリを開く</a>
     </div>

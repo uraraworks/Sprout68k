@@ -21,7 +21,7 @@ import { hasShareFragment, nextSharedPath, tagSummaryText } from './share-receiv
 const root = dirname(fileURLToPath(import.meta.url));
 const forbidden = ['pc' + '98', 'n' + 'p2', 'pc' + '-98', 'free' + 'dos', 'na' + 'sm', 'smaller' + 'c', '98' + '01', '98' + '21'];
 const required = [
-  'index.html', 'help.html', 'reference.html', 'api/reference.json', 'workbench.css', 'workbench.js', 'project-fs.mjs', 'source-view.mjs',
+  'index.html', 'about.html', 'help.html', 'reference.html', 'api/reference.json', 'workbench.css', 'workbench.js', 'project-fs.mjs', 'source-view.mjs',
   'sample-manifest.mjs', 'samples.html', 'api/samples.json', 'samples/shapes.c', 'samples/move.c', 'samples/catch.c',
   'samples/stars.c', 'samples/life.c', 'split-layout.mjs', 'run-toggle.mjs', 'offline-support.mjs', 'browser-ui-verifier.mjs', 'x68k-adapter.mjs', 'samples/hello.c', 'samples/keyboard-input.c',
   'recovery-controller.mjs', 'screenshot-store.mjs', 'share-receive.mjs',
@@ -689,6 +689,44 @@ for (const attribution of ['px68k-libretro', 'Workbench' + 'N' + 'P2', 'CodeMirr
 }
 if (!html.includes('./samples/hello.c') && !(await readFile(resolve(root, 'sample-manifest.mjs'), 'utf8')).includes('./samples/hello.c')) {
   throw new Error('C サンプル参照がありません');
+}
+
+/* --- 紹介ページ(about.html)に書いた数字が実態と合っているか ---
+ * 紹介文は「29個」「6本と2本」のような数を書くと読みやすいが、**中身が増えると
+ * 静かに嘘になる**。数えられるものは数えて突き合わせる。 */
+{
+  const about = await readFile(resolve(root, 'about.html'), 'utf8');
+  const reference = JSON.parse(await readFile(resolve(root, 'api/reference.json'), 'utf8'));
+  const samplesData = JSON.parse(await readFile(resolve(root, 'api/samples.json'), 'utf8'));
+
+  const functionCount = reference.entries.filter((entry) => entry.kind === 'function').length;
+  if (!about.includes(`${functionCount}個だけです`) || !about.includes(`only ${functionCount} functions`)) {
+    throw new Error(`紹介ページの関数の数が実態(${functionCount})と合いません`);
+  }
+  const steps = samplesData.samples.filter((sample) => sample.group === 'steps').length;
+  const works = samplesData.samples.filter((sample) => sample.group === 'works').length;
+  const stepWords = { 6: '6本', 7: '7本', 8: '8本' }[steps];
+  const workWords = { 2: '2本', 3: '3本' }[works];
+  if (!stepWords || !workWords) throw new Error(`作例の本数(${steps}/${works})に対応する表記がありません`);
+  if (!about.includes(`作例が${stepWords}`) || !about.includes(`作品が${workWords}`)) {
+    throw new Error(`紹介ページの作例の本数が実態(階段${steps}本・作品${works}本)と合いません`);
+  }
+  /* 紹介ページで見せている画面写真が実在すること */
+  for (const match of about.matchAll(/src="\.\/samples\/shots\/([^"]+)"/g)) {
+    await stat(resolve(root, 'samples/shots', match[1]));
+  }
+  /* 日英が両方そろっていること（片方だけ足すと、切り替えたときに空欄になる） */
+  const ja = (about.match(/class="lang-ja"/g) ?? []).length;
+  const en = (about.match(/class="lang-en"/g) ?? []).length;
+  if (ja !== en) throw new Error(`紹介ページの日英の数が違います: ja=${ja} en=${en}`);
+  if (ja < 20) throw new Error(`紹介ページの日英ブロックが少なすぎます: ${ja}`);
+  /* 各ページから辿れること */
+  for (const [page, needle] of [['index.html', './about.html?from=app'], ['help.html', './about.html'],
+    ['reference.html', './about.html'], ['samples.html', './about.html']]) {
+    const text = await readFile(resolve(root, page), 'utf8');
+    if (!text.includes(needle)) throw new Error(`${page} から紹介ページへの導線がありません`);
+  }
+  console.log(`verify-ide: about page PASS (関数${functionCount}個, 作例${steps}+${works}本, 日英${ja}組, 導線4件)`);
 }
 
 /* --- 狭い画面のヘッダ ---
