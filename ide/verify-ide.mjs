@@ -71,6 +71,13 @@ for (const [file, expectedSize, expectedSha256] of coreFiles) {
 const html = await readFile(resolve(root, 'index.html'), 'utf8');
 const help = await readFile(resolve(root, 'help.html'), 'utf8');
 const css = await readFile(resolve(root, 'workbench.css'), 'utf8');
+/* 既定値（最初の :root ブロック）だけを見る。@media で狭い画面向けに
+ * 上書きしている変数があるため、CSS 全体から拾うと2件になって
+ * 「一意に取れない」で止まる。狭い画面側は別途 narrowHeader で検査する。 */
+const rootBlock = css.match(/:root\s*\{[\s\S]*?\n\}/)?.[0] ?? '';
+function rootPixelValues(variable) {
+  return [...rootBlock.matchAll(new RegExp(`${variable}:\\s*(\\d+)px`, 'g'))].map((match) => Number(match[1]));
+}
 for (const match of help.matchAll(/(?:src|href)="((?:\.\.\/|\.\/)[^"?#]+)"/g)) {
   await stat(resolve(root, match[1]));
 }
@@ -408,7 +415,10 @@ for (const cssContract of [
 }
 const helpGeometryVariables = ['--help-header-offset', '--help-header-right', '--help-control-size', '--app-footer-height'];
 const helpGeometry = Object.fromEntries(helpGeometryVariables.map((variable) => {
-  const values = pixelValues(variable);
+  /* 既定値(:root)だけを見る。狭い画面向けの @media で上書きしている変数が
+   * あるため、CSS全体から拾うと複数件になる。狭い画面側は下の
+   * 「狭い画面のヘッダ」で別に検査する。 */
+  const values = rootPixelValues(variable);
   if (values.length !== 1) throw new Error(`ヘルプ導線のCSS数値を一意に取得できません: ${variable}`);
   return [variable, values[0]];
 }));
@@ -577,6 +587,7 @@ for (const cssContract of [
 function pixelValues(variable) {
   return [...css.matchAll(new RegExp(`${variable}:\\s*(\\d+)px`, 'g'))].map((match) => Number(match[1]));
 }
+
 const panelHeights = pixelValues('--diagnostic-panel-height');
 const annotationHeights = pixelValues('--diagnostic-annotation-max-height');
 const [scrollMargin] = pixelValues('--diagnostic-scroll-margin');
@@ -678,6 +689,29 @@ for (const attribution of ['px68k-libretro', 'Workbench' + 'N' + 'P2', 'CodeMirr
 }
 if (!html.includes('./samples/hello.c') && !(await readFile(resolve(root, 'sample-manifest.mjs'), 'utf8')).includes('./samples/hello.c')) {
   throw new Error('C サンプル参照がありません');
+}
+
+/* --- 狭い画面のヘッダ ---
+ * 丸ボタンが3つ並ぶと、中央のタイトルに重なる（2026-08-23、320px幅で実際に
+ * 隠れた）。@media で詰めているので、**その中で3つぶんの幅を確保していること**を
+ * 見る。ボタンを増やしたときに黙って重なるのを防ぐ。 */
+{
+  const narrow = css.match(/@media \(max-width: 400px\)\s*\{[\s\S]*?\n\}\n/)?.[0] ?? '';
+  if (!narrow) throw new Error('狭い画面向けのヘッダ調整がありません');
+  const size = Number(narrow.match(/--help-control-size:\s*(\d+)px/)?.[1]);
+  const right = Number(narrow.match(/--help-header-right:\s*(\d+)px/)?.[1]);
+  if (!size || !right) throw new Error('狭い画面のヘッダ寸法を取得できません');
+  const buttons = (html.match(/class="header-(?:samples|ref|help)-btn"/g) ?? []).length;
+  if (buttons !== 3) throw new Error(`ヘッダの丸ボタンが3つではありません: ${buttons}個。@media の指定を見直すこと`);
+  /* タイトルは残りの幅に収める指定になっているか（3つぶん＋左右の余白を引く） */
+  if (!narrow.includes('.app-title-row { max-width: calc(100% -')) {
+    throw new Error('狭い画面でタイトル幅を制限していません（ボタンに隠れる）');
+  }
+  const reserved = (size + 4) * buttons + right * 2;
+  if (reserved > 320 * 0.55) {
+    throw new Error(`狭い画面でボタンが幅を取りすぎます: ${reserved}px / 320px`);
+  }
+  console.log(`verify-ide: narrow header PASS (${buttons}ボタン, ${size}px, 320px中${reserved}pxを確保)`);
 }
 
 /* --- 作例集(samples.html)と IDE の結線 ---

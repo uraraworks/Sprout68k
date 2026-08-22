@@ -13,8 +13,8 @@
     },
     {
       "path": "lib/asm/x68_panic.S",
-      "size": 9418,
-      "sha256": "e2bb3bee1811c99039d353812a79ebabb0db58b1036c0a3982c40e3d4ecdaf3d"
+      "size": 10365,
+      "sha256": "30957187ddbd6b6ae4f047a8bcc77f7301f64f49b8417128d5dbe3179eca5b09"
     },
     {
       "path": "lib/include/x68.h",
@@ -47,9 +47,54 @@
       "sha256": "964aaf6244af648c69e755a9effc575ab4612762f07b3b0058fa4551a23ef05f"
     },
     {
+      "path": "runtime/abi_v1.txt",
+      "size": 1261,
+      "sha256": "ae177a4813fd01331b9de6e3b048b577f0bcfe239c4d91fca1b0c66e46b1976b"
+    },
+    {
+      "path": "runtime/crt0_runtime.S",
+      "size": 3135,
+      "sha256": "f7f2dd3aacfcd5776251403a798f5aecd51ea5dc2b365348313ee31e92c2376f"
+    },
+    {
+      "path": "runtime/generated/abi_v1.ld",
+      "size": 1315,
+      "sha256": "2db199d438e33cd4c9d7dabedc4f2afc0a61ed2becf0c573827b597818bea7f0"
+    },
+    {
+      "path": "runtime/generated/jumptable_v1.S",
+      "size": 2294,
+      "sha256": "f047c304a322e3ea19efc320d2926254c3cffb0bfae95ca05f299f4639519586"
+    },
+    {
+      "path": "runtime/generated/layout_v1.json",
+      "size": 249,
+      "sha256": "1f4550e1082c963a872430e18a89a973b3ac33a6c1cfc7fb27a38cf969e7a0fe"
+    },
+    {
+      "path": "runtime/generated/runtime_v1.ld",
+      "size": 572,
+      "sha256": "0edb69177e0badab7ec0a61a0d1fb6498574370e794c0d24896d3a8385cf547a"
+    },
+    {
+      "path": "runtime/generated/user_v1.ld",
+      "size": 757,
+      "sha256": "2a7966a7d208b80ba18fb0dfe9f26d34ff765d9941f3b8c2333ad4802574ccd4"
+    },
+    {
+      "path": "runtime/layout_v1.txt",
+      "size": 1946,
+      "sha256": "0a12213fa947e5cb152a00236329a54febd575d8904a4be88ebff7deb2798b37"
+    },
+    {
+      "path": "runtime/user_entry.S",
+      "size": 400,
+      "sha256": "3da15b88ef9ee41447677df92c49a4105838405b13bd548d6383bb04f675dde7"
+    },
+    {
       "path": "samples/breakout/block.c",
-      "size": 5924,
-      "sha256": "ac2e1a293fc6fa1682f97530e5a85c8a60c4d1a35d8359cabd9c4d1aa4653772"
+      "size": 5764,
+      "sha256": "aa85ead382740d68d6a920990c212e4fd404a7f313fd6a8fa64b3ba498e1140f"
     },
     {
       "path": "stage_c/boot/boot.S",
@@ -198,8 +243,8 @@
     }
   ],
   "totals": {
-    "files": 39,
-    "size": 832493,
-    "gzipSize": 250838
+    "files": 48,
+    "size": 845209,
+    "gzipSize": 257231
   }
 }

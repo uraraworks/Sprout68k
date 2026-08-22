@@ -1,0 +1,266 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#111827">
+  <link rel="icon" href="./icons/sprout68k.svg" type="image/svg+xml">
+  <title>Sprout68k とは</title>
+  <meta name="description" content="ブラウザだけで X68000 のプログラムを C で書いて、すぐ動かせる入門環境です。">
+  <style>
+    :root {
+      color-scheme: dark;
+      --header: #111827; --background: #1f1f1f; --panel: #181818; --border: #334155;
+      --text: #d1d5db; --dim: #9ca3af; --accent: #38bdf8; --note: #172033; --code: #16202e;
+    }
+    * { box-sizing: border-box; }
+    body { min-height: 100vh; margin: 0; display: flex; flex-direction: column; color: var(--text); background: var(--background); font: 14px/1.85 -apple-system, BlinkMacSystemFont, "Segoe UI", "Hiragino Sans", "Yu Gothic", sans-serif; }
+    .help-header { position: sticky; top: 0; z-index: 2; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 16px; background: var(--header); border-bottom: 1px solid var(--border); }
+    .help-title { display: flex; align-items: center; gap: 9px; }
+    .help-title img { width: 28px; height: 28px; }
+    .help-title h1 { margin: 0; color: #f8fafc; font-size: 16px; }
+    .help-actions { display: flex; align-items: center; gap: 8px; }
+    .help-actions button, .help-actions a { padding: 5px 10px; border: 1px solid #475569; border-radius: 4px; color: var(--text); background: #253044; font: inherit; font-size: 12px; text-decoration: none; cursor: pointer; }
+    main { flex: 1; width: min(880px, 100%); margin: 0 auto; padding: 0 16px 60px; }
+    .hero { padding: 34px 0 10px; text-align: center; }
+    .hero img { width: 72px; height: 72px; }
+    .hero h2 { margin: 10px 0 4px; border: 0; color: #f8fafc; font-size: 24px; }
+    .hero p { margin: 0 auto; max-width: 34em; color: var(--dim); font-size: 15px; }
+    .hero .cta { display: inline-block; margin-top: 18px; padding: 9px 22px; border-radius: 6px; background: var(--accent); color: #06263a; font-weight: 700; text-decoration: none; }
+    section { margin: 0 0 30px; }
+    h2 { margin: 30px 0 8px; padding-bottom: 6px; border-bottom: 2px solid var(--border); color: #f8fafc; font-size: 18px; }
+    h3 { margin: 18px 0 4px; color: #f8fafc; font-size: 14px; }
+    p, ul, ol { margin: 8px 0; }
+    ul, ol { padding-left: 24px; }
+    a { color: #7dd3fc; }
+    code { padding: 1px 5px; border: 1px solid #475569; border-radius: 4px; background: #273244; font: 12px ui-monospace, SFMono-Regular, Menlo, monospace; }
+    pre { margin: 10px 0; padding: 12px 14px; overflow-x: auto; border: 1px solid var(--border); border-radius: 6px; background: var(--code); font: 12px/1.65 ui-monospace, SFMono-Regular, Menlo, monospace; }
+    .note { margin: 12px 0; padding: 10px 14px; border-left: 4px solid var(--accent); background: var(--note); }
+    .shots { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin: 12px 0; }
+    .shots figure { margin: 0; }
+    .shots img { display: block; width: 100%; height: auto; border: 1px solid var(--border); border-radius: 5px; background: #000; image-rendering: pixelated; }
+    .shots figcaption { margin-top: 4px; color: var(--dim); font-size: 12px; text-align: center; }
+    .two { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; }
+    .card { padding: 12px 14px; border: 1px solid var(--border); border-radius: 6px; background: var(--panel); }
+    .card h3 { margin-top: 0; }
+    .help-footer { padding: 9px 16px; border-top: 1px solid var(--border); background: var(--panel); text-align: center; font-size: 12px; }
+    .lang-en { display: none; }
+    body[data-lang="en"] .lang-ja { display: none; }
+    body[data-lang="en"] .lang-en { display: block; }
+    body[data-lang="en"] li .lang-en, body[data-lang="en"] p .lang-en, body[data-lang="en"] span.lang-en { display: inline; }
+    @media (max-width: 520px) { .help-header { align-items: flex-start; } .help-actions { flex-direction: column; align-items: stretch; } }
+  </style>
+</head>
+<body data-lang="ja">
+  <header class="help-header">
+    <div class="help-title">
+      <img src="./icons/sprout68k.svg" alt="">
+      <h1><span class="lang-ja">Sprout68k とは</span><span class="lang-en">About Sprout68k</span></h1>
+    </div>
+    <div class="help-actions">
+      <button id="lang-toggle" type="button">EN</button>
+      <a href="./samples.html"><span class="lang-ja">作例集</span><span class="lang-en">Examples</span></a>
+      <a href="./reference.html"><span class="lang-ja">関数リファレンス</span><span class="lang-en">Reference</span></a>
+      <a class="open-app" href="./index.html"><span class="lang-ja">はじめる</span><span class="lang-en">Start</span></a>
+    </div>
+  </header>
+
+  <main>
+    <div class="hero">
+      <img src="./icons/sprout68k.svg" alt="">
+      <h2>Sprout68k</h2>
+      <p class="lang-ja">ブラウザだけで、X68000 のプログラムを C で書いて、すぐ動かせる入門環境です。インストールも、アカウントも要りません。</p>
+      <p class="lang-en">Write C programs for the X68000 and run them right away — entirely in your browser. No install, no account.</p>
+      <a class="cta open-app" href="./index.html"><span class="lang-ja">はじめる</span><span class="lang-en">Start</span></a>
+    </div>
+
+    <section>
+      <h2><span class="lang-ja">インストールは要りません</span><span class="lang-en">Nothing to install</span></h2>
+      <div class="lang-ja">
+        <p>C のコンパイラそのものがブラウザの中で動きます。ページを開けば、それだけで書き始められます。書いたものは自動でブラウザの中に保存され、次に開いたときも続きから始められます。</p>
+        <p class="note">最初のビルドのときだけ、コンパイラ一式（約20MB）を読み込みます。2回目からは読み込み済みのものを使います。</p>
+      </div>
+      <div class="lang-en">
+        <p>The C compiler itself runs inside your browser. Open the page and you can start writing immediately. Your work is saved in the browser, so you can pick up where you left off.</p>
+        <p class="note">Only the first build downloads the toolchain (about 20 MB). After that it is reused.</p>
+      </div>
+    </section>
+
+    <section>
+      <h2><span class="lang-ja">書いて、すぐ動かす</span><span class="lang-en">Write it, run it</span></h2>
+      <div class="lang-ja">
+        <p>書いたプログラムは、その場で X68000 の実行画面に出ます。エミュレータもページの中にあるので、ファイルを持ち運ぶ必要はありません。</p>
+      </div>
+      <div class="lang-en">
+        <p>Your program runs on an X68000 screen right there on the page. The emulator is built in, so there are no files to move around.</p>
+      </div>
+      <pre>#include "x68.h"
+
+void main(void) {
+  x68_screen_open();
+  x68_cls(x68_rgb(0, 0, 0));
+  x68_box_fill(200, 200, 100, 100, x68_rgb(255, 128, 0));
+  x68_screen_flip();
+}</pre>
+      <p class="lang-ja">これだけで、画面にオレンジ色の四角が出ます。</p>
+      <p class="lang-en">That is all it takes to put an orange square on the screen.</p>
+    </section>
+
+    <section>
+      <h2><span class="lang-ja">入門者のための関数</span><span class="lang-en">Functions made for beginners</span></h2>
+      <div class="lang-ja">
+        <p>覚える関数は29個だけです。点・線・四角・円を描く、キーを読む、文字を出す、乱数を引く——ゲームを作るのに要るものが揃っています。</p>
+        <p><strong>範囲の外を指定しても落ちません。</strong> 画面からはみ出す座標を渡しても、そこだけ切り取られるだけです。入門者がいちばん転びやすいところを、ライブラリ側で受け止めています。</p>
+        <p><a href="./reference.html">関数リファレンス</a>には、29個すべてに<strong>そのまま動く例</strong>と「つまずきどころ」が付いています。</p>
+      </div>
+      <div class="lang-en">
+        <p>There are only 29 functions to learn: draw points, lines, boxes and circles; read the keyboard; print text; get random numbers — everything you need to make a game.</p>
+        <p><strong>Out-of-range values never crash your program.</strong> Coordinates outside the screen are simply clipped. The library absorbs the mistakes beginners make most often.</p>
+        <p>The <a href="./reference.html">function reference</a> gives every one of the 29 a <strong>runnable example</strong> and a list of common pitfalls.</p>
+      </div>
+    </section>
+
+    <section>
+      <h2><span class="lang-ja">エラーは、やさしい言葉で</span><span class="lang-en">Errors in plain language</span></h2>
+      <div class="lang-ja">
+        <p>コンパイラのエラーは英語で、初めて見ると意味が分かりません。Sprout68k は、よく出るものに<strong>日本語の注釈</strong>を付けて「何が起きたか」「次に何をすればよいか」を並べて出します。</p>
+        <p>実行中にプログラムが壊れたときも、画面が固まるのではなく<strong>何が起きたかを表示して止まります</strong>。そこから1クリックでやり直せます。</p>
+      </div>
+      <div class="lang-en">
+        <p>Compiler errors are hard to read the first time. Sprout68k annotates the common ones with a plain-language note: what happened, and what to do next.</p>
+        <p>If your program crashes while running, the screen does not just freeze — it <strong>tells you what went wrong and stops</strong>, and you can start over with one click.</p>
+      </div>
+    </section>
+
+    <section>
+      <h2><span class="lang-ja">作例がついています</span><span class="lang-en">Worked examples included</span></h2>
+      <div class="lang-ja">
+        <p>1本ごとに覚えることが1つずつ増える作例が6本と、眺めて楽しい作品が2本入っています。どれも<a href="./samples.html">作例集</a>から、解説付きで読めます。ボタン1つでエディタに開けるので、打ち込む必要はありません。</p>
+      </div>
+      <div class="lang-en">
+        <p>Six step-by-step examples — each adding exactly one new idea — plus two programs that are simply fun to watch. All of them are explained in the <a href="./samples.html">examples page</a> and open in the editor with one click; no typing them in.</p>
+      </div>
+      <div class="shots">
+        <figure><img src="./samples/shots/shapes.png" alt=""><figcaption>shapes</figcaption></figure>
+        <figure><img src="./samples/shots/catch.png" alt=""><figcaption>catch</figcaption></figure>
+        <figure><img src="./samples/shots/breakout.png" alt=""><figcaption>breakout</figcaption></figure>
+        <figure><img src="./samples/shots/life.png" alt=""><figcaption>life</figcaption></figure>
+      </div>
+    </section>
+
+    <section>
+      <h2><span class="lang-ja">作ったものを、URLで配れます</span><span class="lang-en">Share what you made — as a URL</span></h2>
+      <div class="two">
+        <div class="card">
+          <h3><span class="lang-ja">遊んでもらう</span><span class="lang-en">Let people play</span></h3>
+          <p class="lang-ja">受け取った人はリンクを開くだけで遊べます。コンパイラは要りません。ブロック崩しの大きさでも <strong>1,000文字ほど</strong>で、SNS にそのまま貼れます。</p>
+          <p class="lang-en">Anyone who opens the link can play immediately — no compiler needed. Even a breakout-sized program fits in about <strong>1,000 characters</strong>, short enough to post on social media.</p>
+        </div>
+        <div class="card">
+          <h3><span class="lang-ja">読んで、直してもらう</span><span class="lang-en">Let people read and remix</span></h3>
+          <p class="lang-ja">ソースそのものを載せたリンクも作れます。受け取った人はエディタで開いて、書き換えて、自分の作品として出し直せます。</p>
+          <p class="lang-en">You can also share a link that carries the source itself. The other person opens it in the editor, changes it, and shares their own version.</p>
+        </div>
+      </div>
+      <div class="lang-ja">
+        <p class="note"><strong>作品はどこにもアップロードされません。</strong> URL の <code>#</code> より後ろはサーバーに送られない決まりになっているので、データは受け取った人のブラウザの中だけで開かれます。</p>
+        <p>実行画面はいつでも撮影できます。撮った画像は保存やコピーができるので、投稿に添えられます。</p>
+      </div>
+      <div class="lang-en">
+        <p class="note"><strong>Your program is never uploaded anywhere.</strong> Everything after <code>#</code> in a URL is never sent to a server, so the data is only ever opened inside the recipient's browser.</p>
+        <p>You can take a screenshot of the running program at any time, then save or copy it to attach to your post.</p>
+      </div>
+    </section>
+
+    <section>
+      <h2><span class="lang-ja">オフラインでも使えます</span><span class="lang-en">Works offline</span></h2>
+      <div class="lang-ja">
+        <p>一度読み込めば、次からは通信が無くても書いて動かせます。コンパイラもエミュレータも手元にあるので、機内でも動きます。</p>
+      </div>
+      <div class="lang-en">
+        <p>Once loaded, it keeps working without a network connection. The compiler and the emulator are both on your device, so it runs on a plane too.</p>
+      </div>
+    </section>
+
+    <section>
+      <h2><span class="lang-ja">AI と一緒に作ることもできます</span><span class="lang-en">Build alongside an AI agent</span></h2>
+      <div class="lang-ja">
+        <p>MCP サーバーが付属しています。AI エージェントから、ビルドして・実際に動かして・画面を見て、というところまで行えます。手元で動くもので、書いたコードが外へ出ることはありません。</p>
+        <p>共有リンクを AI が作った場合は、<strong>「AIを使って作った」という印が必ず付きます</strong>。</p>
+      </div>
+      <div class="lang-en">
+        <p>An MCP server is included, so an AI agent can build your program, actually run it, and look at the resulting screen. It runs locally; your code does not leave your machine.</p>
+        <p>When an agent creates a share link, it is <strong>always tagged as AI-assisted</strong>.</p>
+      </div>
+    </section>
+
+    <section>
+      <h2><span class="lang-ja">中身のこと</span><span class="lang-en">Under the hood</span></h2>
+      <div class="lang-ja">
+        <ul>
+          <li>作ったプログラムは <strong>OS を使わず直接動きます</strong>。起動できるフロッピーディスクの形（.xdf）で書き出せるので、実機でも動かせます。</li>
+          <li>エミュレータは px68k、コンパイラは GCC 13.4.0 の m68k 向けです。どちらもブラウザの中で動いています。</li>
+          <li>画面は 512×512 ドット・65536色。座標は左上が (0,0) です。</li>
+        </ul>
+      </div>
+      <div class="lang-en">
+        <ul>
+          <li>Your program runs <strong>directly on the hardware, without an OS</strong>. It exports as a bootable floppy image (.xdf), so it runs on a real X68000 too.</li>
+          <li>The emulator is px68k and the compiler is GCC 13.4.0 targeting m68k — both running in the browser.</li>
+          <li>The screen is 512×512 pixels with 65,536 colours; (0,0) is the top-left corner.</li>
+        </ul>
+      </div>
+    </section>
+
+    <section>
+      <h2><span class="lang-ja">ライセンスと出典</span><span class="lang-en">License and credits</span></h2>
+      <div class="lang-ja">
+        <p>Sprout68k は GPL version 2 で配布しています。エミュレータ部分は <a href="https://github.com/libretro/px68k-libretro" target="_blank" rel="noopener noreferrer">px68k-libretro</a>（GPLv2）、エディタは CodeMirror（MIT）です。文字の形は東雲フォント由来のものを自前で作り直して同梱しています。</p>
+        <p>詳しい表示はアプリ画面の下部にあります。</p>
+      </div>
+      <div class="lang-en">
+        <p>Sprout68k is distributed under GPL version 2. The emulator core is <a href="https://github.com/libretro/px68k-libretro" target="_blank" rel="noopener noreferrer">px68k-libretro</a> (GPLv2) and the editor is CodeMirror (MIT). The character shapes are our own rebuild derived from the Shinonome font.</p>
+        <p>Full attributions are shown at the bottom of the app.</p>
+      </div>
+    </section>
+  </main>
+
+  <footer class="help-footer">
+    <a class="open-app" href="./index.html"><span class="lang-ja">はじめる</span><span class="lang-en">Start</span></a>
+  </footer>
+
+  <script>
+    (function () {
+      var storageKey = 'sprout68k.help.lang';
+      if (new URLSearchParams(location.search).get('from') === 'app') {
+        var appLinks = document.querySelectorAll('.open-app');
+        for (var i = 0; i < appLinks.length; i++) appLinks[i].hidden = true;
+      }
+      function storedLang() {
+        try {
+          var value = localStorage.getItem(storageKey);
+          return value === 'ja' || value === 'en' ? value : null;
+        } catch (error) { return null; }
+      }
+      function resolveLang() {
+        var queryLang = new URLSearchParams(location.search).get('lang');
+        if (queryLang === 'ja' || queryLang === 'en') return queryLang;
+        return storedLang() || (navigator.language && navigator.language.toLowerCase().indexOf('ja') === 0 ? 'ja' : 'en');
+      }
+      function setLang(lang) {
+        try { localStorage.setItem(storageKey, lang); } catch (error) { /* 切替は現在のページだけで続ける。 */ }
+        document.body.setAttribute('data-lang', lang);
+        document.documentElement.setAttribute('lang', lang);
+        document.title = lang === 'ja' ? 'Sprout68k とは' : 'About Sprout68k';
+        document.getElementById('lang-toggle').textContent = lang === 'ja' ? 'EN' : '日本語';
+      }
+      var current = resolveLang();
+      setLang(current);
+      document.getElementById('lang-toggle').addEventListener('click', function () {
+        current = current === 'ja' ? 'en' : 'ja';
+        setLang(current);
+      });
+    })();
+  </script>
+</body>
+</html>

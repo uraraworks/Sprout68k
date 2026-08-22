@@ -6,6 +6,7 @@ import { dirname, relative, resolve, sep } from 'node:path';
 export const APP_PATH = '/Sprout68k/';
 export const CACHE_PREFIX = 'sprout68k-precache-';
 export const IDE_STATIC_FILES = [
+  'about.html',
   'help.html',
   'reference.html',
   'samples.html',

@@ -69,10 +69,27 @@ button:focus-visible, input:focus-visible { outline: 1px solid var(--vsc-focus);
 .header-help-btn:focus-visible { outline: 1px solid var(--vsc-focus); outline-offset: 2px; }
 /* 関数リファレンスへの入口。?ボタンの左に並べる(重ならないよう?の幅ぶん右端をずらす)。
  * 「API」の文字は入門者に通じないので本のアイコンにする。 */
+/* 作例集への入口。関数リファレンスの左に並べる（?ボタンから数えて3つ目）。 */
+.header-samples-btn { position: absolute; top: var(--help-header-offset); right: calc(var(--help-header-right) + (var(--help-control-size) + 6px) * 2); width: var(--help-control-size); height: var(--help-control-size); display: grid; place-items: center; border: 1px solid #475569; border-radius: 50%; color: var(--x68-header-text); background: #172033; line-height: 0; text-decoration: none; }
+.header-samples-btn:hover { border-color: var(--vsc-focus); background: #253044; }
+.header-samples-btn:focus-visible { outline: 1px solid var(--vsc-focus); outline-offset: 2px; }
 .header-ref-btn { position: absolute; top: var(--help-header-offset); right: calc(var(--help-header-right) + var(--help-control-size) + 6px); width: var(--help-control-size); height: var(--help-control-size); display: grid; place-items: center; border: 1px solid #475569; border-radius: 50%; color: var(--x68-header-text); background: #172033; line-height: 0; text-decoration: none; }
 .header-ref-btn:hover { border-color: var(--vsc-focus); background: #253044; }
 .header-ref-btn:focus-visible { outline: 1px solid var(--vsc-focus); outline-offset: 2px; }
 .app-title-row { display: flex; justify-content: center; align-items: center; gap: 9px; }
+/* 狭い画面ではヘッダの丸ボタンが3つ並ぶと、中央のタイトルに重なる
+   （2026-08-23、320px幅で実際に隠れた）。ボタンと余白を詰め、タイトルは
+   はみ出さないよう幅を制限する。**ボタンを増やしたらここも見直すこと。** */
+@media (max-width: 400px) {
+  :root { --help-control-size: 26px; --help-header-right: 8px; --help-header-offset: 10px; }
+  .header-samples-btn, .header-ref-btn { right: calc(var(--help-header-right) + (var(--help-control-size) + 4px) * var(--help-btn-index)); }
+  .header-samples-btn { --help-btn-index: 2; }
+  .header-ref-btn { --help-btn-index: 1; }
+  .header-samples-btn svg, .header-ref-btn svg { width: 15px; height: 15px; }
+  .header-help-btn { font-size: 15px; }
+  .app-header h1 { font-size: 14px; }
+  .app-title-row { max-width: calc(100% - (var(--help-control-size) + 4px) * 3 - var(--help-header-right) * 2); margin: 0 auto; }
+}
 .app-icon { width: var(--app-title-height); height: var(--app-title-height); object-fit: contain; }
 .app-header h1 { margin: 0; font-size: 16px; }
 .app-tagline { margin: var(--app-tagline-margin) 0 0; color: var(--x68-header-tagline); font-size: 11px; line-height: var(--app-tagline-height); }
