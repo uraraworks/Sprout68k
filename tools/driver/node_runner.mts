@@ -8,8 +8,21 @@ import type { EmscriptenFactory, ModeMap, ToolInvocation, ToolName, ToolRunner }
 
 export class NativeToolRunner implements ToolRunner {
   readonly mode = 'native' as const;
+  private readonly onStderr: ((text: string) => void) | undefined;
+  /* onStderr を渡すと、ツールの stderr を親へ素通しせずここへ届ける。
+   * 渡さなければ従来どおり 'inherit'（既存の検証スクリプトの見え方を変えない）。
+   * コンパイル・リンクのエラー本文は診断のいちばん大事な部分なので、
+   * 拾える経路を native にも用意する。 */
+  constructor(onStderr?: (text: string) => void) { this.onStderr = onStderr; }
   run({ program, args, cwd }: ToolInvocation): void {
-    const result = spawnSync(program, [...args], { cwd, stdio: 'inherit' });
+    const capture = Boolean(this.onStderr);
+    const result = spawnSync(program, [...args], {
+      cwd, stdio: capture ? ['ignore', 'pipe', 'pipe'] : 'inherit', encoding: capture ? 'utf8' : undefined,
+    } as any);
+    if (capture) {
+      const text = `${result.stdout ?? ''}${result.stderr ?? ''}`;
+      if (text.trim()) this.onStderr!(text);
+    }
     if (result.error) throw result.error;
     if (result.status !== 0) throw new Error(`${program} が終了コード ${result.status ?? '不明'} で失敗しました`);
   }
@@ -54,7 +67,7 @@ export function createNodeToolExecutors(options: NodeToolExecutorOptions): ToolE
   };
   const runners = Object.fromEntries((Object.keys(options.modes) as ToolName[]).map((tool) => [
     tool,
-    options.modes[tool] === 'native' ? new NativeToolRunner()
+    options.modes[tool] === 'native' ? new NativeToolRunner(options.onStderr)
       : options.modes[tool] === 'wasm' ? new WasmToolRunner(
         options.wasmModules?.[tool] ? resolvePath(options.root, options.wasmModules[tool]!) : undefined,
         options.cc1ExecPrefix,

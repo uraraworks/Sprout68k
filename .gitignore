@@ -3,3 +3,6 @@
 
 # vite の依存キャッシュ
 /.vite/
+
+# npm の依存(mcp/ は npm install で再現できる)
+node_modules/

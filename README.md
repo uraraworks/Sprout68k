@@ -354,3 +354,22 @@ Sprout68kに確定した。
 未実装なのはm68kアセンブラのシンタックスハイライトと68kソース行デバッグである。
 Safari / Firefoxでは未実測で、ブラウザ互換性を確認済みとはしていない。リモート作成、
 push、Release作成、Pages公開を含む実際の公開もまだ行っていない。
+
+## MCP 対応（AI エージェントから書いて動かす）
+
+`mcp/` に MCP サーバーがある。**ブラウザを使わず** Node の中でビルドと実行を完結させ、
+AI エージェントから次のことができる。
+
+- `api_reference` — この環境で使える 29 関数の一覧と、説明・引数・動く例・つまずき
+- `build` — ビルドして、日本語の注釈つき診断を返す
+- `run` — 実際に動かして、テキスト画面・**画面の PNG**・描かれた画素数を返す
+- `share_link` — 共有 URL を作る（**`ai` タグが必ず付く**）
+
+```bash
+npm install --prefix mcp
+claude mcp add sprout68k --env PATH="$HOME/x68kdev-toolchain/bin:$PATH" -- node "$PWD/mcp/server.mjs"
+```
+
+前提（Node 22 以上、gcc 13.4.0 のツールチェーン）と疎通の確かめ方、うまくいかない
+ときの対処は [`mcp/README.md`](mcp/README.md) にまとめてある。**そのページを
+エージェントに読ませれば、そのままセットアップできる。**

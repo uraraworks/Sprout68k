@@ -1,0 +1,17 @@
+{
+  "name": "sprout68k-mcp",
+  "private": true,
+  "type": "module",
+  "version": "0.1.0",
+  "description": "MCP server that builds and runs Sprout68k (X68000 beginner C environment) programs without a browser",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "start": "node server.mjs"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "latest",
+    "zod": "^3"
+  }
+}
