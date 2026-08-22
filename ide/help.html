@@ -64,6 +64,7 @@
           <li><strong data-ui-label>ビルド</strong>を押します。成功するとXDFが作られます。</li>
           <li><strong data-ui-label>実行</strong>を押すと、最新のソースをビルドしてX68000実行画面で起動します。</li>
         </ol>
+        <p class="note"><code>main</code>から戻ると、起動コード（crt0）が停止ループに入ります。そのため、表示するだけのプログラムに<code>for (;;)</code>を書く必要はありません。</p>
         <p class="note">初回は約20MBのツールチェーンを読み込みます。読み込み後の実測目安は、短いstage_c相当で約1.9秒、breakout相当で約11秒です。端末や回線で変わります。</p>
       </div>
       <div class="lang-en">
@@ -72,6 +73,7 @@
           <li>Press <strong data-ui-label>ビルド</strong> (Build). A successful build produces an XDF.</li>
           <li>Press <strong data-ui-label>実行</strong> (Run) to build the latest source and start it on the X68000 screen.</li>
         </ol>
+        <p class="note">After <code>main</code> returns, the startup code (crt0) enters its stop loop. A program that only prints a message does not need its own <code>for (;;)</code>.</p>
         <p class="note">The first build also loads about 20 MB of toolchain data. After loading, measured times are about 1.9 seconds for a small stage_c-sized program and about 11 seconds for breakout. Device and connection speed will vary.</p>
       </div>
     </section>

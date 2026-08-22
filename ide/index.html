@@ -5,29 +5,39 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#111827">
   <title>Sprout68k - X68000 Programming Environment</title>
-  <link rel="icon" href="/Sprout68k/ide/icons/sprout68k.svg" type="image/svg+xml">
-  <link rel="icon" href="/Sprout68k/ide/icons/sprout68k-32.png" sizes="32x32" type="image/png">
-  <link rel="icon" href="/Sprout68k/ide/icons/sprout68k-16.png" sizes="16x16" type="image/png">
-  <link rel="manifest" href="/Sprout68k/ide/manifest.webmanifest">
+  <link rel="icon" href="./icons/sprout68k.svg" type="image/svg+xml">
+  <link rel="icon" href="./icons/sprout68k-32.png" sizes="32x32" type="image/png">
+  <link rel="icon" href="./icons/sprout68k-16.png" sizes="16x16" type="image/png">
+  <link rel="manifest" href="./manifest.webmanifest">
   <link rel="stylesheet" href="./workbench.css">
 </head>
 <body>
   <header class="app-header">
     <a class="header-help-btn" href="./help.html?lang=ja&amp;from=app" target="_blank" rel="noopener noreferrer" title="使い方" aria-label="使い方">?</a>
-    <div class="app-title-row"><img class="app-icon" src="/Sprout68k/ide/icons/sprout68k.svg" alt=""><h1>Sprout68k</h1></div>
+    <div class="app-title-row"><img class="app-icon" src="./icons/sprout68k.svg" alt=""><h1>Sprout68k</h1></div>
     <p class="app-tagline">ブラウザで学ぶ X68000 C プログラミング</p>
     <div class="app-recovery-actions" aria-label="実行の復帰操作">
-      <button id="stop-emulator" type="button">実行を停止</button>
-      <button id="recover-emulator" type="button">停止して同梱サンプルを起動</button>
+      <button id="stop-emulator" type="button" aria-label="実行を停止" title="実行を停止">
+        <svg class="toolbar-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="6.5" y="6.5" width="11" height="11" rx="1.5"/></svg>
+      </button>
+      <button id="recover-emulator" type="button" aria-label="停止して同梱サンプルを起動" title="停止して同梱サンプルを起動">
+        <svg class="toolbar-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M19 8V4m0 0h-4m4 0-3.1 3.1a7 7 0 1 0 1.3 8.1"/><rect x="9" y="9" width="6" height="6" rx="1"/></svg>
+      </button>
     </div>
   </header>
   <main class="workspace-grid">
     <aside class="sidebar" aria-label="エクスプローラー">
       <div class="sidebar-heading">エクスプローラー</div>
       <div class="sidebar-actions">
-        <button id="new-file" title="新規ファイル" aria-label="新規ファイル">＋</button>
-        <button id="save-file" title="保存 (Ctrl+S)" aria-label="保存">保存</button>
-        <button id="download-file" title="ダウンロード" aria-label="ダウンロード">↓</button>
+        <button id="new-file" type="button" title="新規ファイル" aria-label="新規ファイル">
+          <svg class="toolbar-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 5v14M5 12h14"/></svg>
+        </button>
+        <button id="save-file" type="button" title="保存" aria-label="保存">
+          <svg class="toolbar-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5 4h11l3 3v13H5Z"/><path d="M8 4v6h8V4M8 20v-6h8v6"/></svg>
+        </button>
+        <button id="download-file" type="button" title="ダウンロード" aria-label="ダウンロード">
+          <svg class="toolbar-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 4v11m-4-4 4 4 4-4M5 19h14"/></svg>
+        </button>
         <div id="new-file-popup" class="new-file-popup" role="dialog" aria-label="新規ファイル" hidden>
           <input id="new-path" aria-label="新規ファイル名" placeholder="main.c">
           <div id="new-file-error" class="popup-error" role="alert"></div>
@@ -40,9 +50,15 @@
       <div class="tab-strip" id="tab-strip" role="tablist" aria-label="開いているファイル"></div>
       <div id="editor" aria-label="C ソースエディタ"></div>
       <div class="editor-toolbar">
-        <button id="build" type="button">ビルド</button>
-        <button id="download-xdf" type="button" disabled>XDFをダウンロード</button>
-        <button id="run" type="button">実行</button>
+        <button id="build" type="button" aria-label="ビルド" title="ビルド">
+          <svg class="toolbar-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m14.5 5.5 4 4M13 7l4 4M4.5 19.5l8.7-8.7 2 2-8.7 8.7Z"/><path d="m5 5 4 1-3 3Z"/></svg>
+        </button>
+        <button id="download-xdf" type="button" aria-label="XDFをダウンロード" title="XDFをダウンロード" disabled>
+          <svg class="toolbar-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M8 8h8M12 9v7m-3-3 3 3 3-3"/></svg>
+        </button>
+        <button id="run" type="button" aria-label="実行" title="実行">
+          <svg class="toolbar-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m8 5 11 7-11 7Z"/></svg>
+        </button>
       </div>
       <div id="build-status" role="status">準備中…</div>
       <div id="build-output" aria-label="コンパイル診断" tabindex="0"></div>

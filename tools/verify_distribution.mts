@@ -3,6 +3,7 @@ import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { relative, resolve, sep } from 'node:path';
 import { runInNewContext } from 'node:vm';
 import { APP_PATH, CACHE_PREFIX, IDE_STATIC_FILES, ROOT_STATIC_FILES, resolveWebAssetsRoot } from './distribution.mts';
+import { verifyHtmlUrls } from './html_url_verifier.mts';
 
 const ROOT = resolve(import.meta.dirname, '..');
 const DIST = resolve(ROOT, 'build/web-page');
@@ -172,11 +173,40 @@ assert(tools.length === 8, `wasmツールの公開物が8ファイルではあ�
 
 for (const htmlPath of ['ide/index.html', 'web/index.html']) {
   const html = readFileSync(resolve(DIST, htmlPath), 'utf8');
-  for (const match of html.matchAll(/(?:src|href)="(\/Sprout68k\/[^"?#]+)"/g)) {
-    const target = match[1].slice(APP_PATH.length);
-    assert(listed.includes(target), `HTML参照先が公開物にありません: ${match[1]}`);
-  }
+  const documentPath = `${APP_PATH}${htmlPath.replace(/index\.html$/, '')}`;
+  const references = verifyHtmlUrls(html, `https://example.test${documentPath}`, DIST, APP_PATH, htmlPath === 'ide/index.html');
+  console.log(`PASS(dist HTML URL解決): ${htmlPath} ${references.length}件${htmlPath === 'ide/index.html' ? '（favicon/manifest含む）' : ''}`);
 }
+
+// 開発HTMLが指すロゴ・favicon・manifestの安定URLも、dist公開ルートで同じく
+// 200相当になることを、HTMLのタグから抽出して確認する。
+const sourceIdeHtml = readFileSync(resolve(ROOT, 'ide/index.html'), 'utf8');
+const sourceBrandTags = [...sourceIdeHtml.matchAll(/<(?:link|img)\b[^>]*>/g)].map((match) => match[0])
+  .filter((tag) => /rel="(?:icon|manifest)"/.test(tag) || /class="app-icon"/.test(tag));
+const sourceBrandReferences = verifyHtmlUrls(
+  `<html><head>${sourceBrandTags.filter((tag) => tag.startsWith('<link')).join('')}</head><body>${sourceBrandTags.filter((tag) => tag.startsWith('<img')).join('')}</body></html>`,
+  `https://example.test${APP_PATH}ide/`, DIST, APP_PATH,
+);
+const stableBrandUrls = [...new Set(sourceBrandReferences.map((entry) => entry.url.pathname))];
+assert(stableBrandUrls.length === 4, `distで200相当になる安定ブランドURLが4件ではありません: ${stableBrandUrls.join(', ')}`);
+console.log(`PASS(dist安定URL解決): ${stableBrandUrls.join(',')}`);
+
+const distIdeHtml = readFileSync(resolve(DIST, 'ide/index.html'), 'utf8');
+const duplicatedBaseDistHtml = distIdeHtml.replace(
+  /(<link rel="icon" href=")[^"]+"/,
+  `$1${APP_PATH}${APP_PATH.slice(1)}ide/icons/sprout68k.svg"`,
+);
+assert(duplicatedBaseDistHtml !== distIdeHtml, 'dist base二重化の故障注入対象がありません');
+let duplicatedBaseDistRejected = false;
+let duplicatedBaseDistError = '';
+try {
+  verifyHtmlUrls(duplicatedBaseDistHtml, `https://example.test${APP_PATH}ide/`, DIST, APP_PATH);
+} catch (error) {
+  duplicatedBaseDistError = error instanceof Error ? error.message : String(error);
+  duplicatedBaseDistRejected = duplicatedBaseDistError.includes(`${APP_PATH}${APP_PATH.slice(1)}`);
+}
+assert(duplicatedBaseDistRejected, `dist base二重化を検出できません: ${duplicatedBaseDistError}`);
+console.log(`PASS(故障注入・dist base二重): ${duplicatedBaseDistError}`);
 
 const ideManifestPath = resolve(DIST, 'ide/manifest.webmanifest');
 const ideManifest = JSON.parse(readFileSync(ideManifestPath, 'utf8')) as {

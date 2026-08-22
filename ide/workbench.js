@@ -127,9 +127,11 @@ function captureSourceState() {
 }
 
 function updateRecoveryLabel() {
-  nodes.recoverEmulator.textContent = recoveryController.hasSuccessfulBuild()
+  const label = recoveryController.hasSuccessfulBuild()
     ? '停止して前回成功XDFを再起動'
     : '停止して同梱サンプルを起動';
+  nodes.recoverEmulator.setAttribute('aria-label', label);
+  nodes.recoverEmulator.title = label;
 }
 
 function reportMachine(message, error = false) {

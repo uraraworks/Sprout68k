@@ -4,6 +4,9 @@ import { readFile, readdir, stat } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { runInNewContext } from 'node:vm';
+import { createServer } from '../../WebX68k/node_modules/vite/dist/node/index.js';
+import { APP_PATH } from '../tools/distribution.mts';
+import { verifyHtmlUrls } from '../tools/html_url_verifier.mts';
 
 const root = dirname(fileURLToPath(import.meta.url));
 const forbidden = ['pc' + '98', 'n' + 'p2', 'pc' + '-98', 'free' + 'dos', 'na' + 'sm', 'smaller' + 'c', '98' + '01', '98' + '21'];
@@ -21,7 +24,7 @@ const required = [
   '../verify/verify_ide_boot.mts', '../verify/verify_ide_recovery.mts',
   '../verify/verify_ide_keyboard.mts',
   '../docs/IDEキーボード入力_20260822.md', '../lib/include/x68.h', '../COPYING', '../CONTRIBUTING.md', '../README.md',
-  '../tools/distribution.mts',
+  '../tools/distribution.mts', '../tools/html_url_verifier.mts',
   'vendor/codemirror/codemirror.js', 'vendor/codemirror/LICENSE.CodeMirror',
 ];
 
@@ -54,12 +57,57 @@ for (const [file, expectedSize, expectedSha256] of coreFiles) {
 const html = await readFile(resolve(root, 'index.html'), 'utf8');
 const help = await readFile(resolve(root, 'help.html'), 'utf8');
 const css = await readFile(resolve(root, 'workbench.css'), 'utf8');
-for (const match of html.matchAll(/(?:src|href)="(\.\/[^"?#]+)"/g)) {
-  await stat(resolve(root, match[1]));
-}
 for (const match of help.matchAll(/(?:src|href)="((?:\.\.\/|\.\/)[^"?#]+)"/g)) {
   await stat(resolve(root, match[1]));
 }
+
+// Vite開発サーバと同じHTML変換をmiddleware modeで実行し、ブラウザが解決するURLを
+// APP_PATH込みで公開ルートへ戻す。単なる相対ファイルの存在確認では済ませない。
+const vite = await createServer({
+  configFile: resolve(root, '../vite.config.ts'), appType: 'custom', logLevel: 'silent',
+  cacheDir: resolve(root, '../build/vite-url-check'),
+  server: { middlewareMode: true, hmr: false },
+});
+let devHtml;
+try {
+  devHtml = await vite.transformIndexHtml(`${APP_PATH}ide/`, html);
+} finally {
+  await vite.close();
+}
+const devHtmlWithoutViteClient = devHtml.replace(/<script type="module" src="[^"]*\/@vite\/client"><\/script>\s*/g, '');
+const devReferences = verifyHtmlUrls(
+  devHtmlWithoutViteClient, `https://example.test${APP_PATH}ide/`, resolve(root, '..'), APP_PATH,
+);
+const devBrandUrls = [...new Set(devReferences.map((entry) => entry.url.pathname)
+  .filter((pathname) => /\/(?:icons\/sprout68k(?:-16|-32)?\.(?:svg|png)|manifest\.webmanifest)$/.test(pathname)))];
+if (devBrandUrls.length !== 4) throw new Error(`devのロゴ/favicon/manifest URLが4件ではありません: ${devBrandUrls.join(', ')}`);
+console.log(`verify-ide: dev HTML URL resolution PASS (${devReferences.length} local references; brand=${devBrandUrls.join(',')})`);
+
+const duplicatedBaseSource = html.replace(
+  'href="./icons/sprout68k.svg"', `href="${APP_PATH}ide/icons/sprout68k.svg"`,
+);
+if (duplicatedBaseSource === html) throw new Error('base二重化の故障注入対象がありません');
+const faultVite = await createServer({
+  configFile: resolve(root, '../vite.config.ts'), appType: 'custom', logLevel: 'silent',
+  cacheDir: resolve(root, '../build/vite-url-check'),
+  server: { middlewareMode: true, hmr: false },
+});
+let duplicatedBaseRejected = false;
+let duplicatedBaseError = '';
+try {
+  const faultHtml = (await faultVite.transformIndexHtml(`${APP_PATH}ide/`, duplicatedBaseSource))
+    .replace(/<script type="module" src="[^"]*\/@vite\/client"><\/script>\s*/g, '');
+  try {
+    verifyHtmlUrls(faultHtml, `https://example.test${APP_PATH}ide/`, resolve(root, '..'), APP_PATH);
+  } catch (error) {
+    duplicatedBaseError = error instanceof Error ? error.message : String(error);
+    duplicatedBaseRejected = duplicatedBaseError.includes(`${APP_PATH}${APP_PATH.slice(1)}`);
+  }
+} finally {
+  await faultVite.close();
+}
+if (!duplicatedBaseRejected) throw new Error(`base二重化を検出できません: ${duplicatedBaseError}`);
+console.log(`PASS(故障注入・dev base二重): ${duplicatedBaseError}`);
 
 const allFiles = await filesBelow(root);
 for (const file of allFiles) {
@@ -77,14 +125,32 @@ const workbench = await readFile(resolve(root, 'workbench.js'), 'utf8');
 if (!workbench.includes('window.sprout68kWorkbench')) throw new Error('公開 API 名がありません');
 if (!workbench.includes('cpp()')) throw new Error('C 言語ハイライトがありません');
 
-// ヘルプ本文で data-ui-label を付けた実表記を抽出し、UIを生成する正典ソースへ
-// 直接突き合わせる。検査専用のラベル一覧は持たない。
+function htmlAttribute(tag, name) {
+  return tag.match(new RegExp(`\\s${name}="([^"]*)"`))?.[1]?.trim() ?? '';
+}
+
+// HTMLに実在する全buttonをツールバーの正典として抽出する。個別IDの検査表は持たない。
+const toolbarButtonTags = [...html.matchAll(/<button\b[^>]*>/g)].map((match) => match[0]);
+if (toolbarButtonTags.length === 0) throw new Error('ツールバーボタンを抽出できません');
+for (const tag of toolbarButtonTags) {
+  const id = htmlAttribute(tag, 'id') || '(idなし)';
+  const accessibleName = htmlAttribute(tag, 'aria-label');
+  const tooltip = htmlAttribute(tag, 'title');
+  if (!accessibleName) throw new Error(`ツールバーボタンにアクセシブル名がありません: ${id}`);
+  if (!tooltip) throw new Error(`ツールバーボタンにツールチップがありません: ${id}`);
+  if (accessibleName !== tooltip) throw new Error(`アクセシブル名とツールチップが不一致です: ${id}`);
+}
+console.log(`verify-ide: toolbar accessible names PASS (${toolbarButtonTags.length} buttons)`);
+
+// ヘルプ本文で data-ui-label を付けた実表記を抽出し、ボタンはaria-label、
+// その他は実際の可視文字・生成文字列へ直接突き合わせる。検査専用のラベル一覧は持たない。
 const helpUiLabels = [...new Set([...help.matchAll(/<strong\s+data-ui-label>([^<]+)<\/strong>/g)]
   .map((match) => match[1].trim()))];
 if (helpUiLabels.length < 8) throw new Error(`ヘルプのUIラベル抽出数が不足しています: ${helpUiLabels.length}`);
 const staticUiLabels = html.replace(/<[^>]+>/g, '\n').split('\n').map((text) => text.trim()).filter(Boolean);
+const accessibleUiLabels = toolbarButtonTags.map((tag) => htmlAttribute(tag, 'aria-label'));
 const dynamicUiLabels = [...workbench.matchAll(/'([^'\n]+)'/g)].map((match) => match[1]);
-const actualUiLabels = new Set([...staticUiLabels, ...dynamicUiLabels]);
+const actualUiLabels = new Set([...accessibleUiLabels, ...staticUiLabels, ...dynamicUiLabels]);
 for (const label of helpUiLabels) {
   if (!actualUiLabels.has(label)) {
     throw new Error(`ヘルプのUIラベルが実装にありません: ${label}`);
@@ -243,69 +309,53 @@ for (const viewport of ['1280x900', '800x600']) {
   console.log(`verify-ide: help reachability ${viewport} header=${headerLeft}..${headerRight}x${headerTop}..${headerBottom}px footer=${footerTop}..${viewportHeight}px`);
 }
 
-// ボタン内容の収まりを client/scroll 寸法に対応させた静的検査。
-// 日本語等を16px、ASCIIを9pxと保守的に見積もり、paddingを加えたscroll寸法を求める。
-const buttonVariables = [
-  '--button-line-height', '--button-block-padding', '--button-inline-padding', '--button-border-width',
-];
-const buttonValues = Object.fromEntries(buttonVariables.map((variable) => {
-  const values = pixelValues(variable);
-  if (values.length !== 1) throw new Error(`ボタンの CSS 数値を一意に取得できません: ${variable}`);
-  return [variable, values[0]];
-}));
+// inline SVGの表示寸法をbuttonのclient寸法と突き合わせる。button一覧は上でHTMLから
+// 抽出したものを再利用し、アイコンごとの検査表は持たない。
+const buttonBorder = pixelValues('--button-border-width');
+const toolbarControl = pixelValues('--toolbar-control-size');
+const toolbarIcon = pixelValues('--toolbar-icon-size');
+if (buttonBorder.length !== 1 || toolbarControl.length !== 1 || toolbarIcon.length !== 1) {
+  throw new Error('ツールバー寸法のCSS数値を一意に取得できません');
+}
 for (const cssContract of ['white-space: nowrap', 'flex-shrink: 0']) {
   if (!css.match(new RegExp(`button \\{[^}]*${cssContract}`))) {
     throw new Error(`ボタン内容の枠内保持契約がありません: ${cssContract}`);
   }
 }
-function buttonLabel(id) {
-  const match = html.match(new RegExp(`<button[^>]*id="${id}"[^>]*>([^<]+)</button>`));
-  if (!match) throw new Error(`ボタン文言を取得できません: ${id}`);
-  return match[1].trim();
+if (!css.includes('.toolbar-icon { width: var(--toolbar-icon-size); height: var(--toolbar-icon-size); display: block;')) {
+  throw new Error('ツールバーアイコンの固定表示寸法がありません');
 }
-function labelScrollWidth(label) {
-  const glyphWidth = [...label].reduce((width, character) => width + (/^[\\x00-\\x7f]$/.test(character) ? 9 : 16), 0);
-  return glyphWidth + buttonValues['--button-inline-padding'] * 2;
-}
-const clientHeight = recoveryValues['--recovery-control-height'] - buttonValues['--button-border-width'] * 2;
-const labelScrollHeight = buttonValues['--button-line-height'] + buttonValues['--button-block-padding'] * 2;
-if (labelScrollHeight > clientHeight) {
-  throw new Error(`ヘッダーボタンが縦に溢れます: scroll=${labelScrollHeight}px client=${clientHeight}px`);
-}
-const recoveryLabels = [
-  buttonLabel('recover-emulator'),
-  ...[...workbench.matchAll(/'(停止して[^'\n]+)'/g)].map((match) => match[1]),
-];
-const fixedButtons = [
-  { id: 'stop-emulator', labels: [buttonLabel('stop-emulator')], width: recoveryValues['--recovery-stop-width'] },
-  { id: 'recover-emulator', labels: recoveryLabels, width: recoveryValues['--recovery-action-width'] },
-];
-for (const button of fixedButtons) {
-  const scrollWidth = Math.max(...button.labels.map(labelScrollWidth));
-  const clientWidth = button.width - buttonValues['--button-border-width'] * 2;
-  if (scrollWidth > clientWidth) {
-    throw new Error(`${button.id} の文言が横に溢れます: scroll=${scrollWidth}px client=${clientWidth}px`);
+const buttonBodies = [...html.matchAll(/<button\b([^>]*)>([\s\S]*?)<\/button>/g)];
+if (buttonBodies.length !== toolbarButtonTags.length) throw new Error('ツールバーボタン本体を全件抽出できません');
+for (const [, attributes, body] of buttonBodies) {
+  const id = htmlAttribute(`<button ${attributes}>`, 'id');
+  const icons = [...body.matchAll(/<svg\b[^>]*class="toolbar-icon"[^>]*viewBox="0 0 24 24"[^>]*>/g)];
+  if (icons.length !== 1) throw new Error(`24x24のツールバーアイコンが1件ではありません: ${id}`);
+  const controlWidth = id === 'stop-emulator' ? recoveryValues['--recovery-stop-width']
+    : id === 'recover-emulator' ? recoveryValues['--recovery-action-width'] : toolbarControl[0];
+  const controlHeight = id === 'stop-emulator' || id === 'recover-emulator'
+    ? recoveryValues['--recovery-control-height'] : toolbarControl[0];
+  const clientWidth = controlWidth - buttonBorder[0] * 2;
+  const clientHeight = controlHeight - buttonBorder[0] * 2;
+  if (toolbarIcon[0] > clientWidth || toolbarIcon[0] > clientHeight) {
+    throw new Error(`${id} のアイコンが枠から溢れます: icon=${toolbarIcon[0]}px client=${clientWidth}x${clientHeight}px`);
   }
-  console.log(`verify-ide: label fit ${button.id} scroll<=${scrollWidth}px client=${clientWidth}px height=${labelScrollHeight}/${clientHeight}px`);
+  console.log(`verify-ide: icon fit ${id} ${toolbarIcon[0]}px in ${clientWidth}x${clientHeight}px`);
 }
-const buttonRows = [
-  { name: 'sidebar', ids: ['new-file', 'save-file', 'download-file'], available: 240 - 2 - 16, gap: 2 },
-  { name: 'editor', ids: ['build', 'download-xdf', 'run'], available: 420 - 2 - 24, gap: 6, minimum: 72 },
-];
-for (const row of buttonRows) {
-  const required = row.ids.reduce((width, id) => width + Math.max(row.minimum ?? 0, labelScrollWidth(buttonLabel(id)) + 2), 0)
-    + row.gap * (row.ids.length - 1);
-  if (required > row.available) throw new Error(`${row.name} のボタン列が横に溢れます: ${required}/${row.available}px`);
-  console.log(`verify-ide: label fit ${row.name} row=${required}/${row.available}px`);
+const sidebarRowWidth = toolbarControl[0] * 3 + 2 * 2;
+const editorRowWidth = toolbarControl[0] * 3 + 6 * 2;
+if (sidebarRowWidth > 240 - 2 - 16 || editorRowWidth > 420 - 2 - 24) {
+  throw new Error('ツールバーボタン列が最小幅に収まりません');
 }
+console.log(`verify-ide: icon rows fit sidebar=${sidebarRowWidth}/222px editor=${editorRowWidth}/394px`);
 for (const containment of [
   '.file-entry { flex: 1; min-width: 0; border-radius: 0; overflow: hidden; text-align: left; text-overflow: ellipsis; white-space: nowrap',
   '.tab { max-width: 200px; height: 35px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap',
 ]) {
   if (!css.includes(containment)) throw new Error(`可変ファイル名の枠内省略契約がありません: ${containment.split(' {')[0]}`);
 }
-if (16 + 0 > 27 - buttonValues['--button-border-width'] * 2
-    || 16 + 12 > 30 - buttonValues['--button-border-width'] * 2) {
+if (16 + 0 > 27 - buttonBorder[0] * 2
+    || 16 + 12 > 30 - buttonBorder[0] * 2) {
   throw new Error('タブ閉じる／ファイル削除ボタンの文言が枠に収まりません');
 }
 console.log('verify-ide: label fit dynamic paths=ellipsis, close/delete=contained');
