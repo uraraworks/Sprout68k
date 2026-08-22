@@ -54,6 +54,12 @@
           <svg class="toolbar-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path data-run-icon="play" d="m8 5 11 7-11 7Z"/><rect data-run-icon="stop" x="6.5" y="6.5" width="11" height="11" rx="1.5"/></svg>
           <span class="toolbar-label">実行</span>
         </button>
+        <button id="share" class="toolbar-button" type="button" title="共有リンクを作る" aria-label="共有リンクを作る" data-button-kind="icon">
+          <svg class="toolbar-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <path fill="currentColor" d="M18 2.4a3.3 3.3 0 1 0-3.2 4.1L9.1 9.7a3.3 3.3 0 1 0 0 4.6l5.7 3.2a3.3 3.3 0 1 0 1-1.8l-5.7-3.2a3.3 3.3 0 0 0 0-.9l5.7-3.2A3.3 3.3 0 0 0 18 2.4z"/>
+          </svg>
+          <span class="toolbar-label">共有</span>
+        </button>
       </div>
       <div id="build-status" role="status">準備中…</div>
       <div id="build-output" aria-label="コンパイル診断" tabindex="0"></div>
@@ -83,6 +89,50 @@
       </div>
     </section>
   </main>
+  <dialog id="share-dialog" class="share-dialog" aria-labelledby="share-heading">
+    <form method="dialog" class="share-form">
+      <div class="share-head">
+        <h2 id="share-heading">共有リンクを作る</h2>
+        <button id="share-close" type="submit" value="close" title="閉じる" aria-label="閉じる" data-button-kind="text">閉じる</button>
+      </div>
+
+      <section class="share-section">
+        <h3>この作品について（任意）</h3>
+        <div id="share-tags" class="share-tags"></div>
+        <p class="share-note">タグは自己申告です。付けても付けなくてもリンクは動きます。</p>
+      </section>
+
+      <section class="share-section">
+        <h3>リンク</h3>
+        <div id="share-status" role="status">「リンクを作る」を押すと、いまのソースをビルドします。</div>
+        <button id="share-build" type="button" data-button-kind="text" title="リンクを作る" aria-label="リンクを作る">リンクを作る</button>
+
+        <div class="share-link" id="share-binary" hidden>
+          <div class="share-link-head"><strong>遊んでもらう</strong><span class="share-target">WebX68k で開きます</span></div>
+          <p class="share-note">受け取った人はすぐ遊べます。ソースは含みません。</p>
+          <textarea id="share-binary-url" rows="2" readonly aria-label="遊んでもらうためのリンク"></textarea>
+          <div class="share-link-foot"><span id="share-binary-count"></span>
+            <button id="share-binary-copy" type="button" data-button-kind="text" title="遊んでもらうリンクをコピー" aria-label="遊んでもらうリンクをコピー">リンクをコピー</button></div>
+        </div>
+
+        <div class="share-link" id="share-source" hidden>
+          <div class="share-link-head"><strong>読んでもらう・直してもらう</strong><span class="share-target">Sprout68k で開きます</span></div>
+          <p class="share-note">ソースがそのまま入ります。受け取った人はエディタで開いて直せます。</p>
+          <textarea id="share-source-url" rows="2" readonly aria-label="読んでもらうためのリンク"></textarea>
+          <div class="share-link-foot"><span id="share-source-count"></span>
+            <button id="share-source-copy" type="button" data-button-kind="text" title="読んでもらうリンクをコピー" aria-label="読んでもらうリンクをコピー">リンクをコピー</button></div>
+        </div>
+      </section>
+
+      <section class="share-section">
+        <h3>画像</h3>
+        <p class="share-note">リンクだけでは画像は出ません（<code>#</code> より後ろはサーバに送られないため）。投稿には画像を自分で添えてください。</p>
+        <div id="share-shots" class="share-shots"></div>
+        <div id="share-shots-empty" class="share-note">まだ撮影がありません。実行画面の「スクショ」で撮れます。</div>
+      </section>
+    </form>
+  </dialog>
+
   <footer class="app-footer">
     <div class="status-left"><span id="save-state">未保存の変更なし</span><span id="current-path"></span><span id="offline-status">オフライン: 準備中</span><span id="build-id">build: 読込中</span></div>
     <div class="status-links">

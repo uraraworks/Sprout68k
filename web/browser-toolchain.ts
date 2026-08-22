@@ -1,4 +1,4 @@
-import { build } from '../tools/driver/builder.mts';
+import { Builder, build } from '../tools/driver/builder.mts';
 import type { BuildTarget, BuildToolchain, UserSource } from '../tools/driver/builder.mts';
 import { dirnamePath, MemoryHostFs, resolvePath } from '../tools/driver/hostfs.mts';
 import type { EmscriptenFactory, ToolName, ToolRunner } from '../tools/driver/runner.mts';
@@ -114,6 +114,11 @@ async function createExecutors(hostFs: MemoryHostFs, onStderr?: (text: string) =
   };
 }
 
+/** 共有ビルドの成果物（URLに載せるのは user だけ）。 */
+export interface SharedBuildResult {
+  runtime: Uint8Array; user: Uint8Array; boot: Uint8Array; layout: Record<string, number>;
+}
+
 export class BrowserToolchain {
   readonly root = ROOT;
   readonly hostFs: MemoryHostFs;
@@ -132,6 +137,23 @@ export class BrowserToolchain {
       tools: this.tools, executors: this.executors, buildRoot: resolvePath(ROOT, 'objects'),
     });
     return this.hostFs.readFile(output);
+  }
+
+  /**
+   * 共有ランタイム方式でビルドする。返すのは部品だけで、.xdf の組み立ては
+   * tools/share_v1.mts に任せる（**受信側とまったく同じ関数**を通すため）。
+   * 配置は runtime/generated/layout_v1.json を読む（値を書き写さない）。
+   */
+  async buildShared(userSource: UserSource): Promise<SharedBuildResult> {
+    const layout = JSON.parse(
+      new TextDecoder().decode(this.hostFs.readFile(resolvePath(ROOT, 'runtime/generated/layout_v1.json'))),
+    ) as Record<string, number>;
+    const builder = new Builder({
+      target: 'shared', output: resolvePath(ROOT, 'objects/shared.xdf'), root: ROOT, hostFs: this.hostFs,
+      tools: this.tools, executors: this.executors, buildRoot: resolvePath(ROOT, 'objects'),
+      userSource, sharedLayout: layout,
+    });
+    return { ...await builder.buildShared(), layout };
   }
 }
 

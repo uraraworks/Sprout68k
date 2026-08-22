@@ -3,12 +3,22 @@ import { rewriteBuildDiagnostic } from '../tools/driver/diagnostics.mts';
 import { annotateBuildDiagnostics } from '../tools/driver/diagnostic_annotations.mts';
 import { basenamePath, resolvePath } from '../tools/driver/hostfs.mts';
 import { X68kRuntime } from './px68k-runtime.ts';
+import { DEFAULT_DISK, assembleXdf, encodeShareFragment, packUserPayload } from '../tools/share_v1.mts';
 
 /**
  * Sprout68k の UI とツールチェーン／エミュレータを隔離する差し替え境界。
  * build() は共有ブラウザツールチェーン、run() は同梱 px68k に接続する。
  * UI は個別ツールやエミュレータの内部状態を持たない。
  */
+/**
+ * ブラウザの圧縮。共有URLは deflate-raw を使う（gzip のヘッダ・フッタ・CRC の
+ * 18バイトが丸ごと不要になり、base64 で24文字ぶん短くなる）。
+ */
+async function deflateRaw(bytes) {
+  const stream = new Blob([bytes]).stream().pipeThrough(new CompressionStream('deflate-raw'));
+  return new Uint8Array(await new Response(stream).arrayBuffer());
+}
+
 export function createX68kAdapter({ report, canvas }) {
   let toolchainPromise;
   let rawDiagnostics = [];
@@ -69,6 +79,34 @@ export function createX68kAdapter({ report, canvas }) {
           ok: false, message, diagnostics,
           annotations: annotateBuildDiagnostics(diagnostics.join('\n')).annotations,
         };
+      }
+    },
+
+    /**
+     * 共有用にビルドする。通常ビルドと違い、ライブラリを利用者コードに
+     * リンクせず、ランタイム側の固定番地のジャンプテーブル越しに呼ばせる。
+     * そのぶん利用者側の成果物が小さくなり、URLに載る。
+     *
+     * .xdf の組み立ては tools/share_v1.mts に任せる（**受信側とまったく同じ
+     * 関数**を通す。ここで別に組み立てると、送信側と受信側が静かに食い違う）。
+     */
+    buildShared: async (source, tags = []) => {
+      rawDiagnostics = [];
+      try {
+        const toolchain = await ensureToolchain();
+        report(`${source.path} を共有用にビルドしています…`, false);
+        const built = await toolchain.buildShared({ path: source.path, content: source.text });
+        const shareLayout = { ...built.layout, ...DEFAULT_DISK };
+        const payload = packUserPayload(built.user, shareLayout);
+        const { image, sectorCount } = assembleXdf(built.boot, built.runtime, payload, shareLayout);
+        const fragment = await encodeShareFragment('binary', payload, deflateRaw, tags);
+        report(`共有用のビルド完了: 利用者コード ${built.user.length} バイト`, false);
+        return { ok: true, payload, xdf: image, sectorCount, fragment, userSize: built.user.length };
+      } catch (error) {
+        console.error('Sprout68k shared build failure', error);
+        if (rawDiagnostics.length) console.error('Sprout68k raw tool diagnostics\n' + rawDiagnostics.join('\n'));
+        report('共有用のビルドに失敗しました', true);
+        return { ok: false, message: error.message };
       }
     },
 

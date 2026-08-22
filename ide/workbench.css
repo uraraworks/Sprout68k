@@ -177,3 +177,32 @@ button:focus-visible, input:focus-visible { outline: 1px solid var(--vsc-focus);
 .shot-actions button { padding: 4px 10px; border: 1px solid #475569; border-radius: 4px; color: var(--x68-header-text); background: #253044; font: inherit; font-size: 12px; cursor: pointer; }
 .shot-actions button:hover { border-color: var(--vsc-focus); background: #2f3d55; }
 .shot-actions .shot-danger:hover { border-color: #f87171; }
+
+/* --- 共有ダイアログ --- */
+.share-dialog { width: min(680px, 92vw); max-height: 86vh; padding: 0; border: 1px solid #475569; border-radius: 8px; color: var(--x68-header-text); background: #1f2937; }
+.share-dialog::backdrop { background: #000c; }
+.share-form { display: flex; flex-direction: column; max-height: 86vh; margin: 0; overflow-y: auto; }
+.share-head { position: sticky; top: 0; z-index: 1; display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 12px 16px; border-bottom: 1px solid #475569; background: #111827; }
+.share-head h2 { margin: 0; font-size: 15px; }
+.share-section { padding: 14px 16px; border-bottom: 1px solid #334155; }
+.share-section h3 { margin: 0 0 8px; font-size: 13px; color: #cbd5e1; }
+.share-note { margin: 6px 0; color: #9ca3af; font-size: 12px; line-height: 1.7; }
+.share-tags { display: flex; flex-wrap: wrap; gap: 8px; }
+.share-tags label { display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px; border: 1px solid #475569; border-radius: 999px; font-size: 12px; cursor: pointer; }
+.share-tags label:hover { border-color: var(--vsc-focus); }
+.share-tags input { margin: 0; }
+.share-dialog button { padding: 5px 12px; border: 1px solid #475569; border-radius: 4px; color: var(--x68-header-text); background: #253044; font: inherit; font-size: 12px; cursor: pointer; }
+.share-dialog button:hover:not(:disabled) { border-color: var(--vsc-focus); background: #2f3d55; }
+.share-dialog button:disabled { opacity: 0.45; cursor: default; }
+#share-status { margin: 0 0 8px; color: #9ca3af; font-size: 12px; }
+.share-link { margin: 12px 0 0; padding: 10px 12px; border: 1px solid #475569; border-radius: 6px; background: #16202e; }
+.share-link-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; }
+.share-target { color: #9ca3af; font-size: 12px; }
+.share-link textarea { width: 100%; margin: 6px 0 0; padding: 6px 8px; border: 1px solid #475569; border-radius: 4px; color: var(--x68-header-text); background: #0f172a; font: 11px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; resize: vertical; }
+.share-link-foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; margin-top: 6px; font-size: 12px; }
+.share-link.over-limit { border-color: #f87171; }
+.share-link.over-limit .share-link-foot { color: #fca5a5; }
+.share-shots { display: flex; flex-wrap: wrap; gap: 8px; }
+.share-shot { padding: 0; border: 2px solid #475569; border-radius: 4px; background: #000; line-height: 0; }
+.share-shot img { display: block; width: 96px; height: 96px; object-fit: contain; image-rendering: pixelated; }
+.share-shot[aria-selected="true"] { border-color: var(--vsc-focus); }

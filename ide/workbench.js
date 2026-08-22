@@ -11,6 +11,7 @@ import { createX68kAdapter } from './x68k-adapter.mjs';
 import { createRecoveryController } from './recovery-controller.mjs';
 import { renderRunToggle } from './run-toggle.mjs';
 import { ScreenshotStore, captureCanvas } from './screenshot-store.mjs';
+import { SHARE_KEYS, SHARE_TAGS, SHARE_URL_SAFE_LIMIT, encodeShareFragment, encodeSourceText } from '../tools/share_v1.mts';
 import { offlineStartupMode, offlineStatusPresentation } from './offline-support.mjs';
 import {
   MAX_SPLIT_RATIO, MIN_SPLIT_RATIO, clampSplitRatio, containedContentSize,
@@ -54,6 +55,21 @@ const nodes = {
   shotCopy: document.querySelector('#shot-copy'),
   shotShare: document.querySelector('#shot-share'),
   shotDelete: document.querySelector('#shot-delete'),
+  share: document.querySelector('#share'),
+  shareDialog: document.querySelector('#share-dialog'),
+  shareTags: document.querySelector('#share-tags'),
+  shareStatus: document.querySelector('#share-status'),
+  shareBuild: document.querySelector('#share-build'),
+  shareBinary: document.querySelector('#share-binary'),
+  shareBinaryUrl: document.querySelector('#share-binary-url'),
+  shareBinaryCount: document.querySelector('#share-binary-count'),
+  shareBinaryCopy: document.querySelector('#share-binary-copy'),
+  shareSource: document.querySelector('#share-source'),
+  shareSourceUrl: document.querySelector('#share-source-url'),
+  shareSourceCount: document.querySelector('#share-source-count'),
+  shareSourceCopy: document.querySelector('#share-source-copy'),
+  shareShots: document.querySelector('#share-shots'),
+  shareShotsEmpty: document.querySelector('#share-shots-empty'),
 };
 
 const LAST_PATH_KEY = 'sprout68k:last-path';
@@ -797,6 +813,140 @@ nodes.shotSave.addEventListener('click', saveScreenshot);
 nodes.shotCopy.addEventListener('click', copyScreenshot);
 nodes.shotShare.addEventListener('click', shareScreenshot);
 nodes.shotDelete.addEventListener('click', deleteScreenshot);
+
+/* ============================================================
+ * 共有リンク
+ *
+ * 2種類ある。**開く先も、寿命の性質も違う**。
+ *   #p1= 利用者コードのバイナリ → WebX68k で遊ぶ。受け手は px68k だけでよいが、
+ *        ランタイムのABI版に縛られる
+ *   #s1= ソースそのもの        → Sprout68k で読む・直す。コンパイラが要るかわりに、
+ *        受け取った側でコンパイルし直すので**ABI版に縛られない**
+ *
+ * どちらも `#` より後ろなので**サーバへは送られない**。そのぶん投稿ごとの
+ * OGP画像は原理的に作れないので、画像は作者が自分で添える（スクショ機能）。
+ * ============================================================ */
+const WEBX68K_URL = 'https://uraraworks.github.io/WebX68k/';
+
+async function deflateRawBytes(bytes) {
+  const stream = new Blob([bytes]).stream().pipeThrough(new CompressionStream('deflate-raw'));
+  return new Uint8Array(await new Response(stream).arrayBuffer());
+}
+
+function sprout68kUrl() {
+  // 受け取ったソースは、この環境自身で開く。開発サーバでも公開先でも同じ形になる。
+  return `${location.origin}${location.pathname.replace(/[^/]*$/, '')}`;
+}
+
+function selectedTags() {
+  return [...nodes.shareTags.querySelectorAll('input:checked')].map((input) => input.value);
+}
+
+function renderShareTags() {
+  if (nodes.shareTags.children.length > 0) return;
+  for (const tag of SHARE_TAGS) {
+    const label = document.createElement('label');
+    const input = document.createElement('input');
+    input.type = 'checkbox';
+    input.value = tag.code;
+    label.append(input, document.createTextNode(tag.label));
+    nodes.shareTags.append(label);
+  }
+}
+
+/** リンクを1本ぶん描く。安全圏を超えていたら、それが分かるようにする。 */
+function renderShareLink(box, urlField, countField, url) {
+  urlField.value = url;
+  const over = url.length > SHARE_URL_SAFE_LIMIT;
+  box.hidden = false;
+  box.classList.toggle('over-limit', over);
+  countField.textContent = over
+    ? `${url.length} 文字（X では ${SHARE_URL_SAFE_LIMIT} 文字を超えるとリンクとして扱われません）`
+    : `${url.length} 文字（X の目安 ${SHARE_URL_SAFE_LIMIT} 文字に収まります）`;
+}
+
+async function buildShareLinks() {
+  const tab = activeTab();
+  if (!tab) return;
+  nodes.shareBuild.disabled = true;
+  nodes.shareStatus.textContent = 'いまのソースをビルドしています…';
+  try {
+    await saveFile();
+    const tags = selectedTags();
+    const result = await adapter.buildShared({ path: tab.path, text: tab.text }, tags);
+    if (!result.ok) {
+      nodes.shareStatus.textContent = `ビルドに失敗しました: ${result.message}`;
+      return;
+    }
+    renderShareLink(nodes.shareBinary, nodes.shareBinaryUrl, nodes.shareBinaryCount,
+      `${WEBX68K_URL}#${result.fragment}`);
+
+    const sourceFragment = await encodeShareFragment(
+      'source', encodeSourceText(tab.text), deflateRawBytes, tags);
+    renderShareLink(nodes.shareSource, nodes.shareSourceUrl, nodes.shareSourceCount,
+      `${sprout68kUrl()}#${sourceFragment}`);
+
+    nodes.shareStatus.textContent = `利用者コード ${result.userSize} バイト（ランタイムは受け取る側が持っています）`;
+  } catch (error) {
+    nodes.shareStatus.textContent = `ビルドに失敗しました: ${error.message}`;
+  } finally {
+    nodes.shareBuild.disabled = false;
+  }
+}
+
+async function copyShareUrl(field) {
+  const text = field.value;
+  if (!text) return;
+  try {
+    await navigator.clipboard.writeText(text);
+    nodes.shareStatus.textContent = 'リンクをコピーしました';
+  } catch {
+    // クリップボードが使えない環境でも、選択してあれば手でコピーできる。
+    field.select();
+    nodes.shareStatus.textContent = 'コピーできませんでした。選択してあるので手でコピーしてください';
+  }
+}
+
+async function renderShareShots() {
+  let records = [];
+  try {
+    records = await screenshotStore.list();
+  } catch { /* 画像が読めなくてもリンク作成は続けられる。 */ }
+  nodes.shareShotsEmpty.hidden = records.length > 0;
+  for (const element of [...nodes.shareShots.children]) {
+    URL.revokeObjectURL(element.querySelector('img').src);
+    element.remove();
+  }
+  for (const record of records) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'share-shot';
+    button.dataset.buttonKind = 'text';
+    button.title = record.name;
+    button.setAttribute('aria-label', `${record.name} を選ぶ`);
+    button.setAttribute('aria-selected', String(record.name === selectedShot));
+    const image = document.createElement('img');
+    image.src = URL.createObjectURL(record.blob);
+    image.alt = record.name;
+    button.append(image);
+    button.addEventListener('click', () => { selectedShot = record.name; renderShareShots(); renderShots(); });
+    nodes.shareShots.append(button);
+  }
+}
+
+async function openShareDialog() {
+  renderShareTags();
+  nodes.shareBinary.hidden = true;
+  nodes.shareSource.hidden = true;
+  nodes.shareStatus.textContent = '「リンクを作る」を押すと、いまのソースをビルドします。';
+  await renderShareShots();
+  nodes.shareDialog.showModal();
+}
+
+nodes.share.addEventListener('click', openShareDialog);
+nodes.shareBuild.addEventListener('click', buildShareLinks);
+nodes.shareBinaryCopy.addEventListener('click', () => copyShareUrl(nodes.shareBinaryUrl));
+nodes.shareSourceCopy.addEventListener('click', () => copyShareUrl(nodes.shareSourceUrl));
 
 async function initialize() {
   await projectFS.open();

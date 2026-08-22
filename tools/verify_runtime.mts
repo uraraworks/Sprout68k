@@ -309,6 +309,14 @@ if (![bootBin, runtimeBin, builtXdf, builtPayload].every(existsSync)) {
  * 同じものを作れるようにした写し。**出力がバイト一致することを確かめる**
  * （片方だけ直して静かに食い違う事故を防ぐ）。 */
 {
+  /* **比較対象は自分で作る。** 手で走らせた結果に頼ると、別のソースで
+   * ビルドした残骸と突き合わせてしまう（2026-08-22 に実際に踏んだ。
+   * hello.c でシェル版を上書きした状態で block.c の駆動層版と比べていた）。 */
+  const toolchainBin = resolve(process.env.HOME ?? '', 'x68kdev-toolchain/bin');
+  execFileSync(resolve(ROOT, 'tools/build_shared.sh'),
+    ['samples/breakout/block.c', 'build/verify_shared.xdf', 'build/verify_shared.payload'],
+    { cwd: ROOT, stdio: 'pipe', env: { ...process.env, PATH: `${toolchainBin}:${process.env.PATH}` } });
+
   const shellRuntime = resolve(ROOT, 'build/shared_obj/runtime.bin');
   const shellUser = resolve(ROOT, 'build/shared_obj/user.bin');
   const shellBoot = resolve(ROOT, 'build/shared_obj/boot.bin');

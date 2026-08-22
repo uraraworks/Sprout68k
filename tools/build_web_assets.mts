@@ -57,7 +57,10 @@ rmSync(REFERENCE_OUTPUT, { recursive: true, force: true });
 mkdirSync(OUTPUT, { recursive: true });
 mkdirSync(REFERENCE_OUTPUT, { recursive: true });
 
-for (const directory of ['stage_c', 'stage_d', 'lib', 'samples/breakout']) {
+// runtime/ は共有ランタイム方式(ABI v1)のビルドに要る。generated/ の中身は
+// tools/build_abi.mts の生成物なので、この束を作る前に必ず生成しておく。
+execFileSync(process.execPath, [resolve(ROOT, 'tools/build_abi.mts')], { cwd: ROOT, stdio: 'inherit' });
+for (const directory of ['stage_c', 'stage_d', 'lib', 'samples/breakout', 'runtime']) {
   const sourceRoot = resolve(ROOT, directory);
   for (const source of filesBelow(sourceRoot)) copy(source, posix(relative(ROOT, source)));
 }
