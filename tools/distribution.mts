@@ -5,12 +5,17 @@ import { dirname, relative, resolve, sep } from 'node:path';
 export const APP_PATH = '/Sprout68k/';
 export const CACHE_PREFIX = 'sprout68k-precache-';
 export const IDE_STATIC_FILES = [
+  'help.html',
   'manifest.webmanifest',
   'icons/sprout68k.svg',
   'icons/sprout68k-16.png',
   'icons/sprout68k-32.png',
   'icons/sprout68k-192.png',
   'icons/sprout68k-512.png',
+] as const;
+export const ROOT_STATIC_FILES = [
+  'CONTRIBUTING.md',
+  'docs/IDEキーボード入力_20260822.md',
 ] as const;
 
 interface AssetEntry { path: string; size: number; sha256: string }
@@ -42,7 +47,8 @@ export function computeBuildId(root: string): string {
   const hash = createHash('sha256');
   const inputs = [
     ...['ide', 'web'].flatMap((directory) => filesBelow(resolve(root, directory))),
-    resolve(root, 'COPYING'), resolve(root, 'vite.config.ts'), resolve(root, 'tools/distribution.mts'),
+    resolve(root, 'COPYING'), ...ROOT_STATIC_FILES.map((file) => resolve(root, file)),
+    resolve(root, 'vite.config.ts'), resolve(root, 'tools/distribution.mts'),
     resolve(resolveWebAssetsRoot(root), 'manifest.json'),
     ...filesBelow(resolve(root, 'build/wasm-tools'))
       .filter((file) => /m68k-elf-(?:cc1|as|ld|objcopy)\.memfs\.(?:js|wasm)$/.test(file)),
@@ -260,6 +266,11 @@ export function stageDistribution(root: string, outDir: string, buildId: string)
     const destination = resolve(outDir, 'ide', relativePath);
     mkdirSync(dirname(destination), { recursive: true });
     cpSync(resolve(root, 'ide', relativePath), destination);
+  }
+  for (const relativePath of ROOT_STATIC_FILES) {
+    const destination = resolve(outDir, relativePath);
+    mkdirSync(dirname(destination), { recursive: true });
+    cpSync(resolve(root, relativePath), destination);
   }
 
   const toolFiles = filesBelow(resolve(root, 'build/wasm-tools'))

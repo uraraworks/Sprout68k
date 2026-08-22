@@ -3,11 +3,12 @@ import { createHash } from 'node:crypto';
 import { readFile, readdir, stat } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { runInNewContext } from 'node:vm';
 
 const root = dirname(fileURLToPath(import.meta.url));
 const forbidden = ['pc' + '98', 'n' + 'p2', 'pc' + '-98', 'free' + 'dos', 'na' + 'sm', 'smaller' + 'c', '98' + '01', '98' + '21'];
 const required = [
-  'index.html', 'workbench.css', 'workbench.js', 'project-fs.mjs', 'source-view.mjs',
+  'index.html', 'help.html', 'workbench.css', 'workbench.js', 'project-fs.mjs', 'source-view.mjs',
   'sample-manifest.mjs', 'x68k-adapter.mjs', 'samples/hello.c', 'samples/keyboard-input.c',
   'recovery-controller.mjs',
   'px68k-runtime.ts', 'px68k/libretro-host.ts', 'px68k/text-screen.ts',
@@ -19,7 +20,7 @@ const required = [
   '../tools/driver/diagnostic_annotations.mts', '../tools/driver/verify_diagnostic_annotations.mts',
   '../verify/verify_ide_boot.mts', '../verify/verify_ide_recovery.mts',
   '../verify/verify_ide_keyboard.mts',
-  '../docs/IDEキーボード入力_20260822.md', '../lib/include/x68.h', '../COPYING', '../README.md',
+  '../docs/IDEキーボード入力_20260822.md', '../lib/include/x68.h', '../COPYING', '../CONTRIBUTING.md', '../README.md',
   '../tools/distribution.mts',
   'vendor/codemirror/codemirror.js', 'vendor/codemirror/LICENSE.CodeMirror',
 ];
@@ -51,8 +52,12 @@ for (const [file, expectedSize, expectedSha256] of coreFiles) {
 }
 
 const html = await readFile(resolve(root, 'index.html'), 'utf8');
+const help = await readFile(resolve(root, 'help.html'), 'utf8');
 const css = await readFile(resolve(root, 'workbench.css'), 'utf8');
 for (const match of html.matchAll(/(?:src|href)="(\.\/[^"?#]+)"/g)) {
+  await stat(resolve(root, match[1]));
+}
+for (const match of help.matchAll(/(?:src|href)="((?:\.\.\/|\.\/)[^"?#]+)"/g)) {
   await stat(resolve(root, match[1]));
 }
 
@@ -71,6 +76,66 @@ if (!fsSource.includes("databaseName = 'Sprout68kProjectFS'")) throw new Error('
 const workbench = await readFile(resolve(root, 'workbench.js'), 'utf8');
 if (!workbench.includes('window.sprout68kWorkbench')) throw new Error('公開 API 名がありません');
 if (!workbench.includes('cpp()')) throw new Error('C 言語ハイライトがありません');
+
+// ヘルプ本文で data-ui-label を付けた実表記を抽出し、UIを生成する正典ソースへ
+// 直接突き合わせる。検査専用のラベル一覧は持たない。
+const helpUiLabels = [...new Set([...help.matchAll(/<strong\s+data-ui-label>([^<]+)<\/strong>/g)]
+  .map((match) => match[1].trim()))];
+if (helpUiLabels.length < 8) throw new Error(`ヘルプのUIラベル抽出数が不足しています: ${helpUiLabels.length}`);
+const staticUiLabels = html.replace(/<[^>]+>/g, '\n').split('\n').map((text) => text.trim()).filter(Boolean);
+const dynamicUiLabels = [...workbench.matchAll(/'([^'\n]+)'/g)].map((match) => match[1]);
+const actualUiLabels = new Set([...staticUiLabels, ...dynamicUiLabels]);
+for (const label of helpUiLabels) {
+  if (!actualUiLabels.has(label)) {
+    throw new Error(`ヘルプのUIラベルが実装にありません: ${label}`);
+  }
+}
+console.log(`verify-ide: help labels PASS (${helpUiLabels.length} labels extracted from help body)`);
+
+const helpScripts = [...help.matchAll(/<script>([\s\S]*?)<\/script>/g)].map((match) => match[1]);
+if (helpScripts.length !== 1) throw new Error(`ヘルプのinline scriptが1件ではありません: ${helpScripts.length}`);
+for (const languageContract of [
+  '.lang-en { display: none; }', 'body[data-lang="en"] .lang-ja { display: none; }',
+  'body[data-lang="en"] .lang-en { display: block; }',
+]) {
+  if (!help.includes(languageContract)) throw new Error(`ヘルプの言語表示契約がありません: ${languageContract}`);
+}
+function executeHelp(search) {
+  const bodyAttributes = {};
+  const htmlAttributes = {};
+  const appLinks = [{ hidden: false }, { hidden: false }];
+  const listeners = {};
+  const langButton = {
+    textContent: '',
+    addEventListener(type, listener) { listeners[type] = listener; },
+  };
+  const documentMock = {
+    title: '',
+    body: { setAttribute(name, value) { bodyAttributes[name] = value; } },
+    documentElement: { setAttribute(name, value) { htmlAttributes[name] = value; } },
+    querySelectorAll(selector) { return selector === '.open-app' ? appLinks : []; },
+    getElementById(id) { return id === 'lang-toggle' ? langButton : null; },
+  };
+  const stored = new Map();
+  runInNewContext(helpScripts[0], {
+    document: documentMock, location: { search }, navigator: { language: 'en-US' }, URLSearchParams,
+    localStorage: { getItem(key) { return stored.get(key) ?? null; }, setItem(key, value) { stored.set(key, value); } },
+  });
+  return { bodyAttributes, htmlAttributes, appLinks, title: documentMock.title, langButton, listeners };
+}
+const helpJa = executeHelp('?lang=ja');
+const helpEn = executeHelp('?lang=en');
+const helpFromApp = executeHelp('?lang=ja&from=app');
+if (helpJa.bodyAttributes['data-lang'] !== 'ja' || helpJa.htmlAttributes.lang !== 'ja' || helpJa.title !== 'Sprout68k 使い方') {
+  throw new Error('?lang=ja で日本語表示になりません');
+}
+if (helpEn.bodyAttributes['data-lang'] !== 'en' || helpEn.htmlAttributes.lang !== 'en' || helpEn.title !== 'Sprout68k Help') {
+  throw new Error('?lang=en で英語表示になりません');
+}
+if (helpJa.appLinks.some((link) => link.hidden) || helpFromApp.appLinks.some((link) => !link.hidden)) {
+  throw new Error('from=app によるアプリ導線の表示切替が不正です');
+}
+console.log('verify-ide: help query PASS (lang=ja/en, from=app hides 2 app links)');
 for (const id of ['build-output', 'download-xdf', 'run', 'stop-emulator', 'recover-emulator', 'machine-status', 'keyboard-status', 'x68k-screen', 'build-id', 'offline-status']) {
   if (!html.includes(`id="${id}"`)) throw new Error(`必要な DOM 要素がありません: ${id}`);
   if (!workbench.includes(`#${id}`)) throw new Error(`DOM 要素の参照がありません: ${id}`);
@@ -101,7 +166,7 @@ if (!workbench.includes('recoveryController.rememberSuccessfulBuild(result)')
 // ヘッダーは文書先頭にあり、復帰ボタンの縦位置は通常フローの固定寸法から算出できる。
 // padding 10 + title 28 + tagline margin 2 + line 14 + actions margin 6 = top 60px。
 for (const cssRule of [
-  '.app-header { padding: var(--recovery-header-padding) 16px',
+  '.app-header { position: relative; padding: var(--recovery-header-padding) 16px',
   '.app-tagline { margin: var(--recovery-tagline-margin) 0 0',
   'line-height: var(--recovery-tagline-height)',
   '.app-recovery-actions { height: var(--recovery-control-height); margin-top: var(--recovery-actions-margin)',
@@ -138,6 +203,44 @@ for (const viewport of ['1280x900', '800x600']) {
     throw new Error(`${viewport}: 復帰導線が初期ビューポートの横幅外です (${recoveryLeft}..${recoveryRight}px)`);
   }
   console.log(`verify-ide: recovery reachability ${viewport} x=${recoveryLeft}..${recoveryRight}px y=${recoveryTop}..${recoveryBottom}px`);
+}
+
+// ヘッダーの「?」とフッターの「使い方」は、固定寸法と通常フロー上の位置から
+// 初期ビューポート内にあることを検査する。
+for (const linkContract of [
+  'class="header-help-btn" href="./help.html?lang=ja&amp;from=app" target="_blank" rel="noopener noreferrer"',
+  'class="footer-help-link" href="./help.html?lang=ja&amp;from=app" target="_blank" rel="noopener noreferrer"',
+]) {
+  if (!html.includes(linkContract)) throw new Error(`ヘルプ導線契約がありません: ${linkContract}`);
+}
+if (html.indexOf('class="header-help-btn"') > html.indexOf('<main')
+    || html.indexOf('class="footer-help-link"') < html.indexOf('</main>')) {
+  throw new Error('ヘルプ導線がヘッダー／フッターにありません');
+}
+for (const cssContract of [
+  '.app-header { position: relative', '.header-help-btn { position: absolute',
+  '.workspace-grid { flex: 1', '.app-footer { min-height: var(--app-footer-height)',
+]) {
+  if (!css.includes(cssContract)) throw new Error(`ヘルプ到達性のCSS契約がありません: ${cssContract}`);
+}
+const helpGeometryVariables = ['--help-header-offset', '--help-header-right', '--help-control-size', '--app-footer-height'];
+const helpGeometry = Object.fromEntries(helpGeometryVariables.map((variable) => {
+  const values = pixelValues(variable);
+  if (values.length !== 1) throw new Error(`ヘルプ導線のCSS数値を一意に取得できません: ${variable}`);
+  return [variable, values[0]];
+}));
+for (const viewport of ['1280x900', '800x600']) {
+  const [viewportWidth, viewportHeight] = viewport.split('x').map(Number);
+  const headerLeft = viewportWidth - helpGeometry['--help-header-right'] - helpGeometry['--help-control-size'];
+  const headerRight = headerLeft + helpGeometry['--help-control-size'];
+  const headerTop = helpGeometry['--help-header-offset'];
+  const headerBottom = headerTop + helpGeometry['--help-control-size'];
+  const footerTop = viewportHeight - helpGeometry['--app-footer-height'];
+  if (headerLeft < 0 || headerRight > viewportWidth || headerTop < 0 || headerBottom > viewportHeight
+      || footerTop < 0 || footerTop >= viewportHeight) {
+    throw new Error(`${viewport}: ヘルプ導線が初期ビューポート外です`);
+  }
+  console.log(`verify-ide: help reachability ${viewport} header=${headerLeft}..${headerRight}x${headerTop}..${headerBottom}px footer=${footerTop}..${viewportHeight}px`);
 }
 
 // ボタン内容の収まりを client/scroll 寸法に対応させた静的検査。

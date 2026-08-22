@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { relative, resolve, sep } from 'node:path';
 import { runInNewContext } from 'node:vm';
-import { APP_PATH, CACHE_PREFIX, IDE_STATIC_FILES, resolveWebAssetsRoot } from './distribution.mts';
+import { APP_PATH, CACHE_PREFIX, IDE_STATIC_FILES, ROOT_STATIC_FILES, resolveWebAssetsRoot } from './distribution.mts';
 
 const ROOT = resolve(import.meta.dirname, '..');
 const DIST = resolve(ROOT, 'build/web-page');
@@ -118,7 +118,7 @@ async function createSwHarness(failPath?: string) {
   };
   const fetchMock = async (request: Request) => {
     const url = new URL(request.url);
-    const path = url.pathname.slice(APP_PATH.length);
+    const path = decodeURIComponent(url.pathname.slice(APP_PATH.length));
     if (path === failPath) throw new Error('INJECTED_NETWORK_FAILURE');
     const file = resolve(DIST, path);
     return new Response(readFileSync(file), { status: 200, headers: { 'content-type': 'application/octet-stream' } });
@@ -183,9 +183,25 @@ const ideManifest = JSON.parse(readFileSync(ideManifestPath, 'utf8')) as {
   icons: Array<{ src: string; sizes: string; type: string }>;
 };
 const expectedStatic = IDE_STATIC_FILES.map((path) => `ide/${path}`);
-for (const path of expectedStatic) {
+for (const path of [...expectedStatic, ...ROOT_STATIC_FILES]) {
   assert(listed.includes(path) && statSync(resolve(DIST, path)).size > 0, `IDE静的資産が公開物にありません: ${path}`);
 }
+const helpPath = 'ide/help.html';
+function verifyHelpPublished(paths: Set<string>): void {
+  assert(paths.has(helpPath), 'ヘルプが公開物とprecacheにありません');
+  const help = readFileSync(resolve(DIST, helpPath), 'utf8');
+  for (const match of help.matchAll(/(?:src|href)="((?:\.\.\/|\.\/)[^"?#]+)"/g)) {
+    const target = posix(relative(DIST, resolve(DIST, 'ide', match[1])));
+    assert(paths.has(target), `ヘルプ参照先が公開物とprecacheにありません: ${match[1]}`);
+  }
+}
+verifyHelpPublished(new Set(listed));
+let helpOmissionRejected = false;
+try {
+  const broken = new Set(listed); broken.delete(helpPath); verifyHelpPublished(broken);
+} catch { helpOmissionRejected = true; }
+assert(helpOmissionRejected, 'ヘルプ欠落の故障注入を検出できません');
+console.log('PASS(故障注入): ide/help.htmlの公開・precache欠落を拒否');
 for (const icon of ideManifest.icons) {
   assert(icon.src.startsWith(APP_PATH), `manifest iconがアプリscope外です: ${icon.src}`);
   const path = icon.src.slice(APP_PATH.length);

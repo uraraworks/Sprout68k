@@ -1,0 +1,204 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#111827">
+  <link rel="icon" href="./icons/sprout68k.svg" type="image/svg+xml">
+  <title>Sprout68k 使い方</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --header: #111827;
+      --background: #1f1f1f;
+      --panel: #181818;
+      --border: #334155;
+      --text: #d1d5db;
+      --dim: #9ca3af;
+      --accent: #38bdf8;
+      --note: #172033;
+    }
+    * { box-sizing: border-box; }
+    body { min-height: 100vh; margin: 0; display: flex; flex-direction: column; color: var(--text); background: var(--background); font: 14px/1.7 -apple-system, BlinkMacSystemFont, "Segoe UI", "Hiragino Sans", "Yu Gothic", sans-serif; }
+    .help-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 16px; background: var(--header); border-bottom: 1px solid var(--border); }
+    .help-title { display: flex; align-items: center; gap: 9px; }
+    .help-title img { width: 28px; height: 28px; }
+    .help-title h1 { margin: 0; color: #f8fafc; font-size: 16px; }
+    .help-actions { display: flex; align-items: center; gap: 8px; }
+    .help-actions button, .help-actions a { padding: 5px 10px; border: 1px solid #475569; border-radius: 4px; color: var(--text); background: #253044; font: inherit; font-size: 12px; text-decoration: none; cursor: pointer; }
+    main { flex: 1; width: min(900px, 100%); margin: 0 auto; padding: 20px 16px 40px; }
+    section { margin: 0 0 30px; }
+    h2 { margin: 0 0 10px; padding-bottom: 6px; border-bottom: 2px solid var(--border); color: #f8fafc; font-size: 18px; }
+    h3 { margin: 18px 0 6px; color: #f8fafc; font-size: 15px; }
+    p, ul, ol { margin: 8px 0; }
+    ul, ol { padding-left: 24px; }
+    code, kbd { padding: 1px 5px; border: 1px solid #475569; border-radius: 4px; background: #273244; font: 12px ui-monospace, SFMono-Regular, Menlo, monospace; }
+    .note { margin: 12px 0; padding: 10px 14px; border-left: 4px solid var(--accent); background: var(--note); }
+    a { color: #7dd3fc; }
+    .help-footer { padding: 9px 16px; border-top: 1px solid var(--border); background: var(--panel); text-align: center; font-size: 12px; }
+    .lang-en { display: none; }
+    body[data-lang="en"] .lang-ja { display: none; }
+    body[data-lang="en"] .lang-en { display: block; }
+    body[data-lang="en"] li .lang-en, body[data-lang="en"] p .lang-en { display: inline; }
+    @media (max-width: 520px) { .help-header { align-items: flex-start; } .help-actions { flex-direction: column; align-items: stretch; } }
+  </style>
+</head>
+<body data-lang="ja">
+  <header class="help-header">
+    <div class="help-title">
+      <img src="./icons/sprout68k.svg" alt="">
+      <h1><span class="lang-ja">Sprout68k 使い方</span><span class="lang-en">Sprout68k Help</span></h1>
+    </div>
+    <div class="help-actions">
+      <button id="lang-toggle" type="button">EN</button>
+      <a class="open-app" href="./index.html"><span class="lang-ja">アプリを開く</span><span class="lang-en">Open the app</span></a>
+    </div>
+  </header>
+
+  <main>
+    <section>
+      <h2><span class="lang-ja">1. はじめかた</span><span class="lang-en">1. Getting started</span></h2>
+      <div class="lang-ja">
+        <ol>
+          <li>左のエクスプローラーで「サンプル」からファイルを選びます。最初は短い <code>hello.c</code> がおすすめです。</li>
+          <li><strong data-ui-label>ビルド</strong>を押します。成功するとXDFが作られます。</li>
+          <li><strong data-ui-label>実行</strong>を押すと、最新のソースをビルドしてX68000実行画面で起動します。</li>
+        </ol>
+        <p class="note">初回は約20MBのツールチェーンを読み込みます。読み込み後の実測目安は、短いstage_c相当で約1.9秒、breakout相当で約11秒です。端末や回線で変わります。</p>
+      </div>
+      <div class="lang-en">
+        <ol>
+          <li>In the Explorer, choose a file under Samples. The small <code>hello.c</code> sample is a good first step.</li>
+          <li>Press <strong data-ui-label>ビルド</strong> (Build). A successful build produces an XDF.</li>
+          <li>Press <strong data-ui-label>実行</strong> (Run) to build the latest source and start it on the X68000 screen.</li>
+        </ol>
+        <p class="note">The first build also loads about 20 MB of toolchain data. After loading, measured times are about 1.9 seconds for a small stage_c-sized program and about 11 seconds for breakout. Device and connection speed will vary.</p>
+      </div>
+    </section>
+
+    <section>
+      <h2><span class="lang-ja">2. エラーが出たら</span><span class="lang-en">2. When a build fails</span></h2>
+      <div class="lang-ja">
+        <p>診断欄には<strong data-ui-label>GCC / ld 原文</strong>と<strong>日本語の説明</strong>が並びます。原文は消したり置き換えたりしていません。</p>
+        <p><code>main.c:12:7</code> は「main.cの12行目、7桁目」です。まずその位置と日本語の説明を読み、直したらもう一度ビルドしてください。</p>
+      </div>
+      <div class="lang-en">
+        <p>The diagnostics panel shows <strong data-ui-label>GCC / ld 原文</strong> (the original GCC/ld message) next to <strong>日本語の説明</strong> (a Japanese explanation). The original message is preserved, not replaced.</p>
+        <p><code>main.c:12:7</code> means line 12, column 7 of main.c. Check that location and the explanation, edit the source, and build again.</p>
+      </div>
+    </section>
+
+    <section>
+      <h2><span class="lang-ja">3. 動かなくなったら</span><span class="lang-en">3. When the program stops responding</span></h2>
+      <div class="lang-ja">
+        <ul>
+          <li><strong data-ui-label>実行を停止</strong>は、現在のエミュレータ実行を止めます。</li>
+          <li><strong data-ui-label>停止して前回成功XDFを再起動</strong>は、実行を止め、最後にビルドできたXDFを起動し直します。</li>
+        </ul>
+        <p class="note">どちらを使っても、編集中・未保存を含むソースは失われません。</p>
+      </div>
+      <div class="lang-en">
+        <ul>
+          <li><strong data-ui-label>実行を停止</strong> stops the running emulator.</li>
+          <li><strong data-ui-label>停止して前回成功XDFを再起動</strong> stops it and restarts the most recent successfully built XDF.</li>
+        </ul>
+        <p class="note">Neither action discards your source, including unsaved edits.</p>
+      </div>
+    </section>
+
+    <section>
+      <h2><span class="lang-ja">4. キーボード</span><span class="lang-en">4. Keyboard input</span></h2>
+      <div class="lang-ja">
+        <p>実行画面をクリックすると入力が有効になり、表示が<strong data-ui-label>キーボード入力: X68000へ送信中</strong>に変わります。</p>
+        <p>使えるキーは、カーソル4方向、スペース、Enter、ESC、英数字です。キーを離す操作もX68000へ送られます。</p>
+        <p class="note">ホストのキーボードにないX68000固有キーは届きません。対応状況の詳細は <a href="../docs/IDEキーボード入力_20260822.md">キーボード入力の実測資料</a> にあります。</p>
+      </div>
+      <div class="lang-en">
+        <p>Click the emulation screen to enable input. The status changes to <strong data-ui-label>キーボード入力: X68000へ送信中</strong> (“Sending to X68000”).</p>
+        <p>Supported keys are the four cursor keys, Space, Enter, ESC, letters, and numbers. Key releases are sent too.</p>
+        <p class="note">X68000-specific keys that do not exist on the host keyboard cannot be sent. See the <a href="../docs/IDEキーボード入力_20260822.md">keyboard input measurement notes</a> for the detailed list.</p>
+      </div>
+    </section>
+
+    <section>
+      <h2><span class="lang-ja">5. 保存と持ち出し</span><span class="lang-en">5. Saving and taking files with you</span></h2>
+      <div class="lang-ja">
+        <p>作業ファイルは、このブラウザの保存領域（IndexedDB）に保存されます。別のブラウザや端末には自動で移りません。</p>
+        <p>ビルド成功後は<strong data-ui-label>XDFをダウンロード</strong>でディスクイメージを保存できます。ソースファイルもエクスプローラーのダウンロード操作で持ち出せます。</p>
+      </div>
+      <div class="lang-en">
+        <p>Work files are stored in this browser using IndexedDB. They do not automatically move to another browser or device.</p>
+        <p>After a successful build, use <strong data-ui-label>XDFをダウンロード</strong> (Download XDF) to save the disk image. The Explorer also lets you download source files.</p>
+      </div>
+    </section>
+
+    <section>
+      <h2><span class="lang-ja">6. オフラインで使う</span><span class="lang-en">6. Using Sprout68k offline</span></h2>
+      <div class="lang-ja">
+        <p>オンラインで一度開き、必要な資産の保存が完了すれば、次回からオフラインでも起動・編集・ビルド・実行できます。</p>
+        <ul>
+          <li><strong data-ui-label>オフライン: 準備中</strong>：必要な資産を確認・保存しています。</li>
+          <li><strong data-ui-label>オフラインでも使えます</strong>：必要な資産がそろいました。</li>
+        </ul>
+      </div>
+      <div class="lang-en">
+        <p>Open the app online once and wait for all required assets to be stored. Later visits can start, edit, build, and run offline.</p>
+        <ul>
+          <li><strong data-ui-label>オフライン: 準備中</strong>: offline assets are being checked and stored.</li>
+          <li><strong data-ui-label>オフラインでも使えます</strong>: all required offline assets are ready.</li>
+        </ul>
+      </div>
+    </section>
+
+    <section>
+      <h2><span class="lang-ja">7. 作ったものを配る</span><span class="lang-en">7. Sharing what you made</span></h2>
+      <div class="lang-ja"><p>生成した <code>.xdf</code> はX68000用のディスクイメージです。プログラムの配布物は、このXDF 1本にまとめられます。配布するコードやデータの権利とライセンスは、作成者が確認してください。</p></div>
+      <div class="lang-en"><p>The generated <code>.xdf</code> is an X68000 disk image. Your program can be distributed as that single XDF file. You are responsible for checking the rights and licenses of the code and data you distribute.</p></div>
+    </section>
+
+    <section>
+      <h2><span class="lang-ja">8. ライセンスと情報提供</span><span class="lang-en">8. License and contributions</span></h2>
+      <div class="lang-ja"><p>Sprout68k全体は、px68k-libretroを含むためGNU GPL version 2（GPLv2）です。不具合報告、測定結果、コードを送る前に、受け取れない情報と寄稿条件を定めた <a href="../CONTRIBUTING.md">CONTRIBUTING.md</a> を確認してください。</p></div>
+      <div class="lang-en"><p>Sprout68k as a whole is licensed under GNU GPL version 2 (GPLv2), because it includes px68k-libretro. Before sending a bug report, measurements, or code, read <a href="../CONTRIBUTING.md">CONTRIBUTING.md</a> for the information-source and contribution policy.</p></div>
+    </section>
+  </main>
+
+  <footer class="help-footer">
+    <a class="open-app" href="./index.html"><span class="lang-ja">アプリを開く</span><span class="lang-en">Open the app</span></a>
+  </footer>
+
+  <script>
+    (function () {
+      var storageKey = 'sprout68k.help.lang';
+      if (new URLSearchParams(location.search).get('from') === 'app') {
+        var appLinks = document.querySelectorAll('.open-app');
+        for (var i = 0; i < appLinks.length; i++) appLinks[i].hidden = true;
+      }
+      function storedLang() {
+        try {
+          var value = localStorage.getItem(storageKey);
+          return value === 'ja' || value === 'en' ? value : null;
+        } catch (error) { return null; }
+      }
+      function resolveLang() {
+        var queryLang = new URLSearchParams(location.search).get('lang');
+        if (queryLang === 'ja' || queryLang === 'en') return queryLang;
+        return storedLang() || (navigator.language && navigator.language.toLowerCase().indexOf('ja') === 0 ? 'ja' : 'en');
+      }
+      function setLang(lang) {
+        try { localStorage.setItem(storageKey, lang); } catch (error) { /* 切替は現在のページだけで続ける。 */ }
+        document.body.setAttribute('data-lang', lang);
+        document.documentElement.setAttribute('lang', lang);
+        document.title = lang === 'ja' ? 'Sprout68k 使い方' : 'Sprout68k Help';
+        document.getElementById('lang-toggle').textContent = lang === 'ja' ? 'EN' : '日本語';
+      }
+      var current = resolveLang();
+      setLang(current);
+      document.getElementById('lang-toggle').addEventListener('click', function () {
+        current = current === 'ja' ? 'en' : 'ja';
+        setLang(current);
+      });
+    })();
+  </script>
+</body>
+</html>

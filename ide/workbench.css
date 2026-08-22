@@ -37,6 +37,10 @@
   --button-block-padding: 7px;
   --button-inline-padding: 10px;
   --button-border-width: 1px;
+  --help-header-offset: 12px;
+  --help-header-right: 16px;
+  --help-control-size: 30px;
+  --app-footer-height: 29px;
 }
 * { box-sizing: border-box; scrollbar-color: var(--vsc-scrollbar) transparent; }
 body { min-height: 100vh; margin: 0; display: flex; flex-direction: column; color: var(--vsc-fg); background: var(--vsc-editor-bg); }
@@ -45,7 +49,10 @@ button { flex-shrink: 0; border: var(--button-border-width) solid transparent; b
 button:hover { background: var(--vsc-toolbar-hover); }
 button:disabled { opacity: .45; cursor: default; }
 button:focus-visible, input:focus-visible { outline: 1px solid var(--vsc-focus); outline-offset: 1px; }
-.app-header { padding: var(--recovery-header-padding) 16px; color: var(--x68-header-text); background: var(--x68-header-bg); text-align: center; }
+.app-header { position: relative; padding: var(--recovery-header-padding) 16px; color: var(--x68-header-text); background: var(--x68-header-bg); text-align: center; }
+.header-help-btn { position: absolute; top: var(--help-header-offset); right: var(--help-header-right); width: var(--help-control-size); height: var(--help-control-size); display: grid; place-items: center; border: 1px solid #475569; border-radius: 50%; color: var(--x68-header-text); background: #172033; font-size: 17px; font-weight: 700; line-height: 1; text-decoration: none; }
+.header-help-btn:hover { border-color: var(--vsc-focus); background: #253044; }
+.header-help-btn:focus-visible { outline: 1px solid var(--vsc-focus); outline-offset: 2px; }
 .app-title-row { display: flex; justify-content: center; align-items: center; gap: 9px; }
 .app-icon { width: var(--recovery-title-height); height: var(--recovery-title-height); object-fit: contain; }
 .app-header h1 { margin: 0; font-size: 16px; }
@@ -109,7 +116,7 @@ button:focus-visible, input:focus-visible { outline: 1px solid var(--vsc-focus);
 .screen-shell { min-height: 360px; margin: 12px; display: grid; place-items: center; overflow: hidden; border: 1px solid #475569; border-radius: 5px; background: #000; }
 #x68k-screen { display: block; width: 100%; height: auto; max-height: 66vh; object-fit: contain; image-rendering: pixelated; }
 #x68k-screen:focus { outline: 2px solid #22c55e; outline-offset: -2px; }
-.app-footer { min-height: 29px; display: flex; justify-content: space-between; gap: 12px; padding: 6px 16px; border-top: 1px solid var(--vsc-border); background: var(--vsc-chrome-bg); color: var(--vsc-fg-dim); font-size: 11px; }
+.app-footer { min-height: var(--app-footer-height); display: flex; justify-content: space-between; gap: 12px; padding: 6px 16px; border-top: 1px solid var(--vsc-border); background: var(--vsc-chrome-bg); color: var(--vsc-fg-dim); font-size: 11px; }
 .status-left { min-width: 0; display: flex; gap: 10px; }
 #save-state.dirty { color: var(--vsc-warning); }
 #current-path { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
