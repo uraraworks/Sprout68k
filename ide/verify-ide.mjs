@@ -34,7 +34,7 @@ const required = [
   '../verify/verify_ide_boot.mts', '../verify/verify_ide_recovery.mts',
   '../verify/verify_ide_keyboard.mts', '../verify/verify_share_boot.mts',
   '../tools/share_v1.mts', '../runtime/abi_v1.txt', '../runtime/layout_v1.txt',
-  '../samples/breakout/block.c', '../docs/IDEキーボード入力_20260822.md', '../lib/include/x68.h', '../COPYING', '../CONTRIBUTING.md', '../README.md',
+  '../samples/breakout/block.c', '../docs/IDEキーボード入力_20260822.md', '../docs/共有ランタイム配布_20260822.md', '../lib/include/x68.h', '../COPYING', '../CONTRIBUTING.md', '../README.md',
   '../tools/distribution.mts', '../tools/html_url_verifier.mts',
   '../tools/build_reference.mts', '../tools/verify_reference.mts', '../tools/reference/guide.html',
   '../tools/build-stamp.mjs',
