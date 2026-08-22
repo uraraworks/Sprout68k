@@ -7,8 +7,29 @@ function rgb(hex) {
   return [0, 2, 4].map((offset) => Number.parseInt(match[1].slice(offset, offset + 2), 16));
 }
 
-function luminance(hex) {
-  const linear = rgb(hex).map((value) => {
+function rgba(value) {
+  const hex = value.trim().match(/^#([0-9a-f]{6})$/i);
+  if (hex) return [...rgb(value), 1];
+  const functional = value.trim().match(
+    /^rgba\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*,\s*(0?(?:\.\d+)?|1(?:\.0+)?)\s*\)$/i,
+  );
+  if (!functional) throw new Error(`CSS色ではありません: ${value}`);
+  const result = functional.slice(1).map(Number);
+  if (result.slice(0, 3).some((channel) => channel < 0 || channel > 255)) {
+    throw new Error(`RGB範囲外です: ${value}`);
+  }
+  return result;
+}
+
+function composite(foreground, background) {
+  return foreground.slice(0, 3).map(
+    (channel, index) => channel * foreground[3] + background[index] * (1 - foreground[3]),
+  );
+}
+
+function luminance(color) {
+  const channels = Array.isArray(color) ? color : rgb(color);
+  const linear = channels.map((value) => {
     const channel = value / 255;
     return channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4;
   });
@@ -27,6 +48,16 @@ function variable(css, name) {
   return value;
 }
 
+function colorVariable(css, name) {
+  const value = css.match(new RegExp(`${name}:\\s*(#[0-9a-fA-F]{6}|rgba\\([^;]+\\))`))?.[1];
+  if (!value) throw new Error(`CSS色変数を取得できません: ${name}`);
+  return value;
+}
+
+function colorDistance(a, b) {
+  return Math.hypot(...a.map((channel, index) => channel - b[index]));
+}
+
 function colorResult(css) {
   const background = variable(css, '--vsc-editor-bg');
   const cursor = variable(css, '--vsc-cursor');
@@ -42,6 +73,33 @@ function colorResult(css) {
 function colorsPass(result) {
   return result.cursorRatio >= 3 && result.selectionRatio >= 3
     && result.cursorSelector && result.layerSelector && result.nativeSelector;
+}
+
+function activeLineResult(css) {
+  const background = rgba(variable(css, '--vsc-editor-bg'));
+  const selection = rgba(variable(css, '--vsc-selection'));
+  const activeLineValue = colorVariable(css, '--vsc-active-line');
+  const activeLine = rgba(activeLineValue);
+  const normal = background.slice(0, 3);
+  const selected = selection.slice(0, 3);
+  // CM6では選択レイヤーが背面なので、現在行色をその上から合成した最終表示色を測る。
+  const visibleActiveLine = composite(activeLine, normal);
+  const visibleSelectedActiveLine = composite(activeLine, selected);
+  const selectedContrast = contrast(visibleSelectedActiveLine, visibleActiveLine);
+  const selectedDistance = colorDistance(visibleSelectedActiveLine, visibleActiveLine);
+  const activeLineContrast = contrast(visibleActiveLine, normal);
+  const activeLineDistance = colorDistance(visibleActiveLine, normal);
+  const selector = /\.cm-activeLine, \.cm-activeLineGutter\s*\{[^}]*background:\s*var\(--vsc-active-line\)\s*!important/.test(css);
+  return {
+    activeLineValue, alpha: activeLine[3], selectedContrast, selectedDistance,
+    activeLineContrast, activeLineDistance, selector,
+  };
+}
+
+function activeLinePass(result) {
+  return result.selector && result.alpha > 0 && result.alpha < 1
+    && result.selectedContrast >= 1.5 && result.selectedDistance >= 40
+    && result.activeLineContrast > 1.02 && result.activeLineDistance >= 8;
 }
 
 function pixel(css, name) {
@@ -104,6 +162,15 @@ export async function verifyBrowserUi(root) {
   console.log(`verify-ide: editor color cascade PASS cursor=${colors.cursor} ${colors.cursorRatio.toFixed(2)}:1, selection=${colors.selection} ${colors.selectionRatio.toFixed(2)}:1 (CM layer + native ::selection)`);
   console.log(`PASS(故障注入・編集表示): 黒カーソル／黒選択を拒否 (${blackFault.cursorRatio.toFixed(2)}:1/${blackFault.selectionRatio.toFixed(2)}:1)`);
 
+  const activeLine = activeLineResult(css);
+  if (!activeLinePass(activeLine)) throw new Error(`現在行の選択が見えません: ${JSON.stringify(activeLine)}`);
+  const opaqueFault = activeLineResult(css.replace(
+    '--vsc-active-line: rgba(42, 45, 46, .5)', '--vsc-active-line: rgba(42, 45, 46, 1)',
+  ));
+  if (activeLinePass(opaqueFault)) throw new Error('不透明な現在行色の故障注入を検出できません');
+  console.log(`verify-ide: active-line selection PASS selected=${activeLine.selectedContrast.toFixed(2)}:1/ΔRGB=${activeLine.selectedDistance.toFixed(1)}, active-line=${activeLine.activeLineContrast.toFixed(2)}:1/ΔRGB=${activeLine.activeLineDistance.toFixed(1)}, alpha=${activeLine.alpha}`);
+  console.log(`PASS(故障注入・現在行不透明): selected=${opaqueFault.selectedContrast.toFixed(2)}:1/ΔRGB=${opaqueFault.selectedDistance.toFixed(1)}を拒否`);
+
   const layouts = [620, 900].map((height) => layout(css, height));
   if (layouts.some((result) => !layoutPass(result))) throw new Error(`高さ追従契約が不正です: ${JSON.stringify(layouts)}`);
   const fixedFault = layout(css.replace('.workspace-grid { flex: 1 1 0;', '.workspace-grid { height: 830px; flex: none;'), 620);
@@ -121,5 +188,5 @@ export async function verifyBrowserUi(root) {
   console.log(`verify-ide: icon display cascade PASS idle(play=${displays.idle.play},stop=${displays.idle.stop}) running(play=${displays.running.play},stop=${displays.running.stop})`);
   console.log(`PASS(故障注入・アイコン重複): display=${duplicateFault.idle.play}/${duplicateFault.idle.stop}の同時描画を拒否`);
 
-  return { colors, layouts, displays };
+  return { colors, activeLine, layouts, displays };
 }

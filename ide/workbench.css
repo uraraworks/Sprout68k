@@ -15,6 +15,7 @@
   --vsc-focus: #4daafc;
   --vsc-input-bg: #313131;
   --vsc-list-hover: #2a2d2e;
+  --vsc-active-line: rgba(42, 45, 46, .5);
   --vsc-list-active: #04395e;
   --vsc-toolbar-hover: rgba(90, 93, 94, .31);
   --vsc-warning: #cca700;
@@ -102,7 +103,7 @@ button:focus-visible, input:focus-visible { outline: 1px solid var(--vsc-focus);
 .cm-editor { height: 100%; font-size: 13px; }
 .cm-scroller { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 .cm-gutters { color: var(--vsc-line-number); background: var(--vsc-editor-bg) !important; border-right-color: var(--vsc-border) !important; }
-.cm-activeLine, .cm-activeLineGutter { background: var(--vsc-list-hover) !important; }
+.cm-activeLine, .cm-activeLineGutter { background: var(--vsc-active-line) !important; }
 .cm-editor .cm-cursor { border-left-color: var(--vsc-cursor) !important; }
 .cm-editor .cm-selectionBackground, .cm-content::selection, .cm-content ::selection, .cm-focused .cm-selectionBackground { background-color: var(--vsc-selection) !important; }
 .editor-toolbar { display: flex; gap: 6px; padding: 8px 12px; border-top: 1px solid var(--vsc-border); background: var(--vsc-ui-bg); }
