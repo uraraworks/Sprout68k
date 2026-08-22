@@ -1,4 +1,4 @@
-/* X68kDev L0: レジスタ直書きだけで済む部分(TRAP不要)。
+/* Sprout68k L0: レジスタ直書きだけで済む部分(TRAP不要)。
  * IOCS 経由のもの(iocs_print等)は lib/asm/x68_iocs.S、MOVEM コピーは
  * lib/asm/x68_gvram_copy.S にある。
  */

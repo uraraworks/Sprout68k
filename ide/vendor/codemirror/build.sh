@@ -2,7 +2,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-BUILD_DIR="$(mktemp -d "${TMPDIR:-/tmp}/x68kdev-codemirror.XXXXXX")"
+BUILD_DIR="$(mktemp -d "${TMPDIR:-/tmp}/sprout68k-codemirror.XXXXXX")"
 cleanup() { rm -rf "$BUILD_DIR"; }
 trap cleanup EXIT
 

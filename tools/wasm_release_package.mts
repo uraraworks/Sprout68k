@@ -3,7 +3,7 @@ import { mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'n
 import { gzipSync, gunzipSync } from 'node:zlib';
 import { basename, resolve } from 'node:path';
 
-export const RELEASE_BASENAME = 'x68kdev-wasm-tools-v1';
+export const RELEASE_BASENAME = 'sprout68k-wasm-tools-v1';
 export const ARCHIVE_NAME = `${RELEASE_BASENAME}.tar.gz`;
 export const MANIFEST_NAME = `${RELEASE_BASENAME}.manifest.json`;
 const TOOL_PATTERN = /^m68k-elf-(?:cc1|as|ld|objcopy)\.memfs\.(?:js|wasm)$/;

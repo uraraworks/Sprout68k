@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# X68kDev ライブラリ第一版(lib/)のテストプログラム(lib_test/src/main.c)を
+# Sprout68k ライブラリ第一版(lib/)のテストプログラム(lib_test/src/main.c)を
 # ビルドして .xdf にする。
 #
 # 使い方: tools/build_lib_test.sh <output.xdf> [fault]

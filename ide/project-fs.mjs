@@ -16,7 +16,7 @@ export class ProjectFS {
 }
 
 export class IndexedDbProjectFS extends ProjectFS {
-  constructor({ indexedDB = globalThis.indexedDB, databaseName = 'X68kDevProjectFS' } = {}) {
+  constructor({ indexedDB = globalThis.indexedDB, databaseName = 'Sprout68kProjectFS' } = {}) {
     super();
     if (!indexedDB) throw new Error('IndexedDB を利用できません');
     this.indexedDB = indexedDB;

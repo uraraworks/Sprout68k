@@ -33,7 +33,7 @@ export async function fetchWasmRelease(options: { source: string; output: string
   }
   for (const path of byPath.keys()) if (!manifest.files.some((file) => file.path === path)) throw new Error(`manifestにないfileがあります: ${path}`);
 
-  const stage = mkdtempSync(resolve(tmpdir(), 'x68kdev-wasm-release-'));
+  const stage = mkdtempSync(resolve(tmpdir(), 'sprout68k-wasm-release-'));
   try {
     for (const file of manifest.files) writeFileSync(resolve(stage, file.path), byPath.get(file.path)!);
     mkdirSync(options.output, { recursive: true });

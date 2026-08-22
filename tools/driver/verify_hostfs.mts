@@ -15,9 +15,9 @@ const ROOT = resolve(HERE, '../..');
 const RESULT = resolve(ROOT, 'build/hostfs_verify');
 const nodeFs = new NodeHostFs();
 // wasm ツールを作った基準ツールチェーンと native 比較側を揃える。
-process.env.X68KDEV_TOOLCHAIN ??= resolve(homedir(), 'x68kdev-toolchain');
+process.env.SPROUT68K_TOOLCHAIN ??= resolve(homedir(), 'x68kdev-toolchain');
 const tools = resolveNativeToolchain();
-const prefix = resolve(process.env.X68KDEV_CC1_GCC_EXEC_PREFIX ?? resolve(process.env.X68KDEV_TOOLCHAIN ?? resolve(homedir(), 'x68kdev-toolchain'), 'lib/gcc'));
+const prefix = resolve(process.env.SPROUT68K_CC1_GCC_EXEC_PREFIX ?? resolve(process.env.SPROUT68K_TOOLCHAIN ?? resolve(homedir(), 'x68kdev-toolchain'), 'lib/gcc'));
 const modules: Record<ToolName, string> = {
   cc1: resolve(ROOT, 'build/wasm-tools/m68k-elf-cc1.memfs.js'),
   as: resolve(ROOT, 'build/wasm-tools/m68k-elf-as.memfs.js'),

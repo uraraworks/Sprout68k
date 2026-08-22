@@ -20,7 +20,9 @@ TARGET=m68k-elf
 PROGRAM_PREFIX=m68k-elf-
 WASM_FS="${WASM_FS:-noderawfs}"
 
-PREFIX="${PREFIX:-$HOME/x68kdev-wasm}"
+PREFIX="${PREFIX:-$HOME/sprout68k-wasm}"
+# wasm出力を、cc1へ焼き込まれたネイティブ基準器prefixへ混在させない。
+NATIVE_REFERENCE_PREFIX="$HOME/x68kdev-toolchain"
 EMSDK="${EMSDK:-$HOME/emsdk}"
 SRC_DIR="$PREFIX/src"
 DOWNLOAD_DIR="$SRC_DIR/downloads"
@@ -78,7 +80,7 @@ case "$PREFIX" in
   *) echo "ERROR: PREFIX は絶対パスで指定してください: $PREFIX" >&2; exit 2 ;;
 esac
 case "$PREFIX" in
-  "$HOME/x68kdev-toolchain"|"$HOME/x68kdev-toolchain"/*)
+  "$NATIVE_REFERENCE_PREFIX"|"$NATIVE_REFERENCE_PREFIX"/*)
     echo 'ERROR: F-0 の PREFIX は使用できません' >&2
     exit 2
     ;;

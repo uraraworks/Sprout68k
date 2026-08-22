@@ -8,7 +8,7 @@ import { rewriteBuildDiagnostic } from './diagnostics.mts';
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(HERE, '../..');
 const CASE_DIR = resolve(ROOT, 'tools/diagnostic-cases');
-const disableAnnotations = process.env.X68KDEV_DIAGNOSTIC_ANNOTATION_FAULT === '1';
+const disableAnnotations = process.env.SPROUT68K_DIAGNOSTIC_ANNOTATION_FAULT === '1';
 const collected = await collectDiagnostics();
 let annotatedCount = 0;
 let collisionCount = 0;
@@ -47,7 +47,7 @@ for (const testCase of collected) {
     if (presentation.annotations.length !== 0) {
       throw new Error(`${testCase.id}: 未知の診断に誤った注釈が付きました`);
     }
-    console.log(`PASS(未知診断の素通し): ${normalized.split('\n').find((line) => line.includes('X68KDEV_RARE_DIAGNOSTIC_9173'))}`);
+    console.log(`PASS(未知診断の素通し): ${normalized.split('\n').find((line) => line.includes('SPROUT68K_RARE_DIAGNOSTIC_9173'))}`);
   }
 }
 

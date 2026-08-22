@@ -1,4 +1,4 @@
-name: Deploy X68kDev to GitHub Pages
+name: Deploy Sprout68k to GitHub Pages
 
 on:
   workflow_dispatch:
@@ -8,7 +8,7 @@ on:
         required: true
         type: string
       manifest_sha256:
-        description: "x68kdev-wasm-tools-v1.manifest.json SHA-256"
+        description: "sprout68k-wasm-tools-v1.manifest.json SHA-256"
         required: true
         type: string
 

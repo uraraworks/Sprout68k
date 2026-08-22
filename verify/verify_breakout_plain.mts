@@ -1,5 +1,5 @@
 /*
- * X68kDev 作例「ブロック崩し」の素のコード(samples/breakout/main.c、検証用の
+ * Sprout68k 作例「ブロック崩し」の素のコード(samples/breakout/main.c、検証用の
  * パッチを一切当てていない版)がそれ単体でゲームとして成立することの実測。
  *
  * 背景: samples/breakout/main.c から検証用HOSTVARの書き出しと故障注入マクロを

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# X68kDev 作例「ブロック崩し」の素のコード(samples/breakout/main.c)を、
+# Sprout68k 作例「ブロック崩し」の素のコード(samples/breakout/main.c)を、
 # 検証用パッチを一切当てずにそのままビルドする。
 #
 # tools/build_breakout.sh は verify/patches/breakout_verify.patch を当てた

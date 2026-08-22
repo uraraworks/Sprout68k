@@ -3,53 +3,53 @@
   "files": [
     {
       "path": "lib/asm/x68_gvram_copy.S",
-      "size": 1620,
-      "sha256": "1afb8d61dc5d41764ff46339a5f7cb0ee55003a203de83158eac25173a7f8db9"
+      "size": 1622,
+      "sha256": "7f955ebeecbbb97d7df2efbaf2e6081a013cae824d6bcdaf4b4c991aecd89355"
     },
     {
       "path": "lib/asm/x68_iocs.S",
-      "size": 2478,
-      "sha256": "74e7a57f895ae2e0bbeacb602af9255c53fd4fe492f6f00510e807b0fe205f96"
+      "size": 2480,
+      "sha256": "5a5a13f6a813e037ee5528ffb3049d64f571186d16216de9c1f9da4ddf9d2f1a"
     },
     {
       "path": "lib/asm/x68_panic.S",
-      "size": 9416,
-      "sha256": "bd03e0b36e3d6c8d51087678d6dd15f3c014e6c65cb54f1472e1ca53bffb53f4"
+      "size": 9418,
+      "sha256": "e2bb3bee1811c99039d353812a79ebabb0db58b1036c0a3982c40e3d4ecdaf3d"
     },
     {
       "path": "lib/include/x68.h",
-      "size": 13480,
-      "sha256": "44dcee116181ac52403d753f51e5ad4edcf60842443d95bcba745cb75e5ecd51"
+      "size": 13482,
+      "sha256": "45b9c7f2b7cae66e4792a79e9db5d5718b6c930841f663da95d1c6577187f076"
     },
     {
       "path": "lib/src/x68_input.c",
-      "size": 1158,
-      "sha256": "e47f19e87bf60b075645e1d4285f3284d8a512ed0b3eddded52afb096bd18337"
+      "size": 1160,
+      "sha256": "06f3387e7a502c39ceb30a39298a73563e637a4cc795b1e100d8eb463c65d231"
     },
     {
       "path": "lib/src/x68_l0.c",
-      "size": 2318,
-      "sha256": "e32b7cc5c1343960e589ebcd777ff79eae210506750ad6f7088543b46289118c"
+      "size": 2320,
+      "sha256": "81f995ab9c034bd4d72ef687ed1a56ab359e21d6c88a5c50bd9c90d17ba29ff8"
     },
     {
       "path": "lib/src/x68_l1.c",
-      "size": 24305,
-      "sha256": "01d3e5dd0c1f6a83353401cc03362acfad2c5f35f196806fc4f60f4bcc4fe00f"
+      "size": 24307,
+      "sha256": "ec09da4d30736eb11470076a6cbf4bd6fa9a2e788c0064dee673710bb50733aa"
     },
     {
       "path": "lib/src/x68_panic.c",
-      "size": 5674,
-      "sha256": "4413bc27d53429ed07bcb07d5ba241a0083c977b28a93f1551ce9f229a101c8c"
+      "size": 5676,
+      "sha256": "92ab416d5dce2d53030b2784406ad13e062b83fe29672ad6a37a051c1b21f108"
     },
     {
       "path": "lib/src/x68_std.c",
-      "size": 7638,
-      "sha256": "4a5fc3758ece164a382de6ea91024c3159a4bb8f00aecfbabba4d0446e0d5da4"
+      "size": 7642,
+      "sha256": "964aaf6244af648c69e755a9effc575ab4612762f07b3b0058fa4551a23ef05f"
     },
     {
       "path": "samples/breakout/main.c",
-      "size": 5070,
-      "sha256": "08e97c9a58e4e42f7dfd176fa31e599e40441ac916b2489e598f77345c6abb51"
+      "size": 5072,
+      "sha256": "ce5d2de83adec9a3ec8f4a8333a0e7314aa4c791a42c9b8d41580d432228bb52"
     },
     {
       "path": "stage_c/boot/boot.S",
@@ -199,7 +199,7 @@
   ],
   "totals": {
     "files": 39,
-    "size": 830855,
-    "gzipSize": 250265
+    "size": 830877,
+    "gzipSize": 250276
   }
 }

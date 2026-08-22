@@ -1,4 +1,4 @@
-# X68kDev — X68000 C学習用ブラウザIDEと実測
+# Sprout68k — X68000 C学習用ブラウザIDEと実測
 
 X68000用のブートセクタ、Cライブラリ、ブラウザ内wasmツールチェーンを実測しながら作り、
 現在はソース編集・保存から `.xdf` のビルド、同梱px68kでの実行までをIDEとして接続した。
@@ -6,7 +6,7 @@ X68000用のブートセクタ、Cライブラリ、ブラウザ内wasmツール
 
 ## ライセンスと由来
 
-X68kDev のソフトウェア全体は GNU GPL version 2 で公開する。ライセンス本文は
+Sprout68k のソフトウェア全体は GNU GPL version 2 で公開する。ライセンス本文は
 [`COPYING`](COPYING)を参照。IDE に同梱する px68k-libretro コアとホスト層も GPLv2
 である。コアのビルド元は URARA-works の
 [`px68k-libretro` emscripten ブランチ](https://github.com/uraraworks/px68k-libretro/tree/emscripten)、
@@ -319,7 +319,7 @@ F-4ではHostFs抽象化、native `nm` 依存の撤去、配信用アセット�
 [`docs/コンパイラwasm化_20260820.md`](docs/コンパイラwasm化_20260820.md)と
 [`docs/ブラウザ結線_20260821.md`](docs/ブラウザ結線_20260821.md)に記録している。
 
-その後、WorkbenchNP2を土台にX68kDevのIDEを4段で実装した。現在は、CodeMirrorでの
+その後、WorkbenchNP2を土台にSprout68kのIDEを4段で実装した。現在は、CodeMirrorでの
 C編集、IndexedDB保存、利用者ソース1本のブラウザ内ビルド、GCC / ld原文を残した
 日本語診断注釈、1,261,568
 バイトの `user.xdf` ダウンロード、同梱px68kへの受渡しとcanvas実行まで接続済みである。

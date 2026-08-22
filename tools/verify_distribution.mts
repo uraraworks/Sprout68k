@@ -19,21 +19,23 @@ function digest(file: string): string { return createHash('sha256').update(readF
 function assert(condition: unknown, message: string): asserts condition { if (!condition) throw new Error(message); }
 
 const workbench = readFileSync(resolve(ROOT, 'ide/workbench.js'), 'utf8');
-const sw = readFileSync(resolve(DIST, 'x68kdev-sw.js'), 'utf8');
+const sw = readFileSync(resolve(DIST, 'sprout68k-sw.js'), 'utf8');
 const offline = JSON.parse(readFileSync(resolve(DIST, 'offline-manifest.json'), 'utf8')) as OfflineManifest;
 
 function verifyIsolation(workbenchSource: string, swSource: string): void {
   assert(APP_PATH !== '/', 'アプリのscopeがルートです');
-  assert(workbenchSource.includes(`const X68KDEV_SCOPE_PATH = '${APP_PATH}'`), '登録scopeがX68kDev配下ではありません');
-  assert(workbenchSource.includes('scope: X68KDEV_SCOPE_PATH'), '登録時にscopeを明示していません');
-  assert(swSource.includes(`const APP_SCOPE_PATH = ${JSON.stringify(APP_PATH)}`), 'SWのfetch境界がX68kDev配下ではありません');
+  assert(workbenchSource.includes(`const SPROUT68K_SCOPE_PATH = '${APP_PATH}'`), '登録scopeがSprout68k配下ではありません');
+  assert(workbenchSource.includes('scope: SPROUT68K_SCOPE_PATH'), '登録時にscopeを明示していません');
+  assert(swSource.includes(`const APP_SCOPE_PATH = ${JSON.stringify(APP_PATH)}`), 'SWのfetch境界がSprout68k配下ではありません');
   assert(swSource.includes(`const CACHE_PREFIX = ${JSON.stringify(CACHE_PREFIX)}`), '専用cache接頭辞がありません');
   assert(swSource.includes('.filter((name) => name.startsWith(CACHE_PREFIX) && name !== CACHE_NAME)'), '古いcache削除が専用接頭辞に限定されていません');
 }
 
 verifyIsolation(workbench, sw);
+const retiredScope = `/${['X68k', 'Dev'].join('')}/`;
 for (const [name, brokenWorkbench, brokenSw] of [
-  ['ルートscope', workbench.replace(`const X68KDEV_SCOPE_PATH = '${APP_PATH}'`, "const X68KDEV_SCOPE_PATH = '/'"), sw],
+  ['ルートscope', workbench.replace(`const SPROUT68K_SCOPE_PATH = '${APP_PATH}'`, "const SPROUT68K_SCOPE_PATH = '/'"), sw],
+  ['旧製品scope', workbench.replace(`const SPROUT68K_SCOPE_PATH = '${APP_PATH}'`, `const SPROUT68K_SCOPE_PATH = '${retiredScope}'`), sw],
   ['接頭辞なし削除', workbench, sw.replace('.filter((name) => name.startsWith(CACHE_PREFIX) && name !== CACHE_NAME)', '.filter((name) => name !== CACHE_NAME)')],
 ] as const) {
   let rejected = false;
@@ -44,7 +46,7 @@ for (const [name, brokenWorkbench, brokenSw] of [
 
 assert(offline.version === 1 && offline.scope === APP_PATH && offline.cachePrefix === CACHE_PREFIX, 'offline manifestの識別情報が不正です');
 const actualPublic = filesBelow(DIST).map((file) => posix(relative(DIST, file)))
-  .filter((path) => path !== 'offline-manifest.json' && path !== 'x68kdev-sw.js');
+  .filter((path) => path !== 'offline-manifest.json' && path !== 'sprout68k-sw.js');
 const listed = offline.files.map((entry) => entry.path);
 assert(JSON.stringify(listed) === JSON.stringify([...listed].sort()), 'precache一覧が安定順ではありません');
 assert(new Set(listed).size === listed.length, 'precache一覧に重複があります');
@@ -60,7 +62,7 @@ const swEntries = JSON.parse(precacheMatch[1]) as Entry[];
 assert(JSON.stringify(swEntries) === JSON.stringify(offline.files), 'SWとoffline manifestのprecache一覧が一致しません');
 for (const contract of [
   "repairPrecache('install', true)", "repairPrecache('activate')", "repairPrecache('client-check')",
-  "repairPrecache('fetch-miss')", 'await caches.delete(CACHE_NAME)', 'console.error(`[X68kDev precache]',
+  "repairPrecache('fetch-miss')", 'await caches.delete(CACHE_NAME)', 'console.error(`[Sprout68k precache]',
 ]) assert(sw.includes(contract), `SW自己修復契約がありません: ${contract}`);
 assert(!sw.includes('cache.addAll('), '失敗URLを隠すatomic addAllが残っています');
 
@@ -130,7 +132,7 @@ assert(installedCache?.size === offline.files.length, `install実行結果が全
 swHarness.stores.clear();
 let clientReply: unknown;
 await swHarness.dispatch('message', {
-  data: { type: 'X68KDEV_CHECK_CACHE' }, ports: [{ postMessage(message: unknown) { clientReply = message; } }],
+  data: { type: 'SPROUT68K_CHECK_CACHE' }, ports: [{ postMessage(message: unknown) { clientReply = message; } }],
 });
 assert([...swHarness.stores.values()][0]?.size === offline.files.length, 'client起動照会で空cacheを自己修復できません');
 assert((clientReply as { state?: string })?.state === 'ready', '自己修復後にreadyを返していません');
@@ -156,7 +158,7 @@ assert(tools.length === 8, `wasmツールの公開物が8ファイルではあ�
 
 for (const htmlPath of ['ide/index.html', 'web/index.html']) {
   const html = readFileSync(resolve(DIST, htmlPath), 'utf8');
-  for (const match of html.matchAll(/(?:src|href)="(\/X68kDev\/[^"?#]+)"/g)) {
+  for (const match of html.matchAll(/(?:src|href)="(\/Sprout68k\/[^"?#]+)"/g)) {
     const target = match[1].slice(APP_PATH.length);
     assert(listed.includes(target), `HTML参照先が公開物にありません: ${match[1]}`);
   }
@@ -169,7 +171,7 @@ for (const htmlPath of ['ide/index.html', 'web/index.html']) {
 function verifyOfflineAssembly(html: string, cachedPaths: Set<string>): { styles: string[]; modules: string[]; entry: string } {
   assert(!/<script type="module"[^>]+src=/.test(html), 'IDEに早期entry module要求が残っています');
   assert(!/<link rel="(?:modulepreload|stylesheet)"/.test(html), 'IDEに早期link要求が残っています');
-  assert(html.includes('id="x68kdev-controlled-bootstrap"'), '制御確定後bootstrapがありません');
+  assert(html.includes('id="sprout68k-controlled-bootstrap"'), '制御確定後bootstrapがありません');
   for (const contract of [
     'await fetchRequired(url)', 'document.head.append(style)',
     'let entrySource = await (await fetchRequired(ENTRY_MODULE)).text()',

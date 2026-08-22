@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# X68kDev L1(lib/src/x68_l1.c、65536色1ページ + 矩形追跡の部分転送)の
+# Sprout68k L1(lib/src/x68_l1.c、65536色1ページ + 矩形追跡の部分転送)の
 # テストプログラム(lib_test/src/main_l1.c)をビルドして .xdf にする。
 #
 # 使い方: tools/build_l1_test.sh <output.xdf> [fault] [script]

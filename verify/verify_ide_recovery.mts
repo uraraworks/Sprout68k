@@ -38,7 +38,7 @@ function loadFactory(): (options?: Record<string, unknown>) => Promise<any> {
 }
 
 async function buildUser(name: string, content: string): Promise<Uint8Array> {
-  process.env.X68KDEV_TOOLCHAIN ??= resolve(homedir(), 'x68kdev-toolchain');
+  process.env.SPROUT68K_TOOLCHAIN ??= resolve(homedir(), 'x68kdev-toolchain');
   const hostFs = new NodeHostFs();
   const executors = createNodeToolExecutors({
     modes: { cc1: 'native', as: 'native', ld: 'native', objcopy: 'native' },

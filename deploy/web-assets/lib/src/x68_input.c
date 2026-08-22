@@ -1,4 +1,4 @@
-/* X68kDev L1(入力の学習層): x68_key_down。
+/* Sprout68k L1(入力の学習層): x68_key_down。
  *
  * L0の x68_iocs_bitsns(実装済み、lib/src/x68_l0.c + lib/asm/x68_iocs.S)の上に
  * 乗る薄いラッパ。docs/API設計_20260819.md「入力(すべて Stage E-4 で確定)」節、

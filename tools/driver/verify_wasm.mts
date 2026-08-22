@@ -9,7 +9,7 @@ import { createNodeToolExecutors } from './node_runner.mts';
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(HERE, '../..');
 const RESULT_DIR = resolve(ROOT, 'build/f2_wasm_verify');
-const TOOLCHAIN = resolve(process.env.X68KDEV_TOOLCHAIN ?? resolve(homedir(), 'x68kdev-toolchain'));
+const TOOLCHAIN = resolve(process.env.SPROUT68K_TOOLCHAIN ?? resolve(homedir(), 'x68kdev-toolchain'));
 const OBJDUMP = resolve(TOOLCHAIN, 'bin/m68k-elf-objdump');
 const wasmTool = (name: string): string => {
   const named = resolve(ROOT, `build/wasm-tools/m68k-elf-${name}.noderawfs.js`);
@@ -57,19 +57,19 @@ function runBuild(row: typeof rows[number], target: 'stage_c' | 'breakout'): voi
     encoding: 'utf8',
     env: {
       ...process.env,
-      X68KDEV_TOOLCHAIN: TOOLCHAIN,
+      SPROUT68K_TOOLCHAIN: TOOLCHAIN,
       // wasm cc1 だけを、基準器と同じGCC内部ヘッダへ向ける。
       // GCC_EXEC_PREFIX は末尾の / が必須。
-      X68KDEV_CC1_GCC_EXEC_PREFIX: `${resolve(TOOLCHAIN, 'lib/gcc')}/`,
-      X68KDEV_DRIVER_BUILD_ROOT: resolve(rowDir, 'objects'),
-      X68KDEV_CC1_WASM_JS: WASM_MODULES.cc1,
-      X68KDEV_AS_WASM_JS: WASM_MODULES.as,
-      X68KDEV_LD_WASM_JS: WASM_MODULES.ld,
-      X68KDEV_OBJCOPY_WASM_JS: WASM_MODULES.objcopy,
-      X68KDEV_CC1_MEMFS_JS: MEMFS_MODULES.cc1,
-      X68KDEV_AS_MEMFS_JS: MEMFS_MODULES.as,
-      X68KDEV_LD_MEMFS_JS: MEMFS_MODULES.ld,
-      X68KDEV_OBJCOPY_MEMFS_JS: MEMFS_MODULES.objcopy,
+      SPROUT68K_CC1_GCC_EXEC_PREFIX: `${resolve(TOOLCHAIN, 'lib/gcc')}/`,
+      SPROUT68K_DRIVER_BUILD_ROOT: resolve(rowDir, 'objects'),
+      SPROUT68K_CC1_WASM_JS: WASM_MODULES.cc1,
+      SPROUT68K_AS_WASM_JS: WASM_MODULES.as,
+      SPROUT68K_LD_WASM_JS: WASM_MODULES.ld,
+      SPROUT68K_OBJCOPY_WASM_JS: WASM_MODULES.objcopy,
+      SPROUT68K_CC1_MEMFS_JS: MEMFS_MODULES.cc1,
+      SPROUT68K_AS_MEMFS_JS: MEMFS_MODULES.as,
+      SPROUT68K_LD_MEMFS_JS: MEMFS_MODULES.ld,
+      SPROUT68K_OBJCOPY_MEMFS_JS: MEMFS_MODULES.objcopy,
     },
   });
   if (result.stdout) process.stdout.write(result.stdout);
@@ -185,13 +185,13 @@ function verifyCc1FaultInjection(): void {
       encoding: 'utf8',
       env: {
         ...process.env,
-        X68KDEV_TOOLCHAIN: TOOLCHAIN,
-        X68KDEV_CC1_GCC_EXEC_PREFIX: `${resolve(TOOLCHAIN, 'lib/gcc')}/`,
-        X68KDEV_DRIVER_BUILD_ROOT: resolve(faultDir, 'objects'),
-        X68KDEV_CC1_WASM_JS: WASM_MODULES.cc1,
-        X68KDEV_AS_WASM_JS: WASM_MODULES.as,
-        X68KDEV_LD_WASM_JS: WASM_MODULES.ld,
-        X68KDEV_OBJCOPY_WASM_JS: WASM_MODULES.objcopy,
+        SPROUT68K_TOOLCHAIN: TOOLCHAIN,
+        SPROUT68K_CC1_GCC_EXEC_PREFIX: `${resolve(TOOLCHAIN, 'lib/gcc')}/`,
+        SPROUT68K_DRIVER_BUILD_ROOT: resolve(faultDir, 'objects'),
+        SPROUT68K_CC1_WASM_JS: WASM_MODULES.cc1,
+        SPROUT68K_AS_WASM_JS: WASM_MODULES.as,
+        SPROUT68K_LD_WASM_JS: WASM_MODULES.ld,
+        SPROUT68K_OBJCOPY_WASM_JS: WASM_MODULES.objcopy,
       },
     });
   } finally {
@@ -216,13 +216,13 @@ function verifyMemfsFaultInjection(): void {
       encoding: 'utf8',
       env: {
         ...process.env,
-        X68KDEV_TOOLCHAIN: TOOLCHAIN,
-        X68KDEV_CC1_GCC_EXEC_PREFIX: `${resolve(TOOLCHAIN, 'lib/gcc')}/`,
-        X68KDEV_DRIVER_BUILD_ROOT: resolve(faultDir, 'objects'),
-        X68KDEV_CC1_MEMFS_JS: MEMFS_MODULES.cc1,
-        X68KDEV_AS_MEMFS_JS: MEMFS_MODULES.as,
-        X68KDEV_LD_MEMFS_JS: MEMFS_MODULES.ld,
-        X68KDEV_OBJCOPY_MEMFS_JS: MEMFS_MODULES.objcopy,
+        SPROUT68K_TOOLCHAIN: TOOLCHAIN,
+        SPROUT68K_CC1_GCC_EXEC_PREFIX: `${resolve(TOOLCHAIN, 'lib/gcc')}/`,
+        SPROUT68K_DRIVER_BUILD_ROOT: resolve(faultDir, 'objects'),
+        SPROUT68K_CC1_MEMFS_JS: MEMFS_MODULES.cc1,
+        SPROUT68K_AS_MEMFS_JS: MEMFS_MODULES.as,
+        SPROUT68K_LD_MEMFS_JS: MEMFS_MODULES.ld,
+        SPROUT68K_OBJCOPY_MEMFS_JS: MEMFS_MODULES.objcopy,
       },
     });
   } finally {
@@ -243,7 +243,7 @@ async function verifyMemfsCallMainAndFreshInstances(): Promise<void> {
   let invalidRejected = false;
   const exitCodeBeforeFault = process.exitCode;
   try {
-    await runner.run({ tool: 'as', program: '', cwd: ROOT, args: ['--x68kdev-invalid-option'] });
+    await runner.run({ tool: 'as', program: '', cwd: ROOT, args: ['--sprout68k-invalid-option'] });
   } catch (error) {
     invalidRejected = error instanceof Error && error.message.includes('callMain が失敗しました')
       && String(error.cause).includes('終了コード 1');

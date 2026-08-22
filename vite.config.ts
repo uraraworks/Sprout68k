@@ -11,7 +11,7 @@ export default {
   base: APP_PATH,
   define: { __BUILD_ID__: JSON.stringify(buildId) },
   plugins: [{
-    name: 'x68kdev-distribution',
+    name: 'sprout68k-distribution',
     closeBundle() { stageDistribution(__dirname, resolve(__dirname, 'build/web-page'), buildId); },
   }],
   build: {

@@ -39,7 +39,7 @@ function loadFactory(): (options?: Record<string, unknown>) => Promise<unknown> 
 }
 
 async function buildHello(): Promise<Uint8Array> {
-  process.env.X68KDEV_TOOLCHAIN ??= resolve(homedir(), 'x68kdev-toolchain');
+  process.env.SPROUT68K_TOOLCHAIN ??= resolve(homedir(), 'x68kdev-toolchain');
   const hostFs = new NodeHostFs();
   const tools = resolveNativeToolchain();
   const executors = createNodeToolExecutors({

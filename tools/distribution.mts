@@ -2,8 +2,8 @@ import { createHash } from 'node:crypto';
 import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, relative, resolve, sep } from 'node:path';
 
-export const APP_PATH = '/X68kDev/';
-export const CACHE_PREFIX = 'x68kdev-precache-';
+export const APP_PATH = '/Sprout68k/';
+export const CACHE_PREFIX = 'sprout68k-precache-';
 
 interface AssetEntry { path: string; size: number; sha256: string }
 interface AssetManifest { version: number; files: AssetEntry[] }
@@ -44,7 +44,7 @@ export function computeBuildId(root: string): string {
 }
 
 function serviceWorkerSource(buildId: string, entries: AssetEntry[]): string {
-  return `/* X68kDev generated service worker: do not edit. */
+  return `/* Sprout68k generated service worker: do not edit. */
 const APP_SCOPE_PATH = ${JSON.stringify(APP_PATH)};
 const CACHE_PREFIX = ${JSON.stringify(CACHE_PREFIX)};
 const CACHE_NAME = CACHE_PREFIX + ${JSON.stringify(buildId)};
@@ -56,7 +56,7 @@ let lastStatus = { state: 'preparing', detail: 'オフライン資産を確認�
 async function notifyStatus(state, detail) {
   lastStatus = { state, detail };
   const clients = await self.clients.matchAll({ includeUncontrolled: true, type: 'window' });
-  for (const client of clients) client.postMessage({ type: 'X68KDEV_OFFLINE_STATUS', ...lastStatus });
+  for (const client of clients) client.postMessage({ type: 'SPROUT68K_OFFLINE_STATUS', ...lastStatus });
 }
 
 async function sha256(buffer) {
@@ -102,7 +102,7 @@ async function repairPrecache(reason, resetOnFailure = false) {
     } catch (error) {
       if (resetOnFailure) await caches.delete(CACHE_NAME);
       const detail = error instanceof Error ? error.message : String(error);
-      console.error(\`[X68kDev precache] \${reason}: \${detail}\`);
+      console.error(\`[Sprout68k precache] \${reason}: \${detail}\`);
       await notifyStatus('error', detail);
       throw error;
     }
@@ -122,10 +122,10 @@ self.addEventListener('activate', (event) => {
 });
 
 self.addEventListener('message', (event) => {
-  if (event.data?.type !== 'X68KDEV_CHECK_CACHE') return;
+  if (event.data?.type !== 'SPROUT68K_CHECK_CACHE') return;
   event.waitUntil(repairPrecache('client-check').then(
-    (status) => event.ports[0]?.postMessage({ type: 'X68KDEV_OFFLINE_STATUS', ...status }),
-    () => event.ports[0]?.postMessage({ type: 'X68KDEV_OFFLINE_STATUS', ...lastStatus }),
+    (status) => event.ports[0]?.postMessage({ type: 'SPROUT68K_OFFLINE_STATUS', ...status }),
+    () => event.ports[0]?.postMessage({ type: 'SPROUT68K_OFFLINE_STATUS', ...lastStatus }),
   ));
 });
 
@@ -178,7 +178,7 @@ function installControlledBootstrap(outDir: string): void {
     .replace(/\s*<link rel="modulepreload"(?: crossorigin)? href="[^"]+">/g, '')
     .replace(/\s*<link rel="stylesheet"(?: crossorigin)? href="[^"]+">/g, '');
   const bootstrap = `
-  <script type="module" id="x68kdev-controlled-bootstrap">
+  <script type="module" id="sprout68k-controlled-bootstrap">
     // 外部タグの先読みを避け、navigation先のSW制御が確定した実行段階で取得する。
     const REQUIRED_STYLES = ${JSON.stringify(styles)};
     const REQUIRED_MODULES = ${JSON.stringify(modulePreloads)};
@@ -191,7 +191,7 @@ function installControlledBootstrap(outDir: string): void {
     try {
       for (const url of REQUIRED_STYLES) {
         const style = document.createElement('style');
-        style.dataset.x68kdevSource = url;
+        style.dataset.sprout68kSource = url;
         style.textContent = await (await fetchRequired(url)).text();
         document.head.append(style);
       }
@@ -220,8 +220,8 @@ function installControlledBootstrap(outDir: string): void {
         for (const blobUrl of moduleBlobUrls.values()) URL.revokeObjectURL(blobUrl);
       }
     } catch (error) {
-      console.error('X68kDevの起動に失敗しました', error);
-      document.documentElement.dataset.x68kdevBootstrap = 'error';
+      console.error('Sprout68kの起動に失敗しました', error);
+      document.documentElement.dataset.sprout68kBootstrap = 'error';
     }
   </script>`;
   html = html.replace('</head>', `${bootstrap}\n</head>`);
@@ -264,6 +264,6 @@ export function stageDistribution(root: string, outDir: string, buildId: string)
   }));
   const offlineManifest = { version: 1, buildId, scope: APP_PATH, cachePrefix: CACHE_PREFIX, files: entries };
   writeFileSync(resolve(outDir, 'offline-manifest.json'), `${JSON.stringify(offlineManifest, null, 2)}\n`);
-  writeFileSync(resolve(outDir, 'x68kdev-sw.js'), serviceWorkerSource(buildId, entries));
-  console.log(`X68kDev distribution: build=${buildId}, precache=${entries.length} files`);
+  writeFileSync(resolve(outDir, 'sprout68k-sw.js'), serviceWorkerSource(buildId, entries));
+  console.log(`Sprout68k distribution: build=${buildId}, precache=${entries.length} files`);
 }

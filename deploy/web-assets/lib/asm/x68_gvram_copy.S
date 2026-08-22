@@ -1,4 +1,4 @@
-/* X68kDev L0: メインメモリ→GVRAM の高速コピー(MOVEM.L 8本/バッチ)。
+/* Sprout68k L0: メインメモリ→GVRAM の高速コピー(MOVEM.L 8本/バッチ)。
  *
  * stage_e/src/e3_copy.S の e3_copy_movem(rev3、確定版)をそのまま流用し、
  * シンボル名だけ x68_gvram_copy_movem に変えたもの。挙動・callee-saved

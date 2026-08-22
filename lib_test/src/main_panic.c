@@ -1,4 +1,4 @@
-/* X68kDev パニック画面の検証用テストプログラム(verify/verify_panic.mts)。
+/* Sprout68k パニック画面の検証用テストプログラム(verify/verify_panic.mts)。
  *
  * ビルド時に -D で指定するマクロ:
  *   MODE      0=例外を起こす(陽性: パニック画面が出るはず)

@@ -66,7 +66,7 @@ const RULES: readonly AnnotationRule[] = [
     id: 'missing_header', specificity: 180,
     pattern: /fatal error: [^:]+: No such file or directory/,
     what: '#includeに書いたヘッダファイルが見つかりません。',
-    next: '#include行のファイル名と綴りを確認し、X68kDevに用意されているヘッダ名へ直してください。',
+    next: '#include行のファイル名と綴りを確認し、Sprout68kに用意されているヘッダ名へ直してください。',
   },
   {
     id: 'too_few_arguments', specificity: 240,

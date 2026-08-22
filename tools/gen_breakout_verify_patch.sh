@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# X68kDev: samples/breakout/main.c(素のコード)と検証用の版(HOSTVAR書き出し+
+# Sprout68k: samples/breakout/main.c(素のコード)と検証用の版(HOSTVAR書き出し+
 # 故障注入マクロ入り)との差分を verify/patches/breakout_verify.patch として
 # 保存し直す。
 #

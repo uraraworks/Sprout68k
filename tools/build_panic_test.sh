@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# X68kDev パニック画面(lib/asm/x68_panic.S + lib/src/x68_panic.c)の
+# Sprout68k パニック画面(lib/asm/x68_panic.S + lib/src/x68_panic.c)の
 # テストプログラム(lib_test/src/main_panic.c)をビルドして .xdf にする。
 #
 # 使い方: tools/build_panic_test.sh <output.xdf> [fault] [mode] [exc_type] [pad]

@@ -41,8 +41,8 @@ const nodes = {
   offlineStatus: document.querySelector('#offline-status'),
 };
 
-const LAST_PATH_KEY = 'x68kdev:last-path';
-const X68KDEV_SCOPE_PATH = '/X68kDev/';
+const LAST_PATH_KEY = 'sprout68k:last-path';
+const SPROUT68K_SCOPE_PATH = '/Sprout68k/';
 
 nodes.buildId.textContent = `build: ${__BUILD_ID__}`;
 function showOfflineStatus(state, detail = '') {
@@ -56,9 +56,9 @@ function showOfflineStatus(state, detail = '') {
 function checkOfflineCache(worker) {
   const channel = new MessageChannel();
   channel.port1.onmessage = ({ data }) => {
-    if (data?.type === 'X68KDEV_OFFLINE_STATUS') showOfflineStatus(data.state, data.detail);
+    if (data?.type === 'SPROUT68K_OFFLINE_STATUS') showOfflineStatus(data.state, data.detail);
   };
-  worker.postMessage({ type: 'X68KDEV_CHECK_CACHE' }, [channel.port2]);
+  worker.postMessage({ type: 'SPROUT68K_CHECK_CACHE' }, [channel.port2]);
 }
 
 function checkCurrentOfflineWorker() {
@@ -67,17 +67,17 @@ function checkCurrentOfflineWorker() {
 }
 
 async function initializeOfflineSupport() {
-  if (!('serviceWorker' in navigator) || !location.pathname.startsWith(X68KDEV_SCOPE_PATH)) {
+  if (!('serviceWorker' in navigator) || !location.pathname.startsWith(SPROUT68K_SCOPE_PATH)) {
     showOfflineStatus('error', 'この環境ではService Workerを利用できません');
     return;
   }
   navigator.serviceWorker.addEventListener('message', ({ data }) => {
-    if (data?.type === 'X68KDEV_OFFLINE_STATUS') showOfflineStatus(data.state, data.detail);
+    if (data?.type === 'SPROUT68K_OFFLINE_STATUS') showOfflineStatus(data.state, data.detail);
   });
   try {
-    const serviceWorkerUrl = new URL('x68kdev-sw.js', `${location.origin}${X68KDEV_SCOPE_PATH}`);
+    const serviceWorkerUrl = new URL('sprout68k-sw.js', `${location.origin}${SPROUT68K_SCOPE_PATH}`);
     const registration = await navigator.serviceWorker.register(serviceWorkerUrl, {
-      scope: X68KDEV_SCOPE_PATH,
+      scope: SPROUT68K_SCOPE_PATH,
       updateViaCache: 'none',
     });
     const active = navigator.serviceWorker.controller || registration.active;
@@ -97,7 +97,7 @@ async function initializeOfflineSupport() {
     window.addEventListener('online', checkCurrentOfflineWorker);
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error);
-    console.error('X68kDev Service Worker の登録に失敗しました', error);
+    console.error('Sprout68k Service Worker の登録に失敗しました', error);
     showOfflineStatus('error', detail);
   }
 }
@@ -108,7 +108,7 @@ document.querySelector('#license-gpl').href = gplLicenseUrl;
 document.querySelector('#license-codemirror').href = codeMirrorLicenseUrl;
 document.querySelector('#license-ipl').href = iplLicenseUrl;
 document.querySelector('#license-cgrom').href = cgromNoticeUrl;
-const projectFS = new IndexedDbProjectFS({ databaseName: 'X68kDevProjectFS' });
+const projectFS = new IndexedDbProjectFS({ databaseName: 'Sprout68kProjectFS' });
 let tabs = [];
 let activeTabId;
 let nextTabId = 1;
@@ -624,7 +624,7 @@ nodes.screen.addEventListener('blur', () => {
 const ready = initialize();
 ready.catch(showError);
 
-window.x68kdevWorkbench = {
+window.sprout68kWorkbench = {
   ready, openFile, createFile, saveFile, closeTab, activateTab,
   buildCurrent, runCurrent, stopEmulator, recoverEmulator,
   getTabs: () => tabs.map((tab) => ({

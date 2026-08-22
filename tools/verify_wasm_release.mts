@@ -9,7 +9,7 @@ import { fetchWasmRelease } from './fetch_wasm_release.mts';
 
 const ROOT = resolve(import.meta.dirname, '..');
 const SOURCE = resolve(ROOT, 'build/wasm-tools');
-const temporary = mkdtempSync(resolve(tmpdir(), 'x68kdev-release-verify-'));
+const temporary = mkdtempSync(resolve(tmpdir(), 'sprout68k-release-verify-'));
 try {
   const first = resolve(temporary, 'first');
   const second = resolve(temporary, 'second');

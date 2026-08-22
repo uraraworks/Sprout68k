@@ -5,7 +5,7 @@
 #
 # 使い方:
 #   tools/build_wasm_gcc.sh [-j N] [--configure-only]
-#   WASM_FS=noderawfs|memfs NATIVE_PREFIX="$HOME/x68kdev-toolchain" PREFIX="$HOME/x68kdev-wasm" \
+#   WASM_FS=noderawfs|memfs NATIVE_PREFIX="$HOME/x68kdev-toolchain" PREFIX="$HOME/sprout68k-wasm" \
 #     tools/build_wasm_gcc.sh -j 8
 #
 # all-gcc は依存関係上 driver 等もビルドし得るが、インストールはせず cc1 のみを
@@ -18,7 +18,8 @@ TARGET=m68k-elf
 PROGRAM_PREFIX=m68k-elf-
 WASM_FS="${WASM_FS:-noderawfs}"
 
-PREFIX="${PREFIX:-$HOME/x68kdev-wasm}"
+PREFIX="${PREFIX:-$HOME/sprout68k-wasm}"
+# F-0 cc1に焼き込まれたprefixと一致させる。変更には基準器の再構築・再検証が必要。
 NATIVE_PREFIX="${NATIVE_PREFIX:-$HOME/x68kdev-toolchain}"
 EMSDK="${EMSDK:-$HOME/emsdk}"
 GCC_SOURCE="${GCC_SOURCE:-$NATIVE_PREFIX/src/gcc-${GCC_VERSION}}"

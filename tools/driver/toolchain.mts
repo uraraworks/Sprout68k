@@ -28,9 +28,9 @@ function libgccFileName(gcc: string): string {
   return capture(gcc, ['-m68000', '-print-libgcc-file-name']);
 }
 
-/** X68KDEV_TOOLCHAIN 未指定時は、従来どおり PATH 上の Homebrew ツールを使う。 */
+/** SPROUT68K_TOOLCHAIN 未指定時は、従来どおり PATH 上の Homebrew ツールを使う。 */
 export function resolveNativeToolchain(): NativeToolchain {
-  const rootValue = process.env.X68KDEV_TOOLCHAIN;
+  const rootValue = process.env.SPROUT68K_TOOLCHAIN;
   if (!rootValue) {
     const gcc = capture('which', ['m68k-elf-gcc']);
     const cc1 = capture(gcc, ['-print-prog-name=cc1']);

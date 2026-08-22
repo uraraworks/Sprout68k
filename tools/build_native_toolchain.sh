@@ -22,6 +22,8 @@ GCC_SHA256=9c4ce6dbb040568fdc545588ac03c5cbc95a8dbf0c7aa490170843afb59ca8f5
 BINUTILS_URL="https://ftp.gnu.org/gnu/binutils/binutils-${BINUTILS_VERSION}.tar.xz"
 GCC_URL="https://ftp.gnu.org/gnu/gcc/gcc-${GCC_VERSION}/gcc-${GCC_VERSION}.tar.xz"
 
+# 既定prefixはcc1へ絶対パスとして焼き込まれる。名称だけ変更すると内部ヘッダを
+# 発見できず、再ビルドするとバイト一致の基準器も変わるため、この場所を維持する。
 PREFIX="${PREFIX:-$HOME/x68kdev-toolchain}"
 SRC_DIR="$PREFIX/src"
 BUILD_DIR="$PREFIX/build"

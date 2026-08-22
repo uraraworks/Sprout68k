@@ -67,22 +67,22 @@ for (const file of allFiles) {
 }
 
 const fsSource = await readFile(resolve(root, 'project-fs.mjs'), 'utf8');
-if (!fsSource.includes("databaseName = 'X68kDevProjectFS'")) throw new Error('専用 DB 名がありません');
+if (!fsSource.includes("databaseName = 'Sprout68kProjectFS'")) throw new Error('専用 DB 名がありません');
 const workbench = await readFile(resolve(root, 'workbench.js'), 'utf8');
-if (!workbench.includes('window.x68kdevWorkbench')) throw new Error('公開 API 名がありません');
+if (!workbench.includes('window.sprout68kWorkbench')) throw new Error('公開 API 名がありません');
 if (!workbench.includes('cpp()')) throw new Error('C 言語ハイライトがありません');
 for (const id of ['build-output', 'download-xdf', 'run', 'stop-emulator', 'recover-emulator', 'machine-status', 'keyboard-status', 'x68k-screen', 'build-id', 'offline-status']) {
   if (!html.includes(`id="${id}"`)) throw new Error(`必要な DOM 要素がありません: ${id}`);
   if (!workbench.includes(`#${id}`)) throw new Error(`DOM 要素の参照がありません: ${id}`);
 }
 for (const contract of [
-  "const X68KDEV_SCOPE_PATH = '/X68kDev/'",
-  'scope: X68KDEV_SCOPE_PATH',
+  "const SPROUT68K_SCOPE_PATH = '/Sprout68k/'",
+  'scope: SPROUT68K_SCOPE_PATH',
   "updateViaCache: 'none'",
   'build: ${__BUILD_ID__}',
   "'オフラインでも使えます'",
   "'オフライン準備に失敗しました'",
-  "type: 'X68KDEV_CHECK_CACHE'",
+  "type: 'SPROUT68K_CHECK_CACHE'",
 ]) {
   if (!workbench.includes(contract)) throw new Error(`配布UI契約がありません: ${contract}`);
 }
@@ -266,7 +266,7 @@ for (const testCase of reachabilityCases) {
   console.log(`verify-ide: reachability ${testCase.name} annotation=${annotationTop}..${annotationBottom}px source>=${sourceVisibleHeight}px`);
 }
 const runtimeSource = await readFile(resolve(root, 'px68k-runtime.ts'), 'utf8');
-for (const member of ['window.x68kdevEmulatorProbe', 'readTextScreen', 'getFrameCount', 'getState', 'runFrames', 'runBlankImage', 'stop()']) {
+for (const member of ['window.sprout68kEmulatorProbe', 'readTextScreen', 'getFrameCount', 'getState', 'runFrames', 'runBlankImage', 'stop()']) {
   if (!runtimeSource.includes(member)) throw new Error(`ブラウザプローブがありません: ${member}`);
 }
 const keyboardSource = await readFile(resolve(root, 'px68k/keyboard.ts'), 'utf8');

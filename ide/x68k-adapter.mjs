@@ -5,7 +5,7 @@ import { basenamePath, resolvePath } from '../tools/driver/hostfs.mts';
 import { X68kRuntime } from './px68k-runtime.ts';
 
 /**
- * X68kDev の UI とツールチェーン／エミュレータを隔離する差し替え境界。
+ * Sprout68k の UI とツールチェーン／エミュレータを隔離する差し替え境界。
  * build() は共有ブラウザツールチェーン、run() は同梱 px68k に接続する。
  * UI は個別ツールやエミュレータの内部状態を持たない。
  */
@@ -56,8 +56,8 @@ export function createX68kAdapter({ report, canvas }) {
         };
       } catch (error) {
         // 内部モード・資産パス・cause は開発者コンソールに残し、学習者UIには出さない。
-        console.error('X68kDev build failure', error);
-        if (rawDiagnostics.length) console.error('X68kDev raw tool diagnostics\n' + rawDiagnostics.join('\n'));
+        console.error('Sprout68k build failure', error);
+        if (rawDiagnostics.length) console.error('Sprout68k raw tool diagnostics\n' + rawDiagnostics.join('\n'));
         const diagnostics = diagnosticOptions
           ? rawDiagnostics.map((text) => rewriteBuildDiagnostic(text, diagnosticOptions))
           : [];

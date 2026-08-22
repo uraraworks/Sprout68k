@@ -1,4 +1,4 @@
-/* X68kDev L0: IOCS 呼び出しの薄いラッパ(TRAP #15 を叩くだけ)。
+/* Sprout68k L0: IOCS 呼び出しの薄いラッパ(TRAP #15 を叩くだけ)。
  *
  * レジスタ規約は docs/StageE-*.md で実測済みの値をそのまま使う。既存の
  * stage_c/crt0/iocs.S(iocs_print)・stage_e/src/e4_bitsns.S(iocs_bitsns)・

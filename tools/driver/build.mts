@@ -22,8 +22,8 @@ async function main(): Promise<void> {
   const target = args.shift(); const output = args.shift();
   if ((target !== 'stage_c' && target !== 'breakout') || !output) throw new Error('使い方: node tools/driver/build.mts <stage_c|breakout> <output.xdf> [--mode cc1=native,as=wasm|memfs,...]');
   const modes: ModeMap = {
-    cc1: parseMode(process.env.X68KDEV_CC1_MODE, 'cc1'), as: parseMode(process.env.X68KDEV_AS_MODE, 'as'),
-    ld: parseMode(process.env.X68KDEV_LD_MODE, 'ld'), objcopy: parseMode(process.env.X68KDEV_OBJCOPY_MODE, 'objcopy'),
+    cc1: parseMode(process.env.SPROUT68K_CC1_MODE, 'cc1'), as: parseMode(process.env.SPROUT68K_AS_MODE, 'as'),
+    ld: parseMode(process.env.SPROUT68K_LD_MODE, 'ld'), objcopy: parseMode(process.env.SPROUT68K_OBJCOPY_MODE, 'objcopy'),
   };
   while (args.length) {
     const flag = args.shift(); if (flag !== '--mode') throw new Error(`未知の引数: ${flag}`);
@@ -36,17 +36,17 @@ async function main(): Promise<void> {
   }
   const hostFs = new NodeHostFs();
   const tools = resolveNativeToolchain();
-  const cc1ExecPrefix = process.env.X68KDEV_CC1_GCC_EXEC_PREFIX;
+  const cc1ExecPrefix = process.env.SPROUT68K_CC1_GCC_EXEC_PREFIX;
   const executors = createNodeToolExecutors({
     modes, hostFs, root, cc1ExecPrefix,
-    wasmModules: { cc1: process.env.X68KDEV_CC1_WASM_JS, as: process.env.X68KDEV_AS_WASM_JS, ld: process.env.X68KDEV_LD_WASM_JS, objcopy: process.env.X68KDEV_OBJCOPY_WASM_JS },
-    memfsModules: { cc1: process.env.X68KDEV_CC1_MEMFS_JS, as: process.env.X68KDEV_AS_MEMFS_JS, ld: process.env.X68KDEV_LD_MEMFS_JS, objcopy: process.env.X68KDEV_OBJCOPY_MEMFS_JS },
+    wasmModules: { cc1: process.env.SPROUT68K_CC1_WASM_JS, as: process.env.SPROUT68K_AS_WASM_JS, ld: process.env.SPROUT68K_LD_WASM_JS, objcopy: process.env.SPROUT68K_OBJCOPY_WASM_JS },
+    memfsModules: { cc1: process.env.SPROUT68K_CC1_MEMFS_JS, as: process.env.SPROUT68K_AS_MEMFS_JS, ld: process.env.SPROUT68K_LD_MEMFS_JS, objcopy: process.env.SPROUT68K_OBJCOPY_MEMFS_JS },
   });
   await build({
     target: target as BuildTarget, output: resolve(output), root, hostFs, tools, executors,
     optLevel: process.env.CC1_OPT_LEVEL, buildVariant: process.env.CC1_BUILD_VARIANT,
     stackAddress: process.env.STACK_ADDR, ramSize: process.env.RAM_SIZE,
-    buildRoot: process.env.X68KDEV_DRIVER_BUILD_ROOT ? resolve(process.env.X68KDEV_DRIVER_BUILD_ROOT) : undefined,
+    buildRoot: process.env.SPROUT68K_DRIVER_BUILD_ROOT ? resolve(process.env.SPROUT68K_DRIVER_BUILD_ROOT) : undefined,
   });
 }
 

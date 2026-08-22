@@ -1,5 +1,5 @@
 /*
- * X68kDev ライブラリ第一版(L0 + 標準名の層、lib/)の検証。px68k(WebX68k のコア)
+ * Sprout68k ライブラリ第一版(L0 + 標準名の層、lib/)の検証。px68k(WebX68k のコア)
  * 上で lib_test/src/main.c を実際に走らせ、末端(ゲストメモリ・テキスト画面・
  * フレームバッファ)を実測して照合する。ブラウザは使わず Node から直接コアを
  * 回す(verify_e1〜e6.mts のコア駆動部分を踏襲。__BUILD_ID__/locateFile の2つの

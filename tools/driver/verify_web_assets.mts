@@ -30,7 +30,7 @@ const ROOT = resolve(HERE, '../..');
 const RESULT_DIR = resolve(ROOT, 'build/web_assets_verify');
 const ASSET_DIR = resolve(ROOT, 'build/web-assets');
 const VIRTUAL_ROOT = '/workspace';
-const TOOLCHAIN = resolve(process.env.X68KDEV_TOOLCHAIN ?? resolve(homedir(), 'x68kdev-toolchain'));
+const TOOLCHAIN = resolve(process.env.SPROUT68K_TOOLCHAIN ?? resolve(homedir(), 'x68kdev-toolchain'));
 const WASM_DIR = resolve(ROOT, 'build/wasm-tools');
 const toolJs = (tool: ToolName): string => resolve(WASM_DIR, `m68k-elf-${tool}.memfs.js`);
 
@@ -132,7 +132,7 @@ rmSync(RESULT_DIR, { recursive: true, force: true });
 mkdirSync(RESULT_DIR, { recursive: true });
 mkdirSync(resolve(RESULT_DIR, 'bundle'), { recursive: true });
 execFileSync(process.execPath, [resolve(ROOT, 'tools/build_web_assets.mts')], {
-  cwd: ROOT, stdio: 'inherit', env: { ...process.env, X68KDEV_TOOLCHAIN: TOOLCHAIN },
+  cwd: ROOT, stdio: 'inherit', env: { ...process.env, SPROUT68K_TOOLCHAIN: TOOLCHAIN },
 });
 const manifest = loadManifest();
 const expected = JSON.parse(readFileSync(resolve(ASSET_DIR, 'expected.json'), 'utf8')) as Expected;
@@ -144,14 +144,14 @@ const rawSize = manifest.files.reduce((sum, entry) => sum + entry.size, 0);
 const gzipSize = manifest.files.reduce((sum, entry) => sum + gzipSync(readFileSync(resolve(ASSET_DIR, entry.path))).length, 0);
 if (rawSize !== manifest.totals.size || gzipSize !== manifest.totals.gzipSize) throw new Error('manifest totals が実体と一致しません');
 
-const previousToolchain = process.env.X68KDEV_TOOLCHAIN;
-process.env.X68KDEV_TOOLCHAIN = TOOLCHAIN;
+const previousToolchain = process.env.SPROUT68K_TOOLCHAIN;
+process.env.SPROUT68K_TOOLCHAIN = TOOLCHAIN;
 const nativeTools = resolveNativeToolchain();
-if (previousToolchain === undefined) delete process.env.X68KDEV_TOOLCHAIN;
-else process.env.X68KDEV_TOOLCHAIN = previousToolchain;
+if (previousToolchain === undefined) delete process.env.SPROUT68K_TOOLCHAIN;
+else process.env.SPROUT68K_TOOLCHAIN = previousToolchain;
 for (const target of ['stage_c', 'breakout'] as const) {
   const bundled = await bundledBuild(target, manifest);
-  if (target === 'stage_c' && process.env.X68KDEV_VERIFY_WEB_ASSETS_CORRUPT_XDF === '1') bundled[0] ^= 1;
+  if (target === 'stage_c' && process.env.SPROUT68K_VERIFY_WEB_ASSETS_CORRUPT_XDF === '1') bundled[0] ^= 1;
   const native = await nativeReference(target, nativeTools);
   same(`${target}: bundle memfs 対 all-native`, native, bundled);
   const nativeSha256 = createHash('sha256').update(native).digest('hex');

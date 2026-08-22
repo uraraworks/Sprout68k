@@ -22,7 +22,8 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(HERE, '..');
 const OUTPUT = resolve(ROOT, 'build/web-assets');
 const REFERENCE_OUTPUT = resolve(ROOT, 'build/web-assets-reference');
-const TOOLCHAIN = resolve(process.env.X68KDEV_TOOLCHAIN ?? resolve(homedir(), 'x68kdev-toolchain'));
+// cc1に焼き込まれた基準器prefix。改名できない理由はコンパイラwasm化資料に記録する。
+const TOOLCHAIN = resolve(process.env.SPROUT68K_TOOLCHAIN ?? resolve(homedir(), 'x68kdev-toolchain'));
 const GCC_ROOT = resolve(TOOLCHAIN, 'lib/gcc');
 
 function posix(path: string): string {

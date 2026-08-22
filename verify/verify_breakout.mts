@@ -1,5 +1,5 @@
 /*
- * X68kDev 作例「ブロック崩し」(samples/breakout/main.c)の検証。
+ * Sprout68k 作例「ブロック崩し」(samples/breakout/main.c)の検証。
  *
  * ホストが実際にキーを押してゲームを動かし(Stage E-4で確定した経路。
  * setKey()→runFrame()に一貫して1フレームの配送遅延があることを踏まえて

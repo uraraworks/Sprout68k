@@ -19,7 +19,7 @@ export interface EmulatorProbe {
 
 declare global {
   interface Window {
-    x68kdevEmulatorProbe: EmulatorProbe;
+    sprout68kEmulatorProbe: EmulatorProbe;
   }
 }
 
@@ -79,7 +79,7 @@ export class X68kRuntime {
       setKey: (retrok, down) => this.host?.setKey(retrok, down),
       sendKeyMake: (retrok) => this.host?.sendKeyMake(retrok),
     });
-    window.x68kdevEmulatorProbe = Object.freeze({
+    window.sprout68kEmulatorProbe = Object.freeze({
       readTextScreen: () => this.readTextScreen(),
       getFrameCount: () => this.frameCount,
       getState: () => this.state,

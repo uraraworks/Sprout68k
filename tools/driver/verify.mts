@@ -43,7 +43,7 @@ for (const target of ['stage_c', 'breakout'] as const) {
     : { path: 'tools/build_breakout_plain.sh', args: [shellOutput] };
   run(resolve(ROOT, gccDriverScript.path), gccDriverScript.args);
   run('node', [resolve(HERE, 'build.mts'), target, driverOutput], {
-    X68KDEV_DRIVER_BUILD_ROOT: nativeBuildRoot,
+    SPROUT68K_DRIVER_BUILD_ROOT: nativeBuildRoot,
   });
   expectSame(`${target}: gcc driver 経由 対 全native駆動層`, shellOutput, driverOutput);
 }
@@ -51,7 +51,7 @@ for (const target of ['stage_c', 'breakout'] as const) {
 const positiveOutput = resolve(RESULT_DIR, 'stage_c_positive_o0.xdf');
 run('node', [resolve(HERE, 'build.mts'), 'stage_c', positiveOutput], {
   CC1_OPT_LEVEL: '-O0',
-  X68KDEV_DRIVER_BUILD_ROOT: positiveBuildRoot,
+  SPROUT68K_DRIVER_BUILD_ROOT: positiveBuildRoot,
 });
 expectDifferent(
   'stage_c: 駆動層の -Os 対 -O0',

@@ -1,4 +1,4 @@
-/* X68kDev L1(65536色1ページ + 描画命令の差分転送)の検証用テストプログラム。
+/* Sprout68k L1(65536色1ページ + 描画命令の差分転送)の検証用テストプログラム。
  *
  * host側(verify/verify_l1.mts)からゲストメモリへ書き込む手段(poke)が
  * 無い(LibretroHostはpeekByte/peekWordしか提供していない)ため、台本は

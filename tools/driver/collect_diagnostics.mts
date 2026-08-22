@@ -15,7 +15,7 @@ const ROOT = resolve(HERE, '../..');
 const CASE_DIR = resolve(ROOT, 'tools/diagnostic-cases');
 const RESULT = resolve(ROOT, 'build/diagnostic-annotations');
 const WASM_ROOT = resolve(ROOT, 'build/wasm-tools');
-process.env.X68KDEV_TOOLCHAIN ??= resolve(homedir(), 'x68kdev-toolchain');
+process.env.SPROUT68K_TOOLCHAIN ??= resolve(homedir(), 'x68kdev-toolchain');
 
 export interface CollectedDiagnosticCase extends DiagnosticCase {
   source: string;
@@ -26,7 +26,7 @@ function createExecutors(hostFs: NodeHostFs, diagnostics: string[]): ToolExecuto
   return createNodeToolExecutors({
     modes: { cc1: 'memfs', as: 'memfs', ld: 'memfs', objcopy: 'memfs' },
     hostFs, root: ROOT,
-    cc1ExecPrefix: resolve(process.env.X68KDEV_TOOLCHAIN!, 'lib/gcc'),
+    cc1ExecPrefix: resolve(process.env.SPROUT68K_TOOLCHAIN!, 'lib/gcc'),
     memfsModules: {
       cc1: resolve(WASM_ROOT, 'm68k-elf-cc1.memfs.js'),
       as: resolve(WASM_ROOT, 'm68k-elf-as.memfs.js'),

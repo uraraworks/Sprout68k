@@ -11,7 +11,7 @@ import { resolveNativeToolchain } from './toolchain.mts';
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(HERE, '../..');
 const RESULT = resolve(ROOT, 'build/user_target_verify');
-process.env.X68KDEV_TOOLCHAIN ??= resolve(homedir(), 'x68kdev-toolchain');
+process.env.SPROUT68K_TOOLCHAIN ??= resolve(homedir(), 'x68kdev-toolchain');
 const hostFs = new NodeHostFs();
 const tools = resolveNativeToolchain();
 const modes = { cc1: 'native', as: 'native', ld: 'native', objcopy: 'native' } as const;
@@ -56,7 +56,7 @@ const wasmRoot = resolve(ROOT, 'build/wasm-tools');
 const memfsExecutors = createNodeToolExecutors({
   modes: { cc1: 'memfs', as: 'memfs', ld: 'memfs', objcopy: 'memfs' },
   hostFs, root: ROOT,
-  cc1ExecPrefix: resolve(process.env.X68KDEV_TOOLCHAIN!, 'lib/gcc'),
+  cc1ExecPrefix: resolve(process.env.SPROUT68K_TOOLCHAIN!, 'lib/gcc'),
   memfsModules: {
     cc1: resolve(wasmRoot, 'm68k-elf-cc1.memfs.js'),
     as: resolve(wasmRoot, 'm68k-elf-as.memfs.js'),
@@ -87,7 +87,7 @@ const internalSourcePath = resolve(RESULT, 'diagnostic_objects/user/source/main.
 if (!rawText.includes(internalSourcePath)) throw new Error('診断書換検証FAIL: 本物の診断に内部ソースパスがありません');
 const rewriteOptions = { workspaceRoot: ROOT, internalSourcePath, displaySourcePath: 'main.c' };
 // 検査系の陽性対照用。製品コードでは無効化できない。
-const rewritten = process.env.X68KDEV_DIAGNOSTIC_REWRITE_FAULT === '1'
+const rewritten = process.env.SPROUT68K_DIAGNOSTIC_REWRITE_FAULT === '1'
   ? rawText
   : rewriteBuildDiagnostic(rawText, rewriteOptions);
 if (rewritten.includes(ROOT) || rewritten.includes('/workspace') || rewritten.includes('objects/user')) {
