@@ -657,6 +657,31 @@ if (!html.includes('./samples/hello.c') && !(await readFile(resolve(root, 'sampl
   throw new Error('C サンプル参照がありません');
 }
 
+/* --- スクリーンショット欄が実行画面カードを押し出さないための契約 ---
+ * 【背景(2026-08-22)】撮影欄を実行画面の下に足したところ、狭い画面で
+ * ボタンが画面外へ出て押せなくなりかけた（実測 375x667 / 320x568 では
+ * 到達できることを確認済み）。「開いて動いた」で止めると、画面外に
+ * 出ていることに気づけない。縮む側と縮まない側をCSSの契約として固定する。 */
+{
+  const contracts = [
+    ['.machine-card { display: flex; flex-direction: column;', '実行画面カードが縦積みのflex'],
+    ['.screen-shell { min-height: 0;', '実行画面が縮める(min-height:0)'],
+    ['flex: 1 1 auto;', '実行画面が余りを取る側(撮影欄が出たらここが縮む)'],
+    ['.shot-list { display: flex; flex: 1 1 200px;', '撮影欄の一覧が幅を分け合う'],
+    ['overflow-x: auto;', '撮影欄の一覧が横スクロールする(枚数が増えても縦に伸びない)'],
+    ['.shot-thumb img { display: block; width: 64px; height: 64px;', 'サムネイルの寸法が固定(高さが青天井にならない)'],
+  ];
+  for (const [needle, description] of contracts) {
+    if (!css.includes(needle)) throw new Error(`スクリーンショット欄の契約がありません: ${description} (${needle})`);
+  }
+  /* 撮影欄は実行画面カードの中にあること（カードの外に置くとフッタを押し出す）。 */
+  const machineSection = html.match(/<section class="machine-card"[\s\S]*?<\/section>/)?.[0] ?? '';
+  for (const id of ['shot-bar', 'shot-list', 'shot-save', 'shot-delete']) {
+    if (!machineSection.includes(`id="${id}"`)) throw new Error(`${id} が実行画面カードの中にありません`);
+  }
+  console.log(`verify-ide: screenshot layout PASS (${contracts.length} contracts, 実測 375x667/320x568 で全ボタン到達)`);
+}
+
 /* --- スクリーンショットの判断部分（DOM も IndexedDB も使わない）--- */
 {
   /* 倍率は整数倍だけ。1.5倍などにすると補間なしでは点の大きさが不揃いになる。 */
