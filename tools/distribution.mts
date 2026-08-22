@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { cpSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, relative, resolve, sep } from 'node:path';
 
 export const APP_PATH = '/X68kDev/';
@@ -21,13 +21,21 @@ function sha256(file: string): string {
   return createHash('sha256').update(readFileSync(file)).digest('hex');
 }
 
+export function resolveWebAssetsRoot(root: string): string {
+  const generated = resolve(root, 'build/web-assets');
+  if (existsSync(resolve(generated, 'manifest.json'))) return generated;
+  const snapshot = resolve(root, 'deploy/web-assets');
+  if (existsSync(resolve(snapshot, 'manifest.json'))) return snapshot;
+  throw new Error('web-assetsがありません（build生成物またはdeploy snapshotが必要です）');
+}
+
 /** UIと公開資産の内容から、キャッシュ更新と画面表示に共用する短いIDを作る。 */
 export function computeBuildId(root: string): string {
   const hash = createHash('sha256');
   const inputs = [
     ...['ide', 'web'].flatMap((directory) => filesBelow(resolve(root, directory))),
     resolve(root, 'COPYING'), resolve(root, 'vite.config.ts'), resolve(root, 'tools/distribution.mts'),
-    resolve(root, 'build/web-assets/manifest.json'),
+    resolve(resolveWebAssetsRoot(root), 'manifest.json'),
     ...filesBelow(resolve(root, 'build/wasm-tools'))
       .filter((file) => /m68k-elf-(?:cc1|as|ld|objcopy)\.memfs\.(?:js|wasm)$/.test(file)),
   ].sort();
@@ -222,7 +230,7 @@ function installControlledBootstrap(outDir: string): void {
 
 /** Vite出力へ、生成済み束・memfsツール・内容由来precacheを収集する。 */
 export function stageDistribution(root: string, outDir: string, buildId: string): void {
-  const assetRoot = resolve(root, 'build/web-assets');
+  const assetRoot = resolveWebAssetsRoot(root);
   const manifest = JSON.parse(readFileSync(resolve(assetRoot, 'manifest.json'), 'utf8')) as AssetManifest;
   if (manifest.version !== 1) throw new Error('web-assets manifest の版が不正です');
   for (const entry of manifest.files) {

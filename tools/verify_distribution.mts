@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { relative, resolve, sep } from 'node:path';
 import { runInNewContext } from 'node:vm';
-import { APP_PATH, CACHE_PREFIX } from './distribution.mts';
+import { APP_PATH, CACHE_PREFIX, resolveWebAssetsRoot } from './distribution.mts';
 
 const ROOT = resolve(import.meta.dirname, '..');
 const DIST = resolve(ROOT, 'build/web-page');
@@ -145,7 +145,7 @@ assert(faultHarness.errors.some((line) => line.includes(injectedPath) && line.in
 assert(faultHarness.statusMessages.some((message) => (message as { state?: string }).state === 'error'), 'install失敗をclientへ通知していません');
 console.log(`PASS(故障注入): ${injectedPath}取得失敗をURL付き記録、部分cache破棄、activate阻止`);
 
-const sourceAssets = JSON.parse(readFileSync(resolve(ROOT, 'build/web-assets/manifest.json'), 'utf8')) as AssetManifest;
+const sourceAssets = JSON.parse(readFileSync(resolve(resolveWebAssetsRoot(ROOT), 'manifest.json'), 'utf8')) as AssetManifest;
 assert(sourceAssets.version === 1, 'web-assets manifestの版が不正です');
 for (const entry of sourceAssets.files) {
   const published = resolve(DIST, 'build/web-assets', entry.path);

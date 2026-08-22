@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "targets": {
+    "stage_c": {
+      "sha256": "e8ec4fca90e24c26d8acc766fd628214afbadb3feab31b959ffc09d4720c2d9c",
+      "size": 1261568
+    },
+    "breakout": {
+      "sha256": "9df7bdf901b77b62f298bc17e7851594eb5d8cad325f38fc649355c91f3edb4f",
+      "size": 1261568
+    }
+  }
+}

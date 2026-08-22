@@ -1,0 +1,205 @@
+{
+  "version": 1,
+  "files": [
+    {
+      "path": "lib/asm/x68_gvram_copy.S",
+      "size": 1620,
+      "sha256": "1afb8d61dc5d41764ff46339a5f7cb0ee55003a203de83158eac25173a7f8db9"
+    },
+    {
+      "path": "lib/asm/x68_iocs.S",
+      "size": 2478,
+      "sha256": "74e7a57f895ae2e0bbeacb602af9255c53fd4fe492f6f00510e807b0fe205f96"
+    },
+    {
+      "path": "lib/asm/x68_panic.S",
+      "size": 9416,
+      "sha256": "bd03e0b36e3d6c8d51087678d6dd15f3c014e6c65cb54f1472e1ca53bffb53f4"
+    },
+    {
+      "path": "lib/include/x68.h",
+      "size": 13480,
+      "sha256": "44dcee116181ac52403d753f51e5ad4edcf60842443d95bcba745cb75e5ecd51"
+    },
+    {
+      "path": "lib/src/x68_input.c",
+      "size": 1158,
+      "sha256": "e47f19e87bf60b075645e1d4285f3284d8a512ed0b3eddded52afb096bd18337"
+    },
+    {
+      "path": "lib/src/x68_l0.c",
+      "size": 2318,
+      "sha256": "e32b7cc5c1343960e589ebcd777ff79eae210506750ad6f7088543b46289118c"
+    },
+    {
+      "path": "lib/src/x68_l1.c",
+      "size": 24305,
+      "sha256": "01d3e5dd0c1f6a83353401cc03362acfad2c5f35f196806fc4f60f4bcc4fe00f"
+    },
+    {
+      "path": "lib/src/x68_panic.c",
+      "size": 5674,
+      "sha256": "4413bc27d53429ed07bcb07d5ba241a0083c977b28a93f1551ce9f229a101c8c"
+    },
+    {
+      "path": "lib/src/x68_std.c",
+      "size": 7638,
+      "sha256": "4a5fc3758ece164a382de6ea91024c3159a4bb8f00aecfbabba4d0446e0d5da4"
+    },
+    {
+      "path": "samples/breakout/main.c",
+      "size": 5070,
+      "sha256": "08e97c9a58e4e42f7dfd176fa31e599e40441ac916b2489e598f77345c6abb51"
+    },
+    {
+      "path": "stage_c/boot/boot.S",
+      "size": 2888,
+      "sha256": "51677b8c9e4ccd844b1cb98a1a98fa5bee14f4018c3e31af618f3f78a54e9fad"
+    },
+    {
+      "path": "stage_c/boot/cache_flush.S",
+      "size": 6265,
+      "sha256": "27e8c833e35806f092c29bf0ed8a86719b54be5b90be9edf95b8c7d0ff78e967"
+    },
+    {
+      "path": "stage_c/crt0/crt0.S",
+      "size": 1286,
+      "sha256": "e2b46ab63528153a7c12e0641c0c0668c8de854247cfdd6b68f52b7ea803c224"
+    },
+    {
+      "path": "stage_c/crt0/iocs.S",
+      "size": 286,
+      "sha256": "cd2c537c1d3b46491f1646effa8b172d5823e425794e8160c32bc3c6ea355c37"
+    },
+    {
+      "path": "stage_c/crt0/linker.ld",
+      "size": 436,
+      "sha256": "0c99b6bff860cf3665ec5abd8127d504844ad2fa2cb2324e1c02c87e195499e9"
+    },
+    {
+      "path": "stage_c/src/main.c",
+      "size": 1052,
+      "sha256": "d87c28bedd20dd8bd4207449e487f08f1b1a1b0b26c06fed7244e64cdb568e47"
+    },
+    {
+      "path": "stage_d/boot/boot.S",
+      "size": 13332,
+      "sha256": "9f52484f09c34feb37f2ec3e206d523e25e9fcd9d95516faa8459e8e7e645efe"
+    },
+    {
+      "path": "stage_d/crt0/linker.ld",
+      "size": 813,
+      "sha256": "113a41308d7af1b4441d4246b3ba351f984b94503c5a2f379ed581d5db957d73"
+    },
+    {
+      "path": "stage_d/src/main.c",
+      "size": 2156,
+      "sha256": "7769e139fbca82c280b187712ec8acf1f2980d80ba098dcb0a424c41dd74b9e7"
+    },
+    {
+      "path": "stage_d/src/pattern_data.S",
+      "size": 441,
+      "sha256": "e0c0954f9b4926c476f8c801264bfdba61d9c4108f137b3946d0f56be352e6f7"
+    },
+    {
+      "path": "toolchain/lib/gcc/m68k-elf/13.4.0/include/float.h",
+      "size": 20749,
+      "sha256": "797fe35b6d174600d8124844ae4d34ed82caee39e6c71fa9dbf539215167c2e0"
+    },
+    {
+      "path": "toolchain/lib/gcc/m68k-elf/13.4.0/include/gcov.h",
+      "size": 2940,
+      "sha256": "05747ba21e9fb52121db61fec20edde359d3becfd35f3391b9600111d3adbfdc"
+    },
+    {
+      "path": "toolchain/lib/gcc/m68k-elf/13.4.0/include/iso646.h",
+      "size": 1272,
+      "sha256": "c673d8cbb7d12315f00f99f3f26b644c3406e04e289a4c2510520926e41a00f1"
+    },
+    {
+      "path": "toolchain/lib/gcc/m68k-elf/13.4.0/include/limits.h",
+      "size": 4718,
+      "sha256": "15cc72ece04746fe84d86ca21b4fa473d3d8e9a63e6a187901c047e1d0d4e918"
+    },
+    {
+      "path": "toolchain/lib/gcc/m68k-elf/13.4.0/include/math-68881.h",
+      "size": 9408,
+      "sha256": "989a3392e54739d954a3b78c5698ded26debee7da5b996ae9b64f40075aa5fea"
+    },
+    {
+      "path": "toolchain/lib/gcc/m68k-elf/13.4.0/include/stdalign.h",
+      "size": 1290,
+      "sha256": "e119f674e1f6194b6d561f95b01270aff8570cfdaf460098d08be38d92fe910d"
+    },
+    {
+      "path": "toolchain/lib/gcc/m68k-elf/13.4.0/include/stdarg.h",
+      "size": 4303,
+      "sha256": "5a443943e67d7bab17203591b4ccb508757587d9b955ee883a053d755ed09321"
+    },
+    {
+      "path": "toolchain/lib/gcc/m68k-elf/13.4.0/include/stdatomic.h",
+      "size": 9726,
+      "sha256": "e6544cb60cf2b30c69d47424f7b04ab18bd2bc97e03a9c852b238f95ed26f3ca"
+    },
+    {
+      "path": "toolchain/lib/gcc/m68k-elf/13.4.0/include/stdbool.h",
+      "size": 1490,
+      "sha256": "68b898fc39d5d2a450df9b7263d984e7d2ad4c02675f4043a62e762f169e4b85"
+    },
+    {
+      "path": "toolchain/lib/gcc/m68k-elf/13.4.0/include/stddef.h",
+      "size": 13645,
+      "sha256": "7eb18b4fbd1a14ffd4cce3553647ab2d0ebd265120a768877607b60b1558e44d"
+    },
+    {
+      "path": "toolchain/lib/gcc/m68k-elf/13.4.0/include/stdfix.h",
+      "size": 6000,
+      "sha256": "29e006fb1bc4f043f5c2fc959efba14c9cd82c1e6dd06af955c6f105276cf6ad"
+    },
+    {
+      "path": "toolchain/lib/gcc/m68k-elf/13.4.0/include/stdint-gcc.h",
+      "size": 9648,
+      "sha256": "0a2e42d37b032271a0f6328a35bdb6fc694411a7627decaf857ba75ae7e00589"
+    },
+    {
+      "path": "toolchain/lib/gcc/m68k-elf/13.4.0/include/stdint.h",
+      "size": 328,
+      "sha256": "86a7914ab7d6a18465a6fb9a7b54f945cad604fdbf3ca0d10e4e0254e0037911"
+    },
+    {
+      "path": "toolchain/lib/gcc/m68k-elf/13.4.0/include/stdnoreturn.h",
+      "size": 1136,
+      "sha256": "15561282dfd0764e010204d93f2189d3466148a164bb09393da6c496efc09a27"
+    },
+    {
+      "path": "toolchain/lib/gcc/m68k-elf/13.4.0/include/syslimits.h",
+      "size": 330,
+      "sha256": "22dd0ab81baadd5a8d455b445855f341d419c7b0267beca235de00b7ec78e529"
+    },
+    {
+      "path": "toolchain/lib/gcc/m68k-elf/13.4.0/include/tgmath.h",
+      "size": 5461,
+      "sha256": "a00e6a96690ecc144068172033dc4afb79976bfb8a2e3d23712284ff8cb117cc"
+    },
+    {
+      "path": "toolchain/lib/gcc/m68k-elf/13.4.0/include/unwind.h",
+      "size": 10938,
+      "sha256": "d42912846d21a01d15717f71934c5f8c0f6d290d08aaf4052ca00cc7b8cfa174"
+    },
+    {
+      "path": "toolchain/lib/gcc/m68k-elf/13.4.0/include/varargs.h",
+      "size": 139,
+      "sha256": "f9acb21973be5764aa2fd689c941ad963c1ecdd133f3a6529f279803135f8268"
+    },
+    {
+      "path": "toolchain/lib/gcc/m68k-elf/13.4.0/libgcc.a",
+      "size": 625222,
+      "sha256": "b16cb4c14650449610b0bfc22f69cc658ce164a5407167a632f8a6d56e6bacdb"
+    }
+  ],
+  "totals": {
+    "files": 39,
+    "size": 830855,
+    "gzipSize": 250265
+  }
+}
