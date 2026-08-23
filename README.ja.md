@@ -2,12 +2,12 @@
 
 # Sprout68k
 
-Sprout68k は、ブラウザだけで X68000 のプログラムを C で書いて動かせる入門環境。
-インストールもアカウントも要らず、C のコンパイラそのものがブラウザの中で動く。
-同じページに同梱した px68k で書く・ビルドする・実行するまでを完結できる。
-作ったものは共有URLで配れる（受け取り側にコンパイラは要らない）。
+Sprout68k は、ブラウザだけで X68000 のプログラムを C で書いて動かせる入門環境です。
+インストールもアカウントも要らず、C のコンパイラそのものがブラウザの中で動きます。
+同じページに同梱した px68k で書く・ビルドする・実行するまでを完結できます。
+作ったものは共有URLで配れます（受け取り側にコンパイラは要りません）。
 
-設計・実装・実測の記録は [docs/DESIGN.md](docs/DESIGN.md) を参照(日本語)。
+設計・実装・実測の記録は [docs/DESIGN.md](docs/DESIGN.md) を参照してください(日本語)。
 
 ## 今すぐ試す
 
@@ -20,36 +20,36 @@ Sprout68k は、ブラウザだけで X68000 のプログラムを C で書い�
 ## 使い方
 
 IDE はファイルツリー、CodeMirror ベースの C エディタ、px68k の実行画面の
-3ペイン構成。
+3ペイン構成です。
 
 - **編集・保存**: ソースは作業のたびにブラウザの IndexedDB
-  (`Sprout68kProjectFS`) へ保存される。どこにもアップロードされない。
+  (`Sprout68kProjectFS`) へ保存されます。どこにもアップロードされません。
 - **ビルド**: ツールバーの「ビルド」ボタンで、ブラウザ内で wasm 版
   GCC / binutils を動かし、利用者ソースを同梱の学習用ライブラリ・ブートセクタと
-  リンクする。コンパイラ・リンカの診断には、原文(GCC/ld のメッセージ)を
-  消さずに残したまま「何が起きたか」「次にすること」を重ねる日本語注釈層が付く。
-- **実行**: 実行／停止は1つのトグルボタン。実行のたびに既存のエミュレータを
-  止めて新しく作り直す(`runFresh()`)ため、暴走した前回の実行状態を引き継がない。
-  編集中のソースは実行によって変更されない。
+  リンクします。コンパイラ・リンカの診断には、原文(GCC/ld のメッセージ)を
+  消さずに残したまま「何が起きたか」「次にすること」を重ねる日本語注釈層が付きます。
+- **実行**: 実行／停止は1つのトグルボタンです。実行のたびに既存のエミュレータを
+  止めて新しく作り直す(`runFresh()`)ため、暴走した前回の実行状態を引き継ぎません。
+  編集中のソースは実行によって変更されません。
 - **ダウンロード**: ビルドしたディスクイメージは `.xdf` ファイルとして
-  ダウンロードできる。
-- **共有リンク**: ツールバーの共有ダイアログから2種類のリンクを作れる。
+  ダウンロードできます。
+- **共有リンク**: ツールバーの共有ダイアログから2種類のリンクを作れます。
   ビルド済みバイナリを WebX68k で開く「遊んでもらう」リンク(ソースは含まない)と、
   ソースそのものを含み Sprout68k のエディタで開いて直せる「読んでもらう・
-  直してもらう」リンク。MCP サーバー経由で作ったリンクには必ず AI 作成タグが付く。
+  直してもらう」リンクです。MCP サーバー経由で作ったリンクには必ず AI 作成タグが付きます。
 - **オフライン**: Service Worker が IDE、px68k コア、wasm ツールチェーンを
   事前キャッシュするため、一度オンラインで読み込めば、サーバー(やネットワーク)が
-  止まった後も 書く→ビルド→実行 が動き続ける。
+  止まった後も 書く→ビルド→実行 が動き続けます。
 
 ## MCP 対応（AI エージェントから書いて動かす）
 
-`mcp/` に MCP サーバーがある。**ブラウザを使わず** Node の中でビルドと実行を完結させ、
-AI エージェントから次のことができる。
+`mcp/` に MCP サーバーがあります。**ブラウザを使わず** Node の中でビルドと実行を完結させ、
+AI エージェントから次のことができます。
 
 - `api_reference` — この環境で使える 29 関数の一覧と、説明・引数・動く例・つまずき
-- `build` — ビルドして、日本語の注釈つき診断を返す
-- `run` — 実際に動かして、テキスト画面・**画面の PNG**・描かれた画素数を返す
-- `share_link` — 共有 URL を作る（**`ai` タグが必ず付く**）
+- `build` — ビルドして、日本語の注釈つき診断を返します
+- `run` — 実際に動かして、テキスト画面・**画面の PNG**・描かれた画素数を返します
+- `share_link` — 共有 URL を作ります（**`ai` タグが必ず付きます**）
 
 ```bash
 npm install --prefix mcp
@@ -57,39 +57,39 @@ claude mcp add sprout68k --env PATH="$HOME/x68kdev-toolchain/bin:$PATH" -- node 
 ```
 
 前提（Node 22 以上、gcc 13.4.0 のツールチェーン）と疎通の確かめ方、うまくいかない
-ときの対処は [`mcp/README.md`](mcp/README.md) にまとめてある。**そのページを
-エージェントに読ませれば、そのままセットアップできる。**
+ときの対処は [`mcp/README.md`](mcp/README.md) にまとめてあります。**そのページを
+エージェントに読ませれば、そのままセットアップできます。**
 
 ## 同梱している ROM / ディスクイメージ
 
 同梱の IPL ROM と文字 ROM データにはそれぞれ別の許諾・帰属が適用されるため、
 [`IPLROM-LICENSE.txt`](ide/system/IPLROM-LICENSE.txt)と
-[`CGROM-NOTICE.md`](ide/system/CGROM-NOTICE.md)を参照。
+[`CGROM-NOTICE.md`](ide/system/CGROM-NOTICE.md)を参照してください。
 
 ## ライセンスと由来
 
-Sprout68k のソフトウェア全体は GNU GPL version 2 で公開する。ライセンス本文は
-[`COPYING`](COPYING)を参照。IDE に同梱する px68k-libretro コアとホスト層も GPLv2
-である。コアのビルド元は URARA-works の
+Sprout68k のソフトウェア全体は GNU GPL version 2 で公開しています。ライセンス本文は
+[`COPYING`](COPYING)を参照してください。IDE に同梱する px68k-libretro コアとホスト層も GPLv2
+です。コアのビルド元は URARA-works の
 [`px68k-libretro` emscripten ブランチ](https://github.com/uraraworks/px68k-libretro/tree/emscripten)、
 上流は [`libretro/px68k-libretro`](https://github.com/libretro/px68k-libretro)であり、
-対応するソースはこれらのリポジトリから入手できる。同梱バイナリとホスト層は
-[`WebX68k`](https://github.com/uraraworks/WebX68k)から取り込んだ。コアの再ビルド
+対応するソースはこれらのリポジトリから入手できます。同梱バイナリとホスト層は
+[`WebX68k`](https://github.com/uraraworks/WebX68k)から取り込みました。コアの再ビルド
 手順は同リポジトリの
-[`scripts/build-core.sh`](https://github.com/uraraworks/WebX68k/blob/main/scripts/build-core.sh)にある。
+[`scripts/build-core.sh`](https://github.com/uraraworks/WebX68k/blob/main/scripts/build-core.sh)にあります。
 
 IDE シェルは同じ作者 URARA-works の MIT ライセンス作品
-[`WorkbenchNP2`](https://github.com/uraraworks/WorkbenchNP2)を基にしている。
+[`WorkbenchNP2`](https://github.com/uraraworks/WorkbenchNP2)を基にしています。
 CodeMirror も MIT ライセンスで、本文は
-[`ide/vendor/codemirror/LICENSE.CodeMirror`](ide/vendor/codemirror/LICENSE.CodeMirror)にある。
+[`ide/vendor/codemirror/LICENSE.CodeMirror`](ide/vendor/codemirror/LICENSE.CodeMirror)にあります。
 
 ## Issue・Pull Request・情報提供の前に
 
 **判定基準は「エミュレータや実機で自分で測れば同じ結果が得られる種類の情報か」です。**
-逆アセンブル結果や ROM の内部情報など、独立した実測では得られない情報は受け取らない。
-該当する投稿は本文を読まずにクローズする。Issue、Pull Request、レビューコメント、
+逆アセンブル結果や ROM の内部情報など、独立した実測では得られない情報は受け取りません。
+該当する投稿は本文を読まずにクローズします。Issue、Pull Request、レビューコメント、
 SNS の返信を送る前に、理由と受け入れ可能な情報をまとめた
-[`CONTRIBUTING.md`](CONTRIBUTING.md)を必ず確認すること。
+[`CONTRIBUTING.md`](CONTRIBUTING.md)を必ず確認してください。
 
 ## 実装済みの主な機能
 
@@ -109,6 +109,6 @@ SNS の返信を送る前に、理由と受け入れ可能な情報をまとめ�
 
 ## 未対応・既知の注意点
 
-- m68kアセンブラのシンタックスハイライトと68kソース行デバッグは未実装。
-- 実ブラウザでの確認は Chromium 系1種のみ。Safari / Firefox では未実測で、
-  ブラウザ互換性を確認済みとはしていない。
+- m68kアセンブラのシンタックスハイライトと68kソース行デバッグは未実装です。
+- 実ブラウザでの確認は Chromium 系1種のみです。Safari / Firefox では未実測であり、
+  ブラウザ互換性を確認済みとはしていません。
