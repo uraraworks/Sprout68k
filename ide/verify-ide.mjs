@@ -691,6 +691,37 @@ if (!html.includes('./samples/hello.c') && !(await readFile(resolve(root, 'sampl
   throw new Error('C サンプル参照がありません');
 }
 
+/* --- 画像の寸法と SNS カード ---
+ * 【2026-08-23】アイコンの SVG に width/height が無く、CSS が当たる前の一瞬
+ * **ページ幅いっぱいに広がって見えていた**（利用者が気づいた）。HTML の
+ * width/height 属性は CSS より先に効くので、img には必ず書く。
+ * あわせて、SNS に貼ったときカードが出るよう og: を持たせる。 */
+{
+  const pages = ['index.html', 'about.html', 'help.html', 'reference.html', 'samples.html'];
+  for (const page of pages) {
+    const text = await readFile(resolve(root, page), 'utf8');
+    for (const tag of text.match(/<img\b[^>]*>/g) ?? []) {
+      if (!/\bwidth="\d+"/.test(tag) || !/\bheight="\d+"/.test(tag)) {
+        throw new Error(`${page}: img に寸法がありません（CSS前に巨大表示される）: ${tag.slice(0, 60)}`);
+      }
+    }
+  }
+  const rootIndex = await readFile(resolve(root, '../web-root/index.html'), 'utf8');
+  for (const tag of rootIndex.match(/<img\b[^>]*>/g) ?? []) {
+    if (!/\bwidth="\d+"/.test(tag)) throw new Error(`web-root/index.html: img に寸法がありません`);
+  }
+  /* カードを出すページには og: 一式と画像が要る */
+  const carded = ['index.html', 'about.html', 'reference.html', 'samples.html'];
+  for (const page of carded) {
+    const text = await readFile(resolve(root, page), 'utf8');
+    for (const needle of ['og:title', 'og:description', 'og:url', 'og:image', 'twitter:card']) {
+      if (!text.includes(needle)) throw new Error(`${page}: ${needle} がありません（SNSでカードが出ない）`);
+    }
+  }
+  await stat(resolve(root, 'icons/ogp-card.png'));
+  console.log(`verify-ide: image/OGP PASS (${pages.length}ページの img に寸法, ${carded.length}ページに og:)`);
+}
+
 /* --- 紹介ページ(about.html)に書いた数字が実態と合っているか ---
  * 紹介文は「29個」「6本と2本」のような数を書くと読みやすいが、**中身が増えると
  * 静かに嘘になる**。数えられるものは数えて突き合わせる。 */

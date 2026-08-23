@@ -176,12 +176,24 @@ export function renderSamplesPage(root = ROOT): string {
   <meta name="theme-color" content="#111827">
   <link rel="icon" href="./icons/sprout68k.svg" type="image/svg+xml">
   <title>Sprout68k 作例集</title>
+  <!-- SNS に貼ったときのカード。**これが無いと URL だけの寂しいリンクになる。**
+       og:image は tools/ogp/build_card.py が作る（作例の画面写真を含むので、
+       作例を直したら作り直す）。 -->
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Sprout68k">
+  <meta property="og:title" content="Sprout68k 作例集">
+  <meta property="og:description" content="解説つきの作例8本。画面写真はどれも実際に動かして撮ったものです。">
+  <meta property="og:url" content="https://uraraworks.github.io/Sprout68k/ide/samples.html">
+  <meta property="og:image" content="https://uraraworks.github.io/Sprout68k/ide/icons/ogp-card.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta name="twitter:card" content="summary_large_image">
   <style>${STYLE}  </style>
 </head>
 <body>
   <header class="help-header">
     <div class="help-title">
-      <img src="./icons/sprout68k.svg" alt="">
+      <img src="./icons/sprout68k.svg" alt="" width="28" height="28">
       <h1>Sprout68k 作例集</h1>
     </div>
     <div class="help-actions">

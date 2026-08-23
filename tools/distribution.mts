@@ -27,6 +27,7 @@ export const IDE_STATIC_FILES = [
   'icons/sprout68k-32.png',
   'icons/sprout68k-192.png',
   'icons/sprout68k-512.png',
+  'icons/ogp-card.png',
 ] as const;
 /** 公開先のルートに置くもの。無いと https://…/Sprout68k/ が 404 になる。 */
 export const WEB_ROOT_FILES = ['web-root/index.html'] as const;

@@ -6,6 +6,18 @@
   <meta name="theme-color" content="#111827">
   <link rel="icon" href="./icons/sprout68k.svg" type="image/svg+xml">
   <title>Sprout68k とは</title>
+  <!-- SNS に貼ったときのカード。**これが無いと URL だけの寂しいリンクになる。**
+       og:image は tools/ogp/build_card.py が作る（作例の画面写真を含むので、
+       作例を直したら作り直す）。 -->
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Sprout68k">
+  <meta property="og:title" content="Sprout68k とは">
+  <meta property="og:description" content="ブラウザだけで X68000 のプログラムを C で書いて、すぐ動かせる入門環境。インストール不要。作ったものは URL で配れます。">
+  <meta property="og:url" content="https://uraraworks.github.io/Sprout68k/ide/about.html">
+  <meta property="og:image" content="https://uraraworks.github.io/Sprout68k/ide/icons/ogp-card.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta name="twitter:card" content="summary_large_image">
   <meta name="description" content="ブラウザだけで X68000 のプログラムを C で書いて、すぐ動かせる入門環境です。">
   <style>
     :root {
@@ -54,7 +66,7 @@
 <body data-lang="ja">
   <header class="help-header">
     <div class="help-title">
-      <img src="./icons/sprout68k.svg" alt="">
+      <img src="./icons/sprout68k.svg" alt="" width="28" height="28">
       <h1><span class="lang-ja">Sprout68k とは</span><span class="lang-en">About Sprout68k</span></h1>
     </div>
     <div class="help-actions">
@@ -67,7 +79,7 @@
 
   <main>
     <div class="hero">
-      <img src="./icons/sprout68k.svg" alt="">
+      <img src="./icons/sprout68k.svg" alt="" width="72" height="72">
       <h2>Sprout68k</h2>
       <p class="lang-ja">ブラウザだけで、X68000 のプログラムを C で書いて、すぐ動かせる入門環境です。インストールも、アカウントも要りません。</p>
       <p class="lang-en">Write C programs for the X68000 and run them right away — entirely in your browser. No install, no account.</p>
@@ -141,10 +153,10 @@ void main(void) {
         <p>Six step-by-step examples — each adding exactly one new idea — plus two programs that are simply fun to watch. All of them are explained in the <a href="./samples.html">examples page</a> and open in the editor with one click; no typing them in.</p>
       </div>
       <div class="shots">
-        <figure><img src="./samples/shots/shapes.png" alt=""><figcaption>shapes</figcaption></figure>
-        <figure><img src="./samples/shots/catch.png" alt=""><figcaption>catch</figcaption></figure>
-        <figure><img src="./samples/shots/breakout.png" alt=""><figcaption>breakout</figcaption></figure>
-        <figure><img src="./samples/shots/life.png" alt=""><figcaption>life</figcaption></figure>
+        <figure><img src="./samples/shots/shapes.png" alt="" width="512" height="512"><figcaption>shapes</figcaption></figure>
+        <figure><img src="./samples/shots/catch.png" alt="" width="512" height="512"><figcaption>catch</figcaption></figure>
+        <figure><img src="./samples/shots/breakout.png" alt="" width="512" height="512"><figcaption>breakout</figcaption></figure>
+        <figure><img src="./samples/shots/life.png" alt="" width="512" height="512"><figcaption>life</figcaption></figure>
       </div>
     </section>
 

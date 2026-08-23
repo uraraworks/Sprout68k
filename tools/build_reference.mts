@@ -204,12 +204,24 @@ export function renderReference(root = ROOT): string {
   <meta name="theme-color" content="#111827">
   <link rel="icon" href="./icons/sprout68k.svg" type="image/svg+xml">
   <title>${escapeHtml(document_.title)}</title>
+  <!-- SNS に貼ったときのカード。**これが無いと URL だけの寂しいリンクになる。**
+       og:image は tools/ogp/build_card.py が作る（作例の画面写真を含むので、
+       作例を直したら作り直す）。 -->
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Sprout68k">
+  <meta property="og:title" content="Sprout68k 関数リファレンス">
+  <meta property="og:description" content="入門者のための29関数。すべてに動く例とつまずきどころが付いています。">
+  <meta property="og:url" content="https://uraraworks.github.io/Sprout68k/ide/reference.html">
+  <meta property="og:image" content="https://uraraworks.github.io/Sprout68k/ide/icons/ogp-card.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta name="twitter:card" content="summary_large_image">
   <style>${STYLE}  </style>
 </head>
 <body>
   <header class="help-header">
     <div class="help-title">
-      <img src="./icons/sprout68k.svg" alt="">
+      <img src="./icons/sprout68k.svg" alt="" width="28" height="28">
       <h1>${escapeHtml(document_.title)}</h1>
     </div>
     <div class="help-actions">
