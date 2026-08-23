@@ -6,7 +6,13 @@ const ROOT = resolve(import.meta.dirname, '..');
 const retiredName = ['x68k', 'dev'].join('');
 const retainedToolchainDirectory = `${retiredName}-toolchain`;
 const allowedRetainedCounts = new Map<string, number>([
+  // ツールチェーンの置き場だけは旧名のまま。prefix が cc1 に焼き込まれていて
+  // 改名すると内部ヘッダを見失うため（docs/コンパイラwasm化_20260820.md）。
+  // **ファイルごとに出現回数まで書く**ので、増えても減っても検出する。
+  ['README.md', 1],
   ['docs/コンパイラwasm化_20260820.md', 1],
+  ['mcp/README.md', 4],
+  ['tools/build_for_mcp.mts', 1],
   ['tools/build_native_toolchain.sh', 1],
   ['tools/build_wasm_binutils.sh', 1],
   ['tools/build_wasm_gcc.sh', 2],
@@ -16,6 +22,8 @@ const allowedRetainedCounts = new Map<string, number>([
   ['tools/driver/verify_user_target.mts', 1],
   ['tools/driver/verify_wasm.mts', 1],
   ['tools/driver/verify_web_assets.mts', 1],
+  ['tools/verify_reference.mts', 1],
+  ['tools/verify_runtime.mts', 2],
   ['verify/verify_ide_boot.mts', 1],
   ['verify/verify_ide_keyboard.mts', 1],
   ['verify/verify_ide_recovery.mts', 1],
