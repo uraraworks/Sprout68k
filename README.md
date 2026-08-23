@@ -1,7 +1,17 @@
 # Sprout68k — X68000 C学習用ブラウザIDEと実測
 
+ブラウザだけで X68000 のプログラムを C で書いて、すぐ動かせる入門環境。
+インストールもアカウントも要らず、C のコンパイラそのものがブラウザの中で動く。
+
+- **アプリ**: <https://uraraworks.github.io/Sprout68k/ide/>
+- **Sprout68k とは（紹介）**: <https://uraraworks.github.io/Sprout68k/ide/about.html>
+- **作例集**: <https://uraraworks.github.io/Sprout68k/ide/samples.html>
+- **関数リファレンス**: <https://uraraworks.github.io/Sprout68k/ide/reference.html>
+- **使い方**: <https://uraraworks.github.io/Sprout68k/ide/help.html>
+
 X68000用のブートセクタ、Cライブラリ、ブラウザ内wasmツールチェーンを実測しながら作り、
 現在はソース編集・保存から `.xdf` のビルド、同梱px68kでの実行までをIDEとして接続した。
+作ったものは共有URLで配れる（受け取り側にコンパイラは要らない）。
 実ブラウザでの確認はChromium系1種に限られ、未実装項目は本README末尾に明記する。
 
 ## Issue・Pull Request・情報提供の前に

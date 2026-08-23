@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { readFileSync, readdirSync, statSync } from 'node:fs';
+import { readFileSync, readdirSync, statSync, existsSync } from 'node:fs';
 import { relative, resolve, sep } from 'node:path';
 import { runInNewContext } from 'node:vm';
 import { APP_PATH, CACHE_PREFIX, IDE_STATIC_FILES, ROOT_STATIC_FILES, resolveWebAssetsRoot } from './distribution.mts';
@@ -221,6 +221,21 @@ const expectedStatic = IDE_STATIC_FILES.map((path) => `ide/${path}`);
 for (const path of [...expectedStatic, ...ROOT_STATIC_FILES]) {
   assert(listed.includes(path) && statSync(resolve(DIST, path)).size > 0, `IDE静的資産が公開物にありません: ${path}`);
 }
+/* 公開先のルート。**これが無いと https://…/Sprout68k/ が 404 になる。**
+ * 中に紹介ページとアプリへの導線があること（送り先が消えても気づけるように）。 */
+{
+  const rootIndex = resolve(DIST, 'index.html');
+  if (!existsSync(rootIndex)) throw new Error('公開ルートに index.html がありません（Sprout68k/ が404になる）');
+  const html = readFileSync(rootIndex, 'utf8');
+  for (const target of ['./ide/about.html', './ide/index.html']) {
+    if (!html.includes(target)) throw new Error(`ルートの入口に導線がありません: ${target}`);
+    if (!existsSync(resolve(DIST, target.replace('./', '')))) {
+      throw new Error(`ルートの入口が指す先がありません: ${target}`);
+    }
+  }
+  console.log('PASS(公開ルート): index.html が紹介ページとアプリへ導く');
+}
+
 const helpPath = 'ide/help.html';
 function verifyHelpPublished(paths: Set<string>): void {
   assert(paths.has(helpPath), 'ヘルプが公開物とprecacheにありません');

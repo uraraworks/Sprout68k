@@ -28,6 +28,9 @@ export const IDE_STATIC_FILES = [
   'icons/sprout68k-192.png',
   'icons/sprout68k-512.png',
 ] as const;
+/** 公開先のルートに置くもの。無いと https://…/Sprout68k/ が 404 になる。 */
+export const WEB_ROOT_FILES = ['web-root/index.html'] as const;
+
 export const ROOT_STATIC_FILES = [
   'CONTRIBUTING.md',
   'docs/IDEキーボード入力_20260822.md',
@@ -87,6 +90,7 @@ export function computeBuildId(root: string): string {
   const inputs = [
     ...['ide', 'web'].flatMap((directory) => filesBelow(resolve(root, directory))),
     resolve(root, 'COPYING'), ...ROOT_STATIC_FILES.map((file) => resolve(root, file)),
+    ...WEB_ROOT_FILES.map((file) => resolve(root, file)),
     resolve(root, 'vite.config.ts'), resolve(root, 'tools/distribution.mts'),
     resolve(resolveWebAssetsRoot(root), 'manifest.json'),
     ...filesBelow(resolve(root, 'build/wasm-tools'))
@@ -308,6 +312,13 @@ export function stageDistribution(root: string, outDir: string, buildId: string)
   }
   for (const relativePath of ROOT_STATIC_FILES) {
     const destination = resolve(outDir, relativePath);
+    mkdirSync(dirname(destination), { recursive: true });
+    cpSync(resolve(root, relativePath), destination);
+  }
+  /* 公開先のルート直下へ置く（web-root/index.html -> index.html）。
+   * アプリ本体は ide/ 配下なので、これが無いと Sprout68k/ を開いて 404 になる。 */
+  for (const relativePath of WEB_ROOT_FILES) {
+    const destination = resolve(outDir, relativePath.split('/').slice(1).join('/'));
     mkdirSync(dirname(destination), { recursive: true });
     cpSync(resolve(root, relativePath), destination);
   }
