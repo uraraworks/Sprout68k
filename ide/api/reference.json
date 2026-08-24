@@ -863,7 +863,9 @@
         "caption": "2 つの四角が近づいたかどうかを、中心の距離で判定しています。",
         "code": "int ax = 100;\nint bx = 130;\n\nx68_screen_open();\nif (abs(ax - bx) < 40) {\n  printf(\"NEAR\");\n} else {\n  printf(\"FAR\");\n}\nx68_screen_flip();"
       },
-      "pitfalls": [],
+      "pitfalls": [
+        "int で表せる最小の値 -2147483648 だけは、符号を反転した 2147483648 が int に収まらないため、負のまま返ります。C 言語の仕様でそうなる場所で、パソコン側の C コンパイラでも同じ結果になります。"
+      ],
       "seealso": []
     },
     {

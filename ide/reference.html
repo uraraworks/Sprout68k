@@ -1013,6 +1013,9 @@ void main(void) {
 }</pre>
     <p class="example-caption">2 つの四角が近づいたかどうかを、中心の距離で判定しています。</p>
   </div>
+  <ul class="pitfalls">
+    <li>int で表せる最小の値 -2147483648 だけは、符号を反転した 2147483648 が int に収まらないため、負のまま返ります。C 言語の仕様でそうなる場所で、パソコン側の C コンパイラでも同じ結果になります。</li>
+  </ul>
 </article>
 </section>
 
