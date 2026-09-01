@@ -103,10 +103,28 @@ const HV_VSYNC_COUNTER = HV_BASE + 0x2000;
 const BUF_BITSNS_HISTORY = HV_BASE + 0x2100;
 const HV_BITSNS_COUNT = HV_BASE + 0x2200;
 const BITSNS_HISTORY_LEN = 200;
+/* memcpy/memsetの境界/整列テスト用(lib_test/src/main.cと一致させること)。
+ * 32bit化で最も壊れやすい範囲(送り元/送り先の偶奇が食い違う場合、
+ * n=0,1,2,3,7,8,9の境界)を網羅する。 */
+const BND_SLOT = 32;
+const BND_CASE_COUNT = 11;
+const BUF_BND_SRC = HV_BASE + 0x2300;
+const BUF_BND_DST = HV_BASE + 0x2500;
+const BND_DST_OFF = [0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0];
+const BND_SRC_OFF = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1];
+const BND_N = [0, 1, 2, 3, 7, 8, 9, 10, 11, 8, 9];
+
+const BND_SET_CASE_COUNT = 8;
+const BUF_BND_SET_DST = HV_BASE + 0x2700;
+const BND_SET_DST_OFF = [0, 0, 0, 0, 0, 0, 0, 1];
+const BND_SET_N = [0, 1, 2, 3, 7, 8, 9, 9];
+const BND_SET_VALUE = 0x3c;
+
 const HV_DONE = HV_BASE + 0x3000;
 const HV_DONE_MAGIC = 0xc0debeef;
 
-const R_MEMCPY = 0, R_MEMSET = 1, R_STRLEN = 2, R_ABS = 3, R_RAND = 4, R_DISKREAD = 5, R_BITSNS = 6;
+const R_MEMCPY = 0, R_MEMSET = 1, R_STRLEN = 2, R_ABS = 3, R_RAND = 4, R_DISKREAD = 5, R_BITSNS = 6,
+  R_MEMCPY_BOUNDARY = 7, R_MEMSET_BOUNDARY = 8;
 
 /* x68_vsync_wait のペーシング判定基準(Stage E-2 verify_e2.mts と同じ値)。 */
 const RATE_LOW = 0.5;
@@ -236,6 +254,9 @@ interface RunResult {
   memcpySrc: Uint8Array;
   memcpyDst: Uint8Array;
   memsetDst: Uint8Array;
+  bndSrc: Uint8Array;
+  bndDst: Uint8Array;
+  bndSetDst: Uint8Array;
   strlenResult: number;
   absResults: number[];
   randA: number[];
@@ -330,7 +351,7 @@ async function runFullProgram(label: string, diskBytes: Uint8Array, driveKey: bo
   for (let i = 0; i < 120; i++) step();
 
   const results: number[] = [];
-  for (let i = 0; i <= R_BITSNS; i++) results.push(session.peekByte(HV_RESULTS + i));
+  for (let i = 0; i <= R_MEMSET_BOUNDARY; i++) results.push(session.peekByte(HV_RESULTS + i));
 
   const memcpySrc = new Uint8Array(64);
   const memcpyDst = new Uint8Array(64);
@@ -339,6 +360,17 @@ async function runFullProgram(label: string, diskBytes: Uint8Array, driveKey: bo
     memcpySrc[i] = session.peekByte(BUF_MEMCPY_SRC + i);
     memcpyDst[i] = session.peekByte(BUF_MEMCPY_DST + i);
     memsetDst[i] = session.peekByte(BUF_MEMSET_DST + i);
+  }
+
+  const bndSrc = new Uint8Array(BND_CASE_COUNT * BND_SLOT);
+  const bndDst = new Uint8Array(BND_CASE_COUNT * BND_SLOT);
+  for (let i = 0; i < bndSrc.length; i++) {
+    bndSrc[i] = session.peekByte(BUF_BND_SRC + i);
+    bndDst[i] = session.peekByte(BUF_BND_DST + i);
+  }
+  const bndSetDst = new Uint8Array(BND_SET_CASE_COUNT * BND_SLOT);
+  for (let i = 0; i < bndSetDst.length; i++) {
+    bndSetDst[i] = session.peekByte(BUF_BND_SET_DST + i);
   }
 
   const strlenResult = session.peekU32(HV_STRLEN_RESULT);
@@ -362,9 +394,65 @@ async function runFullProgram(label: string, diskBytes: Uint8Array, driveKey: bo
 
   return {
     reachedDone: done === HV_DONE_MAGIC,
-    results, memcpySrc, memcpyDst, memsetDst, strlenResult, absResults, randA, randB,
+    results, memcpySrc, memcpyDst, memsetDst, bndSrc, bndDst, bndSetDst, strlenResult, absResults, randA, randB,
     diskBuf, vsyncCounter, vsyncRate, bitsnsHistory, bitsnsCount, textLines, lastImage,
   };
+}
+
+/* memcpy/memset境界テストの独立照合。host側でlib_test/src/main.cと同じ
+ * パターン生成式・スロットレイアウトを再現し、guestの自己判定を信じずに
+ * コピー範囲の一致と、範囲外(番兵0xEE)が書き換わっていないことの両方を見る
+ * (書き過ぎ・書き足りなさをどちらも検出する)。 */
+function checkMemcpyBoundary(src: Uint8Array, dst: Uint8Array, log: (s: string) => void): boolean {
+  let ok = true;
+  for (let c = 0; c < BND_CASE_COUNT; c++) {
+    const base = c * BND_SLOT;
+    const dstOff = BND_DST_OFF[c];
+    const srcOff = BND_SRC_OFF[c];
+    const n = BND_N[c];
+    const expectedSlotSrc = new Uint8Array(BND_SLOT);
+    for (let i = 0; i < BND_SLOT; i++) expectedSlotSrc[i] = (c * 13 + i * 3 + 11) & 0xff;
+
+    let caseOk = true;
+    for (let i = 0; i < n; i++) {
+      if (dst[base + dstOff + i] !== expectedSlotSrc[srcOff + i]) caseOk = false;
+    }
+    for (let i = 0; i < dstOff; i++) {
+      if (dst[base + i] !== 0xee) caseOk = false;
+    }
+    for (let i = dstOff + n; i < BND_SLOT; i++) {
+      if (dst[base + i] !== 0xee) caseOk = false;
+    }
+    // srcスロット自体も期待パターン通りであること(host側の生成式の健全性確認)。
+    for (let i = 0; i < BND_SLOT; i++) {
+      if (src[base + i] !== expectedSlotSrc[i]) caseOk = false;
+    }
+    if (!caseOk) ok = false;
+    log(`  memcpy_boundary[${c}] dstOff=${dstOff} srcOff=${srcOff} n=${n} ok=${caseOk}`);
+  }
+  return ok;
+}
+
+function checkMemsetBoundary(dst: Uint8Array, log: (s: string) => void): boolean {
+  let ok = true;
+  for (let c = 0; c < BND_SET_CASE_COUNT; c++) {
+    const base = c * BND_SLOT;
+    const dstOff = BND_SET_DST_OFF[c];
+    const n = BND_SET_N[c];
+    let caseOk = true;
+    for (let i = 0; i < n; i++) {
+      if (dst[base + dstOff + i] !== BND_SET_VALUE) caseOk = false;
+    }
+    for (let i = 0; i < dstOff; i++) {
+      if (dst[base + i] !== 0xee) caseOk = false;
+    }
+    for (let i = dstOff + n; i < BND_SLOT; i++) {
+      if (dst[base + i] !== 0xee) caseOk = false;
+    }
+    if (!caseOk) ok = false;
+    log(`  memset_boundary[${c}] dstOff=${dstOff} n=${n} ok=${caseOk}`);
+  }
+  return ok;
 }
 
 /* --- フレームバッファ解析(Stage E-1のrgbAt/dominantRgbを踏襲) --- */
@@ -494,6 +582,16 @@ async function main(): Promise<void> {
   const memsetMatch = normal.memsetDst.every((v) => v === 0xa5);
   log(`RESULT: MEMSET self=${normal.results[R_MEMSET]} host_independent_match=${memsetMatch}`);
   if (!(normal.results[R_MEMSET] === 1 && memsetMatch)) fail('memset: 自己判定またはhost独立照合が不一致');
+
+  // --- memcpy境界/整列(32bit化で最も壊れやすい範囲: 偶奇の食い違い、n=0,1,2,3,7,8,9) ---
+  const memcpyBoundaryMatch = checkMemcpyBoundary(normal.bndSrc, normal.bndDst, log);
+  log(`RESULT: MEMCPY_BOUNDARY self=${normal.results[R_MEMCPY_BOUNDARY]} host_independent_match=${memcpyBoundaryMatch}`);
+  if (!(normal.results[R_MEMCPY_BOUNDARY] === 1 && memcpyBoundaryMatch)) fail('memcpy境界: 自己判定またはhost独立照合が不一致');
+
+  // --- memset境界/整列 ---
+  const memsetBoundaryMatch = checkMemsetBoundary(normal.bndSetDst, log);
+  log(`RESULT: MEMSET_BOUNDARY self=${normal.results[R_MEMSET_BOUNDARY]} host_independent_match=${memsetBoundaryMatch}`);
+  if (!(normal.results[R_MEMSET_BOUNDARY] === 1 && memsetBoundaryMatch)) fail('memset境界: 自己判定またはhost独立照合が不一致');
 
   // --- strlen ---
   log(`RESULT: STRLEN self=${normal.results[R_STRLEN]} value=${normal.strlenResult}(期待=12)`);

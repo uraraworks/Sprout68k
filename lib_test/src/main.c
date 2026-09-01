@@ -42,6 +42,8 @@ enum {
     R_RAND,
     R_DISKREAD,
     R_BITSNS,
+    R_MEMCPY_BOUNDARY,
+    R_MEMSET_BOUNDARY,
     R_COUNT
 };
 
@@ -68,6 +70,18 @@ enum {
 #define BUF_BITSNS_HISTORY ((unsigned char *)(HV_BASE + 0x2100)) /* 220バイト */
 #define HV_BITSNS_COUNT (*(vu32 *)(HV_BASE + 0x2200))
 #define BITSNS_HISTORY_LEN 200
+
+/* 32bit化したmemcpy/memsetの境界/整列テスト用バッファ。
+ * 空き領域(BUF_BITSNS_HISTORY末尾0x21DC 〜 HV_DONEの0x3000の間)に置く。
+ * host側(verify/verify_lib.mts)が直接ピークして独立照合する
+ * (このプログラム側の自己判定だけに頼らない、既存memcpy/memsetテストと同じ方針)。 */
+#define BND_SLOT 32UL /* 1ケースあたりの確保幅(番兵の前後に余裕を持たせる) */
+#define BND_CASE_COUNT 11
+#define BUF_BND_SRC ((unsigned char *)(HV_BASE + 0x2300)) /* BND_CASE_COUNT*BND_SLOT */
+#define BUF_BND_DST ((unsigned char *)(HV_BASE + 0x2500)) /* BND_CASE_COUNT*BND_SLOT */
+
+#define BND_SET_CASE_COUNT 8
+#define BUF_BND_SET_DST ((unsigned char *)(HV_BASE + 0x2700)) /* BND_SET_CASE_COUNT*BND_SLOT */
 
 /* 全工程完了の目印。 */
 #define HV_DONE (*(vu32 *)(HV_BASE + 0x3000))
@@ -100,6 +114,82 @@ static void test_memset(void) {
         if (BUF_MEMSET_DST[i] != 0xA5) ok = 0;
     }
     HV_RESULTS[R_MEMSET] = (unsigned char)ok;
+}
+
+/* --- memcpy境界/整列テスト ---
+ * ケース一覧(dstオフセット, srcオフセット, n): 32bit化で最も壊れやすいのは
+ * (1)送り元/送り先の偶奇が食い違う場合、(2)n=0,1,2,3(4バイト未満)、
+ * n=7,8,9(4バイト境界の前後)なので、この組み合わせを網羅する。
+ * offset=1のケースは奇数番地からの読み書きを作る。n=10,11は「4バイト境界を
+ * 越えた後の余りマスクの取り違え」(例: n&=3UL を誤って n&=1UL にする)を
+ * n=8,9だけでは検出できない(8,9はmod4とmod2の結果が偶然一致する)ため追加した。 */
+static const unsigned char bnd_dst_off[BND_CASE_COUNT] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0 };
+static const unsigned char bnd_src_off[BND_CASE_COUNT] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1 };
+static const unsigned char bnd_n[BND_CASE_COUNT]       = { 0, 1, 2, 3, 7, 8, 9, 10, 11, 8, 9 };
+
+static void test_memcpy_boundary(void) {
+    HV_PROGRESS = 11;
+    int ok = 1;
+    for (int c = 0; c < BND_CASE_COUNT; c++) {
+        unsigned char *slot_src = BUF_BND_SRC + (unsigned long)c * BND_SLOT;
+        unsigned char *slot_dst = BUF_BND_DST + (unsigned long)c * BND_SLOT;
+        unsigned long dst_off = bnd_dst_off[c];
+        unsigned long src_off = bnd_src_off[c];
+        unsigned long n = bnd_n[c];
+
+        /* スロット全体を既知パターン(src)/番兵0xEE(dst)で初期化する。 */
+        for (unsigned long i = 0; i < BND_SLOT; i++) {
+            slot_src[i] = (unsigned char)(c * 13 + i * 3 + 11);
+            slot_dst[i] = 0xEE;
+        }
+
+        memcpy((void *)(slot_dst + dst_off), (const void *)(slot_src + src_off), n);
+
+        /* コピー範囲がsrcと一致していること。 */
+        for (unsigned long i = 0; i < n; i++) {
+            if (slot_dst[dst_off + i] != slot_src[src_off + i]) ok = 0;
+        }
+        /* コピー範囲の外(dst_offより前、dst_off+nより後)は番兵0xEEのまま
+         * 変わっていないこと(書き過ぎ・書き足りなさの両方を検出する)。 */
+        for (unsigned long i = 0; i < dst_off; i++) {
+            if (slot_dst[i] != 0xEE) ok = 0;
+        }
+        for (unsigned long i = dst_off + n; i < BND_SLOT; i++) {
+            if (slot_dst[i] != 0xEE) ok = 0;
+        }
+    }
+    HV_RESULTS[R_MEMCPY_BOUNDARY] = (unsigned char)ok;
+}
+
+/* --- memset境界/整列テスト ---
+ * memcpyと同じ考え方だが、送り元が無いのでdstの偶奇だけを振る。 */
+static const unsigned char bnd_set_dst_off[BND_SET_CASE_COUNT] = { 0, 0, 0, 0, 0, 0, 0, 1 };
+static const unsigned char bnd_set_n[BND_SET_CASE_COUNT]       = { 0, 1, 2, 3, 7, 8, 9, 9 };
+#define BND_SET_VALUE 0x3C
+
+static void test_memset_boundary(void) {
+    HV_PROGRESS = 12;
+    int ok = 1;
+    for (int c = 0; c < BND_SET_CASE_COUNT; c++) {
+        unsigned char *slot = BUF_BND_SET_DST + (unsigned long)c * BND_SLOT;
+        unsigned long dst_off = bnd_set_dst_off[c];
+        unsigned long n = bnd_set_n[c];
+
+        for (unsigned long i = 0; i < BND_SLOT; i++) slot[i] = 0xEE;
+
+        memset((void *)(slot + dst_off), BND_SET_VALUE, n);
+
+        for (unsigned long i = 0; i < n; i++) {
+            if (slot[dst_off + i] != (unsigned char)BND_SET_VALUE) ok = 0;
+        }
+        for (unsigned long i = 0; i < dst_off; i++) {
+            if (slot[i] != 0xEE) ok = 0;
+        }
+        for (unsigned long i = dst_off + n; i < BND_SLOT; i++) {
+            if (slot[i] != 0xEE) ok = 0;
+        }
+    }
+    HV_RESULTS[R_MEMSET_BOUNDARY] = (unsigned char)ok;
 }
 
 static void test_strlen(void) {
@@ -284,6 +374,11 @@ void main(void) {
     run_bitsns_test();
     run_gvram_test();
     run_text_tests();
+    /* 境界/整列テストは末尾に置く(HV_PROGRESSがrun_vsync_test()の7より前に
+     * 11/12へ達すると、host側のvsync計測窓開始判定(progress>=7)が誤って
+     * この時点で始まってしまうため)。 */
+    test_memcpy_boundary();
+    test_memset_boundary();
 
     HV_PROGRESS = 999;
     HV_DONE = HV_DONE_MAGIC;
