@@ -176,6 +176,45 @@ for (const entry of sourceAssets.files) {
 const tools = listed.filter((path) => /^build\/wasm-tools\/m68k-elf-(?:cc1|as|ld|objcopy)\.memfs\.(?:js|wasm)$/.test(path));
 assert(tools.length === 8, `wasmツールの公開物が8ファイルではありません: ${tools.length}`);
 
+/**
+ * deploy/web-assets/lib は lib/ の写しで、ブラウザ内ビルドが読む。lib/ を直しても
+ * このsnapshotの作り直し(node tools/build_web_assets.mts + update_web_assets_snapshot.mts)を
+ * 忘れると、manifestも配布物も「揃って古い」ままになり食い違いが出ない
+ * (2026-09-01に実際に発生: x68_l1.c/x68_std.cが配信物だけ旧版のまま残った)。
+ * manifest経由の一致だけでは検出できないので、リポジトリのlib/と直接バイト比較する。
+ */
+function verifyLibSnapshotMatchesSource(webAssetsRoot: string, repoRoot: string): void {
+  const deployLibRoot = resolve(webAssetsRoot, 'lib');
+  const sourceLibRoot = resolve(repoRoot, 'lib');
+  const notJunk = (path: string) => !path.split('/').includes('.DS_Store');
+  const deployFiles = new Set(filesBelow(deployLibRoot).map((file) => posix(relative(deployLibRoot, file))).filter(notJunk));
+  const sourceFiles = new Set(filesBelow(sourceLibRoot).map((file) => posix(relative(sourceLibRoot, file))).filter(notJunk));
+  for (const path of deployFiles) assert(sourceFiles.has(path), `deploy/web-assets/libにあってlib/に無いファイル: ${path}`);
+  for (const path of sourceFiles) assert(deployFiles.has(path), `lib/にあってdeploy/web-assets/libに無いファイル: ${path}`);
+  for (const path of sourceFiles) {
+    const deployFile = resolve(deployLibRoot, path);
+    const sourceFile = resolve(sourceLibRoot, path);
+    assert(digest(deployFile) === digest(sourceFile), `deploy/web-assets/libがlib/と不一致(古い写しの疑い): ${path}`);
+  }
+}
+verifyLibSnapshotMatchesSource(resolve(ROOT, 'deploy/web-assets'), ROOT);
+console.log('PASS(lib配布物一致): deploy/web-assets/lib が lib/ と全ファイルバイト一致');
+
+{
+  const staleTarget = resolve(ROOT, 'deploy/web-assets/lib/src/x68_l1.c');
+  const original = readFileSync(staleTarget);
+  const tampered = Buffer.from(original);
+  tampered[0] = tampered[0] ^ 0xff;
+  const { writeFileSync } = await import('node:fs');
+  writeFileSync(staleTarget, tampered);
+  let staleLibRejected = false;
+  try { verifyLibSnapshotMatchesSource(resolve(ROOT, 'deploy/web-assets'), ROOT); } catch { staleLibRejected = true; }
+  writeFileSync(staleTarget, original);
+  assert(staleLibRejected, '古いlib配布物の故障注入を検出できません');
+  assert(digest(staleTarget) === digest(resolve(ROOT, 'lib/src/x68_l1.c')), '故障注入からの復元に失敗しました');
+  console.log('PASS(故障注入): deploy/web-assets/lib/src/x68_l1.cの1バイト改変(古い写し)を拒否');
+}
+
 for (const htmlPath of ['ide/index.html', 'web/index.html']) {
   const html = readFileSync(resolve(DIST, htmlPath), 'utf8');
   const documentPath = `${APP_PATH}${htmlPath.replace(/index\.html$/, '')}`;

@@ -33,8 +33,8 @@
     },
     {
       "path": "lib/src/x68_l1.c",
-      "size": 24400,
-      "sha256": "a6a47fd9d9aa3898238e36c63a5cd57a2b851a78dfd103ee5ee81f0679b0853b"
+      "size": 46366,
+      "sha256": "82907c33a8e43b3e4ab10d2803f4147226c15b4dbb864e9451d2398e94268c73"
     },
     {
       "path": "lib/src/x68_panic.c",
@@ -43,8 +43,8 @@
     },
     {
       "path": "lib/src/x68_std.c",
-      "size": 7642,
-      "sha256": "964aaf6244af648c69e755a9effc575ab4612762f07b3b0058fa4551a23ef05f"
+      "size": 9280,
+      "sha256": "d926bb2cf39b8dbe34694bc4792ca531a557a1bfe2e689e51e474f5a4d8e5245"
     },
     {
       "path": "runtime/abi_v1.txt",
@@ -244,7 +244,7 @@
   ],
   "totals": {
     "files": 48,
-    "size": 845209,
-    "gzipSize": 257231
+    "size": 868813,
+    "gzipSize": 263312
   }
 }

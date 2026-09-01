@@ -21,6 +21,23 @@ void *memcpy(void *dst, const void *src, unsigned long n) {
 #ifdef X68_FAULT_MEMCPY_SKIP_LAST
     if (n > 0) n -= 1; /* 故障注入: 最後の1バイトをコピーしない */
 #endif
+    /* 68000はワード/ロングのアクセスに偶数番地を要求する(4の倍数である必要はない)。
+     * 送り元と送り先の偶奇が同じときだけ、先頭1バイトで揃えてから32bitでまとめて写す。
+     * 偶奇が違う場合は揃えようがないので、従来どおり1バイトずつ写す。 */
+    if (n >= 8 && ((((unsigned long)d) ^ ((unsigned long)s)) & 1UL) == 0UL) {
+        if (((unsigned long)d & 1UL) != 0UL) { *d++ = *s++; n--; }
+        unsigned long *dl = (unsigned long *)d;
+        const unsigned long *sl = (const unsigned long *)s;
+        unsigned long m = n >> 2;
+        while (m >= 8) {
+            dl[0]=sl[0]; dl[1]=sl[1]; dl[2]=sl[2]; dl[3]=sl[3];
+            dl[4]=sl[4]; dl[5]=sl[5]; dl[6]=sl[6]; dl[7]=sl[7];
+            dl += 8; sl += 8; m -= 8;
+        }
+        while (m-- > 0) *dl++ = *sl++;
+        d = (unsigned char *)dl; s = (const unsigned char *)sl;
+        n &= 3UL;
+    }
     while (n--) {
         *d++ = *s++;
     }
@@ -30,6 +47,24 @@ void *memcpy(void *dst, const void *src, unsigned long n) {
 void *memset(void *dst, int c, unsigned long n) {
     unsigned char *d = (unsigned char *)dst;
     unsigned char v = (unsigned char)c;
+    /* memcpyと同じ考え方。ただし送り元が無いので偶奇の制約は
+     * 送り先(d)が偶数番地かどうかだけで決まる。 */
+    if (n >= 8) {
+        if (((unsigned long)d & 1UL) != 0UL) { *d++ = v; n--; }
+        unsigned long vl = (unsigned long)v;
+        vl |= vl << 8;
+        vl |= vl << 16;
+        unsigned long *dl = (unsigned long *)d;
+        unsigned long m = n >> 2;
+        while (m >= 8) {
+            dl[0]=vl; dl[1]=vl; dl[2]=vl; dl[3]=vl;
+            dl[4]=vl; dl[5]=vl; dl[6]=vl; dl[7]=vl;
+            dl += 8; m -= 8;
+        }
+        while (m-- > 0) *dl++ = vl;
+        d = (unsigned char *)dl;
+        n &= 3UL;
+    }
     while (n--) {
         *d++ = v;
     }
