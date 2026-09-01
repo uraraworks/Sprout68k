@@ -129,11 +129,21 @@ static unsigned short bb_get(int x, int y) {
     return x68_backbuffer[idx];
 }
 
+/* 矩形を塗る。1画素ずつ書くと1画素あたり約66サイクルかかる(実測)ため、
+ * 32bit単位でまとめて書き、8個ずつ展開する。裏バッファの行頭は必ず偶数番地
+ * (x68_backbufferがワード配列で、1行=512ワード=1024バイト)なので、long
+ * アクセスのアラインメントは常に満たされる。
+ * bb_set() は x68_pset 等から引き続き使うので残す。 */
 static void fill_rect(const X68Rect *r, unsigned short c) {
+    int w = r->x1 - r->x0;
+    unsigned long cc = ((unsigned long)c << 16) | (unsigned long)c;
     for (int y = r->y0; y < r->y1; y++) {
-        for (int x = r->x0; x < r->x1; x++) {
-            bb_set(x, y, c);
-        }
+        unsigned short *p = &x68_backbuffer[(long)y * X68_SCREEN_W + r->x0];
+        unsigned long *q = (unsigned long *)p;
+        int m = w >> 1;
+        while (m >= 8) { q[0]=cc; q[1]=cc; q[2]=cc; q[3]=cc; q[4]=cc; q[5]=cc; q[6]=cc; q[7]=cc; q += 8; m -= 8; }
+        while (m-- > 0) *q++ = cc;
+        if (w & 1) *(unsigned short *)q = c;
     }
 }
 
