@@ -197,6 +197,10 @@ function buildMainScriptFrames(): Uint16Array[] {
       model.line(-50, -50, -10, -10, C_LINE);
       model.circle(300, 300, 25, C_CIRCLE);
       model.box(350, 150, 40, 30, C_EDGE);
+      /* X68Cmd縮小(2026-09-01)の検証用: クリップ前の座標が画面外にある命令
+       * (lib_test/src/main_l1.cの同名コメント参照。1桁単位で一致させること)。 */
+      model.boxFill(-20, 400, 60, 40, C_EDGE);
+      model.line(-30, 450, 60, 470, C_LINE);
     }
     frames.push(model.grid.slice());
   }

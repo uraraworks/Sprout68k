@@ -89,14 +89,37 @@ typedef struct {
 #define X68_CMD_LINE   2
 #define X68_CMD_CIRCLE 3
 
+/* X68Cmd用の小さい矩形型。記録時点でクリップ済み(画面0〜512の範囲に収まる)
+ * ので short で足りる。X68Rect(dirty矩形・clip_to_rect等の汎用矩形)は他の
+ * 場所でも使うため int のまま変えず、X68Cmd の中だけこの型にする
+ * (2026-09-01: X68Cmd 1件あたりのサイズを削って複写・受け渡しの固定費を
+ * 減らすため。docs/L1差分描画_20260901.md参照)。 */
 typedef struct {
-    X68Rect rect; /* 記録時点でクリップ済みの外接矩形(dirty判定・転送に使う) */
-    int type;
+    short x0, y0, x1, y1;
+} X68CmdRect;
+
+static X68Rect cmdrect_to_rect(const X68CmdRect *r) {
+    X68Rect out;
+    out.x0 = r->x0; out.y0 = r->y0; out.x1 = r->x1; out.y1 = r->y1;
+    return out;
+}
+
+static void rect_to_cmdrect(X68CmdRect *dst, const X68Rect *src) {
+    dst->x0 = (short)src->x0; dst->y0 = (short)src->y0;
+    dst->x1 = (short)src->x1; dst->y1 = (short)src->y1;
+}
+
+typedef struct {
+    X68CmdRect rect; /* 記録時点でクリップ済みの外接矩形(dirty判定・転送に使う) */
+    short type;
     int p0, p1, p2, p3; /* クリップ前の生の引数(座標・サイズ)。命令の同一性判定、
-                            および再生時のline/circleの実描画に使う。
+                            および再生時のline/circleの実描画に使う。値域は画面外の
+                            大きな座標も含みうるため int のまま変えない(short に
+                            詰めると別々のline/circleが「同じ命令」に化けて差分
+                            判定を誤る)。
                             pset: p0=x,p1=y / rect: p0=x,p1=y,p2=w,p3=h /
                             line: p0=x1,p1=y1,p2=x2,p3=y2 / circle: p0=x,p1=y,p2=r */
-    int color;
+    unsigned short color;
 } X68Cmd;
 
 /* 上限は512(元は64)。同梱作例ide/samples/stars.c(星220個)・life.c(生きたマス数百個)は
@@ -153,9 +176,16 @@ static int backbuffer_valid = 1;
  *   何も追加しない(画素を触らないのと同じ理由。x68_cls は背景色を
  *   覚えるだけ)。
  * prevCmds: 直前のflip()の時点でのcurCmds(=前フレームの描画命令)。
- *   x68_screen_flip()が突き合わせの相手として参照する。 */
-static X68CmdList curCmds;
-static X68CmdList prevCmds;
+ *   x68_screen_flip()が突き合わせの相手として参照する。
+ *
+ * 実体は2本(cmdListStorage[0], [1])を静的に持ち、curCmds/prevCmdsは
+ * そのどちらかを指すポインタにする。毎フレームの入れ替えは
+ * x68_screen_flip()末尾でポインタを交換するだけにし、内容の複写(旧
+ * cmdlist_copy)を無くす(2026-09-01: 描画命令1件あたり約3,250サイクルの
+ * 固定費の主因が複写だったため。docs/L1差分描画_20260901.md参照)。 */
+static X68CmdList cmdListStorage[2];
+static X68CmdList *curCmds = &cmdListStorage[0];
+static X68CmdList *prevCmds = &cmdListStorage[1];
 
 /* dirty矩形の一覧(x68_screen_flip()の中だけで使う作業領域)。 */
 static X68Rect dirtyRects[X68_L1_MAX_DIRTY];
@@ -246,20 +276,6 @@ static void cmdlist_reset(X68CmdList *l) {
     l->has_bbox = 0;
 }
 
-/* 一覧を写す。構造体まるごとの代入にすると、使っていない要素まで含めて
- * X68_L1_MAX_RECTS 件ぶん(512件なら約20KB)を毎フレーム複写することになるので、
- * 実際に使っている件数だけを写す。overflowed のときは cmds[] の中身は
- * 使わない(bboxだけが有効)ので、写す必要も無い。 */
-static void cmdlist_copy(X68CmdList *dst, const X68CmdList *src) {
-    dst->count = src->count;
-    dst->overflowed = src->overflowed;
-    dst->has_bbox = src->has_bbox;
-    dst->bbox = src->bbox;
-    if (!src->overflowed) {
-        for (int i = 0; i < src->count; i++) dst->cmds[i] = src->cmds[i];
-    }
-}
-
 /* cmd_add()より後ろで定義されているが、追記フレームの経路で必要になる
  * ため前方宣言しておく。 */
 static void exec_cmd_clipped(const X68Cmd *c, const X68Rect *bound);
@@ -289,9 +305,9 @@ static void cmd_add(X68CmdList *l, int type, int p0, int p1, int p2, int p3, int
          * 常に最新なので backbuffer_valid は立てたままにする(x68_pgetがその場での
          * 作り直しを不要にできる)。 */
         X68Cmd tmp;
-        tmp.rect = r; tmp.type = type;
+        rect_to_cmdrect(&tmp.rect, &r); tmp.type = (short)type;
         tmp.p0 = p0; tmp.p1 = p1; tmp.p2 = p2; tmp.p3 = p3;
-        tmp.color = color;
+        tmp.color = (unsigned short)color;
         exec_cmd_clipped(&tmp, &r);
         if (!dirty_add(&r)) append_overflow = 1;
         backbuffer_valid = 1;
@@ -313,10 +329,10 @@ static void cmd_add(X68CmdList *l, int type, int p0, int p1, int p2, int p3, int
     if (!l->overflowed) {
         if (l->count < X68_L1_MAX_RECTS) {
             X68Cmd *c = &l->cmds[l->count++];
-            c->rect = r;
-            c->type = type;
+            rect_to_cmdrect(&c->rect, &r);
+            c->type = (short)type;
             c->p0 = p0; c->p1 = p1; c->p2 = p2; c->p3 = p3;
-            c->color = color;
+            c->color = (unsigned short)color;
         } else {
             /* 溢れた: 個別の命令一覧は諦め、既に更新済みのbboxだけを
              * 唯一の矩形とする(安全側に倒す)。差分判定はできなくなるため、
@@ -417,7 +433,7 @@ static void exec_cmd_clipped(const X68Cmd *c, const X68Rect *bound) {
 static void rebuild_backbuffer_now(void) {
     X68Rect full = {0, 0, X68_SCREEN_W, X68_SCREEN_H};
     fill_rect(&full, (unsigned short)bg_color);
-    for (int i = 0; i < curCmds.count; i++) exec_cmd_clipped(&curCmds.cmds[i], &full);
+    for (int i = 0; i < curCmds->count; i++) exec_cmd_clipped(&curCmds->cmds[i], &full);
     backbuffer_valid = 1;
 }
 
@@ -495,8 +511,8 @@ void x68_screen_open(void) {
     for (unsigned long i = 0; i < (unsigned long)X68_SCREEN_W * X68_SCREEN_H; i++) {
         x68_backbuffer[i] = 0;
     }
-    cmdlist_reset(&curCmds);
-    cmdlist_reset(&prevCmds);
+    cmdlist_reset(curCmds);
+    cmdlist_reset(prevCmds);
     bg_valid = 0;
     bg_color = 0;
     backbuffer_valid = 1; /* 0クリア直後の裏バッファは(空のcurCmdsに対して)正しい */
@@ -539,12 +555,12 @@ void x68_frame_begin(void) {
      * 追記方式に確定させる。 */
     if (frame_style == X68_STYLE_CLS) style_conflict = 1;
     frame_style = X68_STYLE_APPEND;
-    cmdlist_reset(&curCmds);
+    cmdlist_reset(curCmds);
 }
 
 void x68_pset(int x, int y, int color) {
     if (!screen_opened) return;
-    cmd_add(&curCmds, X68_CMD_PSET, x, y, 0, 0, color, x, y, x + 1, y + 1);
+    cmd_add(curCmds, X68_CMD_PSET, x, y, 0, 0, color, x, y, x + 1, y + 1);
 }
 
 int x68_pget(int x, int y) {
@@ -557,7 +573,7 @@ int x68_pget(int x, int y) {
 void x68_box_fill(int x, int y, int w, int h, int color) {
     if (!screen_opened) return;
     if (w <= 0 || h <= 0) return;
-    cmd_add(&curCmds, X68_CMD_RECT, x, y, w, h, color, x, y, x + w, y + h);
+    cmd_add(curCmds, X68_CMD_RECT, x, y, w, h, color, x, y, x + w, y + h);
 }
 
 void x68_box(int x, int y, int w, int h, int color) {
@@ -582,7 +598,7 @@ void x68_line(int x1, int y1, int x2, int y2, int color) {
     int bx1 = ((x1 > x2) ? x1 : x2) + 1;
     int by0 = (y1 < y2) ? y1 : y2;
     int by1 = ((y1 > y2) ? y1 : y2) + 1;
-    cmd_add(&curCmds, X68_CMD_LINE, x1, y1, x2, y2, color, bx0, by0, bx1, by1);
+    cmd_add(curCmds, X68_CMD_LINE, x1, y1, x2, y2, color, bx0, by0, bx1, by1);
 }
 
 void x68_circle(int x, int y, int r, int color) {
@@ -591,7 +607,7 @@ void x68_circle(int x, int y, int r, int color) {
 
     int bx0 = x - r, bx1 = x + r + 1;
     int by0 = y - r, by1 = y + r + 1;
-    cmd_add(&curCmds, X68_CMD_CIRCLE, x, y, r, 0, color, bx0, by0, bx1, by1);
+    cmd_add(curCmds, X68_CMD_CIRCLE, x, y, r, 0, color, bx0, by0, bx1, by1);
 }
 
 static int clampi(int v, int lo, int hi) {
@@ -628,7 +644,7 @@ void x68_locate(int col, int row) {
  * 転送段が使う完全な結果)。docs/L1差分描画_20260901.md
  * 「突き合わせは『添字』ではなく『内容』で」節のとおり2段構成。 */
 static int build_dirty_rects(void) {
-    int nCur = curCmds.count, nPrev = prevCmds.count;
+    int nCur = curCmds->count, nPrev = prevCmds->count;
     for (int i = 0; i < nCur; i++) curMatched[i] = 0;
     for (int j = 0; j < nPrev; j++) prevMatched[j] = 0;
 
@@ -636,7 +652,7 @@ static int build_dirty_rects(void) {
      * (大多数)はここで終わる。 */
     int nMin = (nPrev < nCur) ? nPrev : nCur;
     for (int i = 0; i < nMin; i++) {
-        if (cmd_equal(&prevCmds.cmds[i], &curCmds.cmds[i])) {
+        if (cmd_equal(&prevCmds->cmds[i], &curCmds->cmds[i])) {
             curMatched[i] = 1;
             prevMatched[i] = 1;
         }
@@ -659,7 +675,7 @@ static int build_dirty_rects(void) {
         if (curMatched[i]) continue;
         for (int j = 0; j < nPrev; j++) {
             if (prevMatched[j]) continue;
-            if (cmd_equal(&prevCmds.cmds[j], &curCmds.cmds[i])) {
+            if (cmd_equal(&prevCmds->cmds[j], &curCmds->cmds[i])) {
                 curMatched[i] = 1;
                 prevMatched[j] = 1;
                 break;
@@ -672,7 +688,8 @@ static int build_dirty_rects(void) {
      * 足りない方に倒すと消し残りになる)。 */
     for (int i = 0; i < nCur; i++) {
         if (curMatched[i]) continue;
-        if (!dirty_add(&curCmds.cmds[i].rect)) return 1;
+        X68Rect rr = cmdrect_to_rect(&curCmds->cmds[i].rect);
+        if (!dirty_add(&rr)) return 1;
     }
     for (int j = 0; j < nPrev; j++) {
         if (prevMatched[j]) continue;
@@ -682,7 +699,8 @@ static int build_dirty_rects(void) {
          * では両方とも「未確定のprev」でしかない)ため、この2つのマクロは同じ
          * 効果になる(docs/L1差分描画_20260901.md参照)。 */
 #if !defined(X68_FAULT_L1_SKIP_PREV) && !defined(X68_FAULT_L1_DIFF_IGNORE_SHRINK)
-        if (!dirty_add(&prevCmds.cmds[j].rect)) return 1;
+        X68Rect rr = cmdrect_to_rect(&prevCmds->cmds[j].rect);
+        if (!dirty_add(&rr)) return 1;
 #endif
     }
     return 0;
@@ -708,7 +726,7 @@ void x68_screen_flip(void) {
     int conflict = style_conflict;
 
     if (style == X68_STYLE_CLS) {
-        int overflowed = curCmds.overflowed || prevCmds.overflowed;
+        int overflowed = curCmds->overflowed || prevCmds->overflowed;
         /* trueFull: 本当に全画面が要る場合(背景色変更・初回・流儀の衝突/変化)。
          * matchGaveUp: 突き合わせがまとまらなかった場合(未確定数超過、または
          * dirty矩形が32枚を超えた)。誤り1の修正により、この場合はもう
@@ -757,26 +775,29 @@ void x68_screen_flip(void) {
                 /* X68_FAULT_L1_CLS_NO_FILL: 故障注入で前フレーム矩形を背景色で
                  * 塗り戻さない(前の絵が残る)。 */
 #ifndef X68_FAULT_L1_CLS_NO_FILL
-                for (int j = 0; j < prevCmds.count; j++) {
-                    fill_rect(&prevCmds.cmds[j].rect, bgc);
+                for (int j = 0; j < prevCmds->count; j++) {
+                    X68Rect rr = cmdrect_to_rect(&prevCmds->cmds[j].rect);
+                    fill_rect(&rr, bgc);
                 }
 #endif
-                for (int j = 0; j < curCmds.count; j++) {
-                    exec_cmd_clipped(&curCmds.cmds[j], &screen);
+                for (int j = 0; j < curCmds->count; j++) {
+                    exec_cmd_clipped(&curCmds->cmds[j], &screen);
                 }
 
-                for (int j = 0; j < curCmds.count; j++) {
+                for (int j = 0; j < curCmds->count; j++) {
                     if (curMatched[j]) continue;
-                    bytes += transfer_rect(&curCmds.cmds[j].rect);
+                    X68Rect rr = cmdrect_to_rect(&curCmds->cmds[j].rect);
+                    bytes += transfer_rect(&rr);
                 }
-                for (int j = 0; j < prevCmds.count; j++) {
+                for (int j = 0; j < prevCmds->count; j++) {
                     if (prevMatched[j]) continue;
                     /* X68_FAULT_L1_SKIP_PREV / X68_FAULT_L1_DIFF_IGNORE_SHRINK:
                      * 故障注入で前フレーム側(消えた/変わった命令の「消す」側)
                      * を転送しない(消し残り)。build_dirty_rects()内の同名の
                      * 分岐と同じ意味(docs/L1差分描画_20260901.md参照)。 */
 #if !defined(X68_FAULT_L1_SKIP_PREV) && !defined(X68_FAULT_L1_DIFF_IGNORE_SHRINK)
-                    bytes += transfer_rect(&prevCmds.cmds[j].rect);
+                    X68Rect rr = cmdrect_to_rect(&prevCmds->cmds[j].rect);
+                    bytes += transfer_rect(&rr);
 #endif
                 }
             } else {
@@ -798,9 +819,10 @@ void x68_screen_flip(void) {
                         if (dirtyRects[i].x1 > dbb.x1) dbb.x1 = dirtyRects[i].x1;
                         if (dirtyRects[i].y1 > dbb.y1) dbb.y1 = dirtyRects[i].y1;
                     }
-                    for (int j = 0; j < curCmds.count; j++) {
-                        const X68Cmd *c = &curCmds.cmds[j];
-                        const X68Rect *cr = &c->rect;
+                    for (int j = 0; j < curCmds->count; j++) {
+                        const X68Cmd *c = &curCmds->cmds[j];
+                        X68Rect crVal = cmdrect_to_rect(&c->rect);
+                        const X68Rect *cr = &crVal;
                         /* dirty全体の外接矩形と交差しなければ、個々のdirty矩形
                          * とも絶対に交差しない(外接矩形の定義上)ので即座に捨てる。 */
                         if (cr->x0 >= dbb.x1 || dbb.x0 >= cr->x1 || cr->y0 >= dbb.y1 || dbb.y0 >= cr->y1) continue;
@@ -815,7 +837,16 @@ void x68_screen_flip(void) {
             }
         }
 
-        cmdlist_copy(&prevCmds, &curCmds);
+        /* 複写(cmdlist_copy)ではなく、cur/prevの実体を指すポインタを入れ替える
+         * だけにする(2026-09-01: 描画命令1件あたり約3,250サイクルの固定費の
+         * 主因が複写だったため。docs/L1差分描画_20260901.md参照)。入れ替え後、
+         * 関数末尾の cmdlist_reset(curCmds) が(新しいcurCmds = 元のprevCmds
+         * の実体を)次フレーム用に空にする。 */
+        {
+            X68CmdList *tmp = prevCmds;
+            prevCmds = curCmds;
+            curCmds = tmp;
+        }
     } else {
         /* 追記フレーム: 裏バッファは既に正しい(cmd_addがその場で描いている)。
          * 突き合わせも、背景で塗って消す処理も行わない。dirtyRects/dirtyCount
@@ -836,7 +867,7 @@ void x68_screen_flip(void) {
         /* prevCmds/curCmdsはCLS方式の突き合わせ専用。追記フレームでは使って
          * いないので、次にCLS方式へ戻ったときに古い一覧と誤って突き合わせない
          * よう空にしておく。 */
-        cmdlist_reset(&prevCmds);
+        cmdlist_reset(prevCmds);
     }
 
     x68_l1_last_flip_bytes = bytes;
@@ -846,7 +877,7 @@ void x68_screen_flip(void) {
     prev_frame_style = style;
     frame_style = X68_STYLE_NONE;
 
-    cmdlist_reset(&curCmds);
+    cmdlist_reset(curCmds);
     dirty_reset();
     backbuffer_valid = 1; /* dirty矩形はすべて再生・転送済み。非dirty領域は
                               前フレームと同一内容であることが保証されている。 */
