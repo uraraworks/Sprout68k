@@ -1,13 +1,13 @@
 // Sprout68k 作例: 星空を流す
 //
-// 配列を使うと、たくさんの物をまとめて動かせる。ここでは星を220個持ち、
+// 配列を使うと、たくさんの物をまとめて動かせる。ここでは星を100個持ち、
 // 1周ごとに全部を少しずつ左へずらしている。
 // 星ごとに速さを変えると、遠近感が出る（速い星ほど手前に見える）。
 
 #include "x68.h"
 
 enum {
-  kStarCount = 220,
+  kStarCount = 100,
 };
 
 static int star_x[kStarCount];
@@ -18,7 +18,7 @@ static int star_speed[kStarCount];
 static void ResetStar(int index, int x) {
   star_x[index] = x;
   star_y[index] = x68_rand_int(X68_SCREEN_H);
-  star_speed[index] = 1 + x68_rand_int(3);
+  star_speed[index] = 1 + x68_rand_int(3);  // 速さ1〜3（毎秒およそ20周なので毎秒20〜60ドット）
 }
 
 void main(void) {

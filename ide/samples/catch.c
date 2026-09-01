@@ -10,8 +10,8 @@ enum {
   kPlayerH = 12,     // 棒の高さ
   kPlayerY = 460,    // 棒の縦位置（動かさない）
   kItemSize = 16,    // 落ちてくる四角の大きさ
-  kPlayerSpeed = 6,  // 棒が1周で動く距離
-  kFallSpeed = 4,    // 四角が1周で落ちる距離
+  kPlayerSpeed = 4,  // 棒が1周で動く距離（毎秒およそ60周なので毎秒約240ドット）
+  kFallSpeed = 2,    // 四角が1周で落ちる距離（毎秒およそ60周なので毎秒約120ドット）
 };
 
 static int player_x = 232;
