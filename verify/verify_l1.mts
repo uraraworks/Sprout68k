@@ -216,7 +216,8 @@ function buildEmptyScriptFrames(): Uint16Array[] {
 const DIFF_BLK_W = 20, DIFF_BLK_H = 20, DIFF_BLK_Y = 20;
 const diffBlkX = (i: number) => 20 + i * 40;
 const DIFF_MOVER_W = 16, DIFF_MOVER_H = 16, DIFF_MOVER_Y = 200;
-const DIFF_BURST_COUNT = 70;
+const DIFF_BURST_COUNT = 520; /* X68_L1_MAX_RECTS(512)を超えさせるための命令数
+                                 * (2026-09-01: 64→512に引き上げたのに合わせて70→520に変更) */
 const DIFF_BURST_Y = 400;
 
 const DIFF_C_BG = xRgb(0, 0, 0);
@@ -244,7 +245,7 @@ function buildDiffScriptFrames(): Uint16Array[] {
     const mx = 40 + frame * 10;
     model.boxFill(mx, DIFF_MOVER_Y, DIFF_MOVER_W, DIFF_MOVER_H, DIFF_C_MOVER);
     if (frame === 4) {
-      for (let i = 0; i < DIFF_BURST_COUNT; i++) model.pset(10 + i, DIFF_BURST_Y, DIFF_C_BURST);
+      for (let i = 0; i < DIFF_BURST_COUNT; i++) model.pset(10 + (i % 490), DIFF_BURST_Y, DIFF_C_BURST);
     }
     frames.push(model.grid.slice());
   }

@@ -70,7 +70,12 @@ typedef struct {
     int color;
 } X68Cmd;
 
-#define X68_L1_MAX_RECTS 64
+/* 上限は512(元は64)。同梱作例ide/samples/stars.c(星220個)・life.c(生きたマス数百個)は
+ * 64件では毎フレーム溢れてoverflowed=1に落ち、差分転送のはずが毎フレーム全画面転送
+ * (512KB)にフォールバックしていた(実測: 1ループ63〜65フレーム=毎秒1周でしか進まない)。
+ * 上限はbss(裏バッファ512KB他)とスタック(STACK_ADDR)の間の空きで決まる。この空きは
+ * tools/driver/builder.mts の __bss_end 検査がビルド時に守っている。 */
+#define X68_L1_MAX_RECTS 512
 
 typedef struct {
     int count;      /* cmds[] の有効な個数(overflowedなら差分判定には使えない) */
@@ -155,6 +160,20 @@ static void cmdlist_reset(X68CmdList *l) {
     l->count = 0;
     l->overflowed = 0;
     l->has_bbox = 0;
+}
+
+/* 一覧を写す。構造体まるごとの代入にすると、使っていない要素まで含めて
+ * X68_L1_MAX_RECTS 件ぶん(512件なら約20KB)を毎フレーム複写することになるので、
+ * 実際に使っている件数だけを写す。overflowed のときは cmds[] の中身は
+ * 使わない(bboxだけが有効)ので、写す必要も無い。 */
+static void cmdlist_copy(X68CmdList *dst, const X68CmdList *src) {
+    dst->count = src->count;
+    dst->overflowed = src->overflowed;
+    dst->has_bbox = src->has_bbox;
+    dst->bbox = src->bbox;
+    if (!src->overflowed) {
+        for (int i = 0; i < src->count; i++) dst->cmds[i] = src->cmds[i];
+    }
 }
 
 /* 描画命令を1件記録する。x0,y0,x1,y1はクリップ前の生の矩形
@@ -520,6 +539,6 @@ void x68_screen_flip(void) {
     }
     x68_l1_last_flip_bytes = bytes;
 
-    prevCmds = curCmds;
+    cmdlist_copy(&prevCmds, &curCmds);
     cmdlist_reset(&curCmds);
 }

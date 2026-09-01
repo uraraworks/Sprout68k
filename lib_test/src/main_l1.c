@@ -96,7 +96,8 @@ void main(void) {
 #define MOVER_H 16
 #define MOVER_Y 200
 
-#define BURST_COUNT 70 /* X68_L1_MAX_RECTS(64)を超えさせるための命令数 */
+#define BURST_COUNT 520 /* X68_L1_MAX_RECTS(512)を超えさせるための命令数
+                          * (2026-09-01: 64→512に引き上げたのに合わせて70→520に変更) */
 #define BURST_Y 400
 
 void main(void) {
@@ -135,7 +136,10 @@ void main(void) {
         /* F4だけ、命令一覧が溢れるほど大量のpsetを発行する。 */
         if (frame == 4) {
             for (int i = 0; i < BURST_COUNT; i++) {
-                x68_pset(10 + i, BURST_Y, c_burst);
+                /* x座標を画面幅(512)内に折り返す。X68_SCREEN_Wを超えると
+                 * clip_to_screen()で弾かれ命令一覧に積まれない
+                 * (=溢れさせるための発行回数が足りなくなる)ため。 */
+                x68_pset(10 + (i % 490), BURST_Y, c_burst);
             }
         }
 
