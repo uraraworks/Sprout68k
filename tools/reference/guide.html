@@ -107,7 +107,7 @@ enum {
   kPlayerH = 12,
   kPlayerY = 460,
   kItemSize = 16,
-  kSpeed = 6,
+  kSpeed = 4,
 };
 
 static int player_x = 232;
@@ -127,7 +127,7 @@ static void ReadInput(void) {
 static void UpdateItem(void) {
   int caught;
 
-  item_y += 4;
+  item_y += 2;
   caught = (item_y + kItemSize &gt;= kPlayerY) &amp;&amp;
            (item_x + kItemSize &gt; player_x) &amp;&amp;
            (item_x &lt; player_x + kPlayerW);
@@ -163,4 +163,47 @@ void main(void) {
     <li><strong><code>main</code></strong> — 読む・計算する・描く・出す、を並べただけです。処理を小さな関数に分けておくと、あとから中身を差し替えやすくなります。</li>
   </ul>
   <p class="note">「押した瞬間だけ 1 回」にしたいときは、前のフレームの状態を変数に覚えておいて比べます。書き方は <a href="#X68_KEY_LEFT"><code>X68_KEY_*</code></a> の例にあります。</p>
+</section>
+
+<section id="speed">
+  <h2>速さを決める</h2>
+  <p><code>x68_screen_flip()</code> が画面の書き換えを待つので、間に合っているかぎり <strong>1 周はいつも 1/60 秒</strong>です。速さが勝手にぶれることはありません。だから速さは「1 周に何ドット動かすか」だけで決まります。</p>
+  <table class="goal-table">
+    <thead><tr><th>1 周に足す値</th><th>速さ</th><th>画面（512 ドット）を横切る時間</th></tr></thead>
+    <tbody>
+      <tr><td>1</td><td>毎秒 60 ドット</td><td>8.5 秒</td></tr>
+      <tr><td>2</td><td>毎秒 120 ドット</td><td>4.3 秒</td></tr>
+      <tr><td>4</td><td>毎秒 240 ドット</td><td>2.1 秒</td></tr>
+      <tr><td>8</td><td>毎秒 480 ドット</td><td>1.1 秒</td></tr>
+    </tbody>
+  </table>
+  <p>迷ったら、自分で動かすものは <strong>4</strong>、勝手に動くものは <strong>2</strong> から試すとちょうどよく感じられます。作例の <code>move.c</code> は 4、<code>catch.c</code> の落ちてくる四角は 2 です。</p>
+
+  <h3>もっとゆっくり動かしたい</h3>
+  <p>1 周に 1 ドットでも速すぎるときに、<strong>間引いてはいけません</strong>。次のように書くと、動かない周が 4 回続いてから 6 ドット飛ぶので、カクカクして見えます。</p>
+  <pre class="listing">static int count = 0;
+static int x = 100;
+
+if (count % 5 == 0) {   /* これはカクつく */
+  x += 6;
+}
+count++;
+x68_box_fill(x, 200, 16, 16, x68_rgb(255, 255, 0));</pre>
+  <p>そうではなく、<strong>本当の位置を 16 倍した整数で持ちます</strong>。この環境に小数はありませんが、16 倍で持てば 1/16 ドット単位で動かせます。画面に出すときだけ 16 で割ります（<code>&gt;&gt; 4</code> が 16 で割ることにあたります）。</p>
+  <pre class="listing">static int x16 = 100 * 16;   /* 本当の位置を 16 倍で持つ */
+
+x16 += 12;                    /* 1 周に 0.75 ドット = 毎秒 45 ドット */
+x68_box_fill(x16 &gt;&gt; 4, 200, 16, 16, x68_rgb(255, 255, 0));</pre>
+  <p>16 のかわりに 10 や 100 を使っても構いませんが、16・256 のような 2 の累乗にしておくと、割り算が <code>&gt;&gt;</code> で済むぶん速くなります。</p>
+
+  <h3>描ける量には上限がある</h3>
+  <p>1 周を 1/60 秒に収めるには、<strong>描く回数がおよそ 80 回まで</strong>である必要があります（全部が止まっているなら 100 回まで）。<code>x68_pset</code> <code>x68_box_fill</code> <code>x68_line</code> <code>x68_circle</code> がそれぞれ 1 回で、<code>x68_box</code> だけは 4 辺を描くので 4 回と数えます。<code>x68_cls</code> は数えません。</p>
+  <p>超えると 1 周が 2 フレーム、3 フレームとかかるようになり、<strong>ゲーム全体がそのぶん遅くなります</strong>。玉もパドルも点数も、まとめて半分の速さになります。「なんとなく重い」と感じたら、まず 1 周に何回描いているかを数えてみてください。</p>
+  <p class="note">大きさは関係ありません。画面いっぱいの四角を 1 個描くのも、小さな四角を 1 個描くのも、同じ 1 回です。上限は「面積」ではなく「回数」で決まります。</p>
+
+  <h3>動かないものがたくさんあるとき</h3>
+  <p>ブロック崩しのブロックのように、<strong>置いたまま動かないもの</strong>が多いときは、書き方が 2 通りあります。</p>
+  <p><strong>1. 毎周ぜんぶ描き直す</strong>（<code>x68_cls</code> を使う、素直な書き方）。同じ場所に同じものを描き直しても、変わっていないことをライブラリが見分けるので、<strong>塗り直しの費用はかかりません</strong>。ただし描く回数は数えるので、上の 80 回の上限には入ります。作例の <code>catch.c</code>・<code>life.c</code>・<code>stars.c</code> はこの書き方です。</p>
+  <p><strong>2. 動くものだけ描く</strong>（<code>x68_frame_begin</code> を使う書き方）。動かないものは最初に 1 回だけ描いておき、以後は「前の位置を背景色で消して、新しい位置に描く」だけにします。描く回数が動くものの分だけで済むので、上限に余裕ができます。作例の <code>breakout</code> がこの書き方です。</p>
+  <p class="note">2 の書き方では、<strong>動いていないものまで毎周消して描き直すと、かえって遅くなります</strong>。「前の位置と今の位置が違うときだけ消して描く」と書いてください。ここを守らないと、1 の素直な書き方より遅くなることがあります。</p>
 </section>
