@@ -24,6 +24,9 @@
  *                             以後はframe_beginだけを使って前の位置を背景色で
  *                             消して新しい位置に描く。静止物が再発行されなくても
  *                             消えないことを確認する。
+ *   X68_L1_MANY_MOVE_SCRIPT   dirty矩形の上限(32)を超える個数(40個)の
+ *                             小さな物が毎フレーム全部動く台本
+ *                             (docs/L1差分描画_20260901.md「追記2」節)。
  *   (未定義)                   旧来の8フレーム台本(全画素比較の基本台本)
  */
 #include "x68.h"
@@ -216,6 +219,55 @@ void main(void) {
         int newx = FB_MOVE_X(frame);
         x68_box_fill(oldx, FB_MOVE_Y, FB_MOVE_W, FB_MOVE_H, c_bg);   /* 前の位置を背景色で消す */
         x68_box_fill(newx, FB_MOVE_Y, FB_MOVE_W, FB_MOVE_H, c_move); /* 新しい位置に描く */
+        x68_screen_flip();
+        HV2_FLIP_BYTES(frame) = x68_l1_last_flip_bytes;
+        HV2_PROGRESS = (unsigned long)(frame + 1);
+        for (int s = 0; s < 3; s++) x68_vsync_wait();
+    }
+
+    HV2_DONE = HV2_DONE_MAGIC;
+    for (;;) { }
+}
+
+#elif defined(X68_L1_MANY_MOVE_SCRIPT)
+
+/* ============================================================
+ * dirty矩形の上限(32)を超える個数の小さな物が毎フレーム全部動く台本
+ * (verify/verify_l1.mts のTS側と1桁単位で一致させること)。
+ * 実測(docs/L1差分描画_20260901.md「追記2」節「誤り1」)を再現する狙い:
+ * 動く物が多いが1個1個は小さい場面で、畳み先を全画面にすると畳む前より
+ * 高くつく。ここでは40個(dirty矩形の上限32を超える。1個動くと前後2枚の
+ * dirty矩形になるので、40個全部動けば理論上80枚)の4x4四角を8列x5行で
+ * 並べ、毎フレーム全部x方向へ動かす。
+ *   F0: 初回(force_full。全画面転送になるのが正しい)
+ *   F1〜F4: 全40個が動く。突き合わせが諦める(matchGaveUp)はずだが、
+ *           修正後は全画面ではなく「旧実装と同じ再塗り」に畳まれるため、
+ *           転送量は全画面よりずっと小さくなるはず。
+ * ============================================================ */
+#define MANY_COLS 8
+#define MANY_ROWS 5
+#define MANY_COUNT (MANY_COLS * MANY_ROWS) /* 40。X68_L1_MAX_DIRTY(32)を超える */
+#define MANY_W 4
+#define MANY_H 4
+#define MANY_BASE_X(col) (10 + (col) * 12)
+#define MANY_BASE_Y(row) (10 + (row) * 12)
+#define MANY_X(col, frame) (MANY_BASE_X(col) + (frame) * 6)
+
+void main(void) {
+    HV2_PROGRESS = 0;
+    HV2_DONE = 0;
+    x68_screen_open();
+
+    int c_bg = x68_rgb(0, 0, 0);
+    int c_obj = x68_rgb(255, 128, 0);
+
+    for (int frame = 0; frame < 5; frame++) {
+        x68_cls(c_bg);
+        for (int row = 0; row < MANY_ROWS; row++) {
+            for (int col = 0; col < MANY_COLS; col++) {
+                x68_box_fill(MANY_X(col, frame), MANY_BASE_Y(row), MANY_W, MANY_H, c_obj);
+            }
+        }
         x68_screen_flip();
         HV2_FLIP_BYTES(frame) = x68_l1_last_flip_bytes;
         HV2_PROGRESS = (unsigned long)(frame + 1);

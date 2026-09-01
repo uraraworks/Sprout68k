@@ -295,6 +295,37 @@ function buildFrameBeginScriptFrames(): Uint16Array[] {
   return frames;
 }
 
+/* --- dirty矩形の上限(32)を超える個数の小さな物が毎フレーム全部動く台本
+ * (lib_test/src/main_l1.cのX68_L1_MANY_MOVE_SCRIPTと1桁単位で一致させること)。
+ * docs/L1差分描画_20260901.md「追記2」節の「誤り1」の効果を確認するために追加。
+ * host側モデルは既存の他台本と同じく「素直に塗り直す」実装のままでよい
+ * (差分転送・畳み先の選び方はGVRAM転送量だけの話で、全画素の結果は
+ * 変わらないはず)。 --- */
+const MANY_COLS = 8, MANY_ROWS = 5;
+const MANY_COUNT = MANY_COLS * MANY_ROWS; /* 40。X68_L1_MAX_DIRTY(32)を超える */
+const MANY_W = 4, MANY_H = 4;
+const manyBaseX = (col: number) => 10 + col * 12;
+const manyBaseY = (row: number) => 10 + row * 12;
+const manyX = (col: number, frame: number) => manyBaseX(col) + frame * 6;
+
+const MANY_C_BG = xRgb(0, 0, 0);
+const MANY_C_OBJ = xRgb(255, 128, 0);
+
+function buildManyMoveScriptFrames(): Uint16Array[] {
+  const model = new Model();
+  const frames: Uint16Array[] = [];
+  for (let frame = 0; frame < 5; frame++) {
+    model.cls(MANY_C_BG);
+    for (let row = 0; row < MANY_ROWS; row++) {
+      for (let col = 0; col < MANY_COLS; col++) {
+        model.boxFill(manyX(col, frame), manyBaseY(row), MANY_W, MANY_H, MANY_C_OBJ);
+      }
+    }
+    frames.push(model.grid.slice());
+  }
+  return frames;
+}
+
 /* ============================================================
  * px68k駆動
  * ============================================================ */
@@ -591,6 +622,29 @@ async function main(): Promise<void> {
   if (!fbRun.reachedDone) fail('frame_begin台本: HV2_DONEに到達しなかった');
   if (!fbRun.allOk) fail('frame_begin台本: 全画素比較が一致しないフレームがあった(静止物が消えた可能性)');
   else log('RESULT: FRAME_BEGIN_SCRIPT_ALL_FRAMES_MATCH=true');
+
+  // ==========================================================
+  // dirty矩形の上限(32)を超える個数(40個)の小さな物が毎フレーム全部動く台本
+  // (docs/L1差分描画_20260901.md「追記2」節「誤り1」の効果を確認する)。
+  // ==========================================================
+  log('=== dirty矩形上限超過(40個全部動く)台本(5フレーム) ===');
+  const manyFrames = buildManyMoveScriptFrames();
+  const manyImg = resolve(DEV_ROOT, 'build/l1_test_many_move.xdf');
+  buildL1TestImage(manyImg, '', 'many_move');
+  const manyRun = await runScript('many_move', new Uint8Array(readFileSync(manyImg)), manyFrames, false, log);
+  if (!manyRun.reachedDone) fail('dirty矩形上限超過台本: HV2_DONEに到達しなかった');
+  if (!manyRun.allOk) fail('dirty矩形上限超過台本: 全画素比較が一致しないフレームがあった');
+  else log('RESULT: MANY_MOVE_SCRIPT_ALL_FRAMES_MATCH=true');
+
+  const mb = manyRun.flipBytes;
+  log(`RESULT: MANY_MOVE_FLIP_BYTES per_frame=${JSON.stringify(mb)}`);
+  // F0は初回force_fullで全画面のはず。F1〜F4は40個全部が動くため突き合わせが
+  // まとまらない(matchGaveUp)はずだが、誤り1の修正後は全画面ではなく
+  // 「旧実装と同じ再塗り」に畳まれるので、転送量は全画面よりずっと小さい
+  // (40個 x 前後2矩形 x 4x4x2バイト 程度 = 数KB)はず。
+  const manyOverBudget = mb.length >= 5 && mb.slice(1, 5).every((b) => b < FULL / 4);
+  log(`RESULT: MANY_MOVE_FOLD_EFFICIENT=${manyOverBudget} (F1..F4=${JSON.stringify(mb.slice(1, 5))}, 全画面=${FULL}の1/4未満であること)`);
+  if (!manyOverBudget) fail('dirty矩形上限超過台本: 全部動く場面で全画面に畳まれてしまい、転送量が十分小さくならなかった(誤り1が未修正)');
 
   log(`RESULT: L1_OVERALL_PASS=${overallOk}`);
   if (!overallOk) process.exitCode = 1;

@@ -10,14 +10,26 @@
  *   x68_screen_flip():
  *     1. 突き合わせ: curCmds と prevCmds の各命令が同一かを判定する。
  *        添字で先に照合(速い道) → 残った未確定のものだけ総当たり(内容一致)。
- *        未確定数 m が64を超えたら突き合わせを諦めて全画面dirtyに倒す。
+ *        未確定数 m が64を超えたら突き合わせを諦める(2へ)。
  *     2. dirty矩形の決定: 「消えた」「増えた」「変わった」命令の前後両方の
  *        矩形をdirtyに積む。背景色が変わった・初回・一覧が溢れた場合は
- *        全画面1枚。dirty矩形が32枚を超えたら全画面1枚に畳む。
- *     3. 再生: 各dirty矩形を背景色で塗り、そのあと curCmds を**順番どおり**に
- *        **そのdirty矩形へクリップして**描き直す(クリップせず再生すると
- *        重なりの前後関係が壊れる。docs/L1差分描画_20260901.md参照)。
- *     4. 転送: dirty矩形をGVRAMへ送る。
+ *        本当に全画面1枚が要るので全画面にする。それ以外の理由で突き合わせが
+ *        まとまらなかった場合(未確定数超過、またはdirty矩形が32枚を超えた)は、
+ *        全画面ではなく**旧実装と同じ再塗り**に畳む(2026-09-01実測: 動く物が
+ *        多い場面で全画面に畳むと畳む前より高くつくため。
+ *        docs/L1差分描画_20260901.md「追記2」節)。
+ *     3. 再生:
+ *        - 通常(dirty矩形が少数確定した場合): 各dirty矩形を背景色で塗り、
+ *          そのあと curCmds を**順番どおり**に**そのdirty矩形へクリップして**
+ *          描き直す(クリップせず再生すると重なりの前後関係が壊れる)。
+ *          exec_cmd_clipped を呼ぶ前に、dirty全体の外接矩形との交差を
+ *          インラインの整数比較で先に見て大半の命令を捨てる(関数呼び出しを
+ *          伴わない。docs/L1差分描画_20260901.md「追記2」節)。
+ *        - 旧実装と同じ再塗りに畳んだ場合: prevCmds の各命令の矩形を背景色で
+ *          塗り戻し、そのあと curCmds を順番どおり・クリップせず描き直す。
+ *          突き合わせで不一致だった命令についてだけ、前後の矩形を転送する。
+ *        - 全画面: 画面全体を背景色で塗り、curCmds を全画面へ描き直す。
+ *     4. 転送: dirty矩形(または再塗りで不一致だった矩形)をGVRAMへ送る。
  *     5. prevCmds = curCmds。
  *
  * 静止している物は突き合わせで確定し、dirtyに入らないので画素も転送も
@@ -101,11 +113,11 @@ typedef struct {
     X68Cmd cmds[X68_L1_MAX_RECTS];
 } X68CmdList;
 
-/* dirty矩形の上限。超えたら全画面1枚に畳む(docs/L1差分描画_20260901.md
- * 「dirty矩形の数の上限」節)。 */
+/* dirty矩形の上限。超えたら突き合わせを諦める(matchGaveUp。
+ * docs/L1差分描画_20260901.md「dirty矩形の数の上限」「追記2」節)。 */
 #define X68_L1_MAX_DIRTY 32
 
-/* 突き合わせの総当たり段(フェーズ2)を諦めて全画面dirtyに倒す未確定数の上限
+/* 突き合わせの総当たり段(フェーズ2)を諦める(matchGaveUp)未確定数の上限
  * (docs/L1差分描画_20260901.md「突き合わせは『添字』ではなく『内容』で」節)。 */
 #define X68_L1_MAX_UNMATCHED 64
 
@@ -222,10 +234,6 @@ static int in_rect(int x, int y, const X68Rect *bound) {
 #else
     return x >= bound->x0 && x < bound->x1 && y >= bound->y0 && y < bound->y1;
 #endif
-}
-
-static int rect_overlap(const X68Rect *a, const X68Rect *b) {
-    return a->x0 < b->x1 && b->x0 < a->x1 && a->y0 < b->y1 && b->y0 < a->y1;
 }
 
 /* ============================================================
@@ -455,7 +463,8 @@ static unsigned long transfer_rect(const X68Rect *r) {
 static void dirty_reset(void) { dirtyCount = 0; }
 
 /* dirty矩形を1件積む。空矩形は無視(常に成功扱い)。上限(32)を超えたら
- * 失敗を返す(呼び出し側が全画面1枚に畳む)。 */
+ * 失敗を返す(呼び出し側build_dirty_rects()がmatchGaveUpとして扱い、
+ * 旧実装と同じ再塗りに畳む。docs/L1差分描画_20260901.md「追記2」節)。 */
 static int dirty_add(const X68Rect *r) {
     if (r->x1 <= r->x0 || r->y1 <= r->y0) return 1;
     if (dirtyCount >= X68_L1_MAX_DIRTY) return 0;
@@ -611,8 +620,12 @@ void x68_locate(int col, int row) {
 }
 
 /* curCmds と prevCmds を突き合わせ、dirty矩形の一覧(dirtyRects/dirtyCount)を
- * 組み立てる。全画面dirtyに倒すべきと判断したら1を返す(呼び出し側が
- * dirtyRectsを画面全体1枚に差し替える)。docs/L1差分描画_20260901.md
+ * 組み立てる。突き合わせを諦めるべき(matchGaveUp)と判断したら1を返す。
+ * 呼び出し側(x68_screen_flip)はこれを「全画面」ではなく「旧実装と同じ
+ * 再塗り」として扱う(誤り1の修正。docs/L1差分描画_20260901.md「追記2」節)。
+ * 戻り値が0でも1でも、curMatched/prevMatchedはこの時点までの突き合わせ
+ * 結果を保持している(1で返る場合はフェーズ1のみ、または本文の再塗りの
+ * 転送段が使う完全な結果)。docs/L1差分描画_20260901.md
  * 「突き合わせは『添字』ではなく『内容』で」節のとおり2段構成。 */
 static int build_dirty_rects(void) {
     int nCur = curCmds.count, nPrev = prevCmds.count;
@@ -634,8 +647,8 @@ static int build_dirty_rects(void) {
     for (int j = 0; j < nPrev; j++) if (!prevMatched[j]) nUPrev++;
 
     if (nUCur + nUPrev > X68_L1_MAX_UNMATCHED) {
-        /* 未確定数mが上限を超えた: 総当たりを諦めて全画面dirtyに倒す
-         * (費用を必ず有界にするため)。 */
+        /* 未確定数mが上限を超えた: 総当たりを諦める(matchGaveUp。
+         * 費用を必ず有界にするため)。 */
         return 1;
     }
 
@@ -696,48 +709,109 @@ void x68_screen_flip(void) {
 
     if (style == X68_STYLE_CLS) {
         int overflowed = curCmds.overflowed || prevCmds.overflowed;
-        int useFull = force_full || conflict || styleChanged;
+        /* trueFull: 本当に全画面が要る場合(背景色変更・初回・流儀の衝突/変化)。
+         * matchGaveUp: 突き合わせがまとまらなかった場合(未確定数超過、または
+         * dirty矩形が32枚を超えた)。誤り1の修正により、この場合はもう
+         * 「全画面」ではなく「旧実装と同じ再塗り」に畳む
+         * (docs/L1差分描画_20260901.md「追記2」節)。 */
+        int trueFull = force_full || conflict || styleChanged;
+        int matchGaveUp = 0;
         int noop = 0;
         dirty_reset();
 
-        if (!useFull && overflowed) {
-            /* 一覧が溢れた場合: 添字ごとの突き合わせができない(安全に「消えた」
-             * 「変わった」を判定できない)ため、安全側(全画面dirty)に倒す。
+        if (!trueFull && overflowed) {
+            /* 一覧が溢れた場合: cmds[]自体が不完全(bboxしか記録されていない)
+             * ため、prevCmds側の個々の矩形を辿る「旧実装と同じ再塗り」は
+             * できない。本当に全画面が要る。
              * X68_FAULT_L1_DIFF_NO_OVERFLOW_FALLBACK: 故障注入でこのフォール
              * バックを無効化する(何もしない。溢れた命令の消し残りが起きる)。 */
 #ifdef X68_FAULT_L1_DIFF_NO_OVERFLOW_FALLBACK
             noop = 1;
 #else
-            useFull = 1;
+            trueFull = 1;
 #endif
-        } else if (!useFull) {
-            if (build_dirty_rects()) useFull = 1;
+        } else if (!trueFull) {
+            if (build_dirty_rects()) matchGaveUp = 1;
         }
 
         if (!noop) {
-            if (useFull) {
+            if (trueFull) {
                 dirty_reset();
                 X68Rect full = {0, 0, X68_SCREEN_W, X68_SCREEN_H};
                 dirty_add(&full);
             }
 
-            for (int i = 0; i < dirtyCount; i++) {
-                const X68Rect *r = &dirtyRects[i];
+            if (matchGaveUp) {
+                /* 誤り1の修正(docs/L1差分描画_20260901.md「追記2」節):
+                 * dirty矩形が32枚を超える(または未確定数が64を超える)場合の
+                 * 畳み先を、全画面ではなく旧実装(b7a6e13時点)と同じ再塗りに
+                 * する。全画面へ畳むと、動く物が多いが1個1個は小さい場面
+                 * (stars.c等)で畳む前より高くつく(実測)ため。
+                 *   1. prevCmds の各命令の矩形を背景色で塗り戻す(旧x68_clsの
+                 *      塗り戻しと同じ。全件。curMatched/prevMatchedでは絞らない)。
+                 *   2. curCmds を順番どおり・クリップせず(画面全体へ)描き直す。
+                 *   3. 突き合わせ(build_dirty_rects)で不一致だった命令に
+                 *      ついてだけ、前後の矩形を転送する。 */
+                X68Rect screen = {0, 0, X68_SCREEN_W, X68_SCREEN_H};
 
-                /* X68_FAULT_L1_CLS_NO_FILL: 故障注入でdirty矩形を背景色で塗らずに
-                 * 再生する(前の絵が残る)。 */
+                /* X68_FAULT_L1_CLS_NO_FILL: 故障注入で前フレーム矩形を背景色で
+                 * 塗り戻さない(前の絵が残る)。 */
 #ifndef X68_FAULT_L1_CLS_NO_FILL
-                fill_rect(r, bgc);
-#endif
-                /* curCmds.overflowed でも cmds[0..count) 自体は有効(溢れた分だけ
-                 * 記録されていない)。全画面dirty(=フォールバック)へ再生すれば
-                 * 記録済みの分は正しく描かれる(docs/L1差分描画_20260901.md参照)。 */
-                for (int j = 0; j < curCmds.count; j++) {
-                    const X68Cmd *c = &curCmds.cmds[j];
-                    if (!rect_overlap(&c->rect, r)) continue;
-                    exec_cmd_clipped(c, r);
+                for (int j = 0; j < prevCmds.count; j++) {
+                    fill_rect(&prevCmds.cmds[j].rect, bgc);
                 }
-                bytes += transfer_rect(r);
+#endif
+                for (int j = 0; j < curCmds.count; j++) {
+                    exec_cmd_clipped(&curCmds.cmds[j], &screen);
+                }
+
+                for (int j = 0; j < curCmds.count; j++) {
+                    if (curMatched[j]) continue;
+                    bytes += transfer_rect(&curCmds.cmds[j].rect);
+                }
+                for (int j = 0; j < prevCmds.count; j++) {
+                    if (prevMatched[j]) continue;
+                    /* X68_FAULT_L1_SKIP_PREV / X68_FAULT_L1_DIFF_IGNORE_SHRINK:
+                     * 故障注入で前フレーム側(消えた/変わった命令の「消す」側)
+                     * を転送しない(消し残り)。build_dirty_rects()内の同名の
+                     * 分岐と同じ意味(docs/L1差分描画_20260901.md参照)。 */
+#if !defined(X68_FAULT_L1_SKIP_PREV) && !defined(X68_FAULT_L1_DIFF_IGNORE_SHRINK)
+                    bytes += transfer_rect(&prevCmds.cmds[j].rect);
+#endif
+                }
+            } else {
+                /* 通常経路(trueFullの全画面1枚、またはdirty矩形が数枚に
+                 * 確定した場合の両方をこの1本の経路でまかなう)。
+                 * 誤り2の修正(docs/L1差分描画_20260901.md「追記2」節):
+                 * exec_cmd_clippedを呼ぶ前に、まずdirty全体の外接矩形との
+                 * 交差をインラインの整数比較で見て大半の命令を捨て、残った
+                 * ものだけ個々のdirty矩形と交差判定する。関数呼び出しを
+                 * 伴わない(rect_overlap()のような関数呼び出しは使わない)。 */
+#ifndef X68_FAULT_L1_CLS_NO_FILL
+                for (int i = 0; i < dirtyCount; i++) fill_rect(&dirtyRects[i], bgc);
+#endif
+                if (dirtyCount > 0) {
+                    X68Rect dbb = dirtyRects[0];
+                    for (int i = 1; i < dirtyCount; i++) {
+                        if (dirtyRects[i].x0 < dbb.x0) dbb.x0 = dirtyRects[i].x0;
+                        if (dirtyRects[i].y0 < dbb.y0) dbb.y0 = dirtyRects[i].y0;
+                        if (dirtyRects[i].x1 > dbb.x1) dbb.x1 = dirtyRects[i].x1;
+                        if (dirtyRects[i].y1 > dbb.y1) dbb.y1 = dirtyRects[i].y1;
+                    }
+                    for (int j = 0; j < curCmds.count; j++) {
+                        const X68Cmd *c = &curCmds.cmds[j];
+                        const X68Rect *cr = &c->rect;
+                        /* dirty全体の外接矩形と交差しなければ、個々のdirty矩形
+                         * とも絶対に交差しない(外接矩形の定義上)ので即座に捨てる。 */
+                        if (cr->x0 >= dbb.x1 || dbb.x0 >= cr->x1 || cr->y0 >= dbb.y1 || dbb.y0 >= cr->y1) continue;
+                        for (int i = 0; i < dirtyCount; i++) {
+                            const X68Rect *r = &dirtyRects[i];
+                            if (cr->x0 >= r->x1 || r->x0 >= cr->x1 || cr->y0 >= r->y1 || r->y0 >= cr->y1) continue;
+                            exec_cmd_clipped(c, r);
+                        }
+                    }
+                }
+                for (int i = 0; i < dirtyCount; i++) bytes += transfer_rect(&dirtyRects[i]);
             }
         }
 
