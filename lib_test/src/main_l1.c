@@ -12,12 +12,19 @@
  *
  * ビルド時に以下のいずれかを定義すると、台本が切り替わる
  * (tools/build_l1_test.sh の script 引数):
- *   X68_L1_EMPTY_SCRIPT  陰性対照用の「何も描かない」最小台本(1フレーム)
- *   X68_L1_DIFF_SCRIPT   描画命令の差分転送(2026-08-20導入)を狙った台本。
- *                        静止物と動く物の同居・色だけの変更・命令数が減る
- *                        場面・一覧が溢れる場面を1本の台本にまとめてある
- *                        (docs/L1実装_20260819.md「差分転送」節参照)。
- *   (未定義)              旧来の8フレーム台本(全画素比較の基本台本)
+ *   X68_L1_EMPTY_SCRIPT       陰性対照用の「何も描かない」最小台本(1フレーム)
+ *   X68_L1_DIFF_SCRIPT        描画命令の差分転送(2026-08-20導入)を狙った台本。
+ *                             静止物と動く物の同居・色だけの変更・命令数が減る
+ *                             場面・一覧が溢れる場面を1本の台本にまとめてある
+ *                             (docs/L1実装_20260819.md「差分転送」節参照)。
+ *   X68_L1_FRAME_BEGIN_SCRIPT x68_frame_begin()を使う「追記フレーム」方式
+ *                             (samples/breakout/block.cと同じ使い方)を狙った
+ *                             台本(docs/L1差分描画_20260901.md「追記(2026-09-01)」
+ *                             節)。動かない絵をx68_clsのフレームで1回だけ描き、
+ *                             以後はframe_beginだけを使って前の位置を背景色で
+ *                             消して新しい位置に描く。静止物が再発行されなくても
+ *                             消えないことを確認する。
+ *   (未定義)                   旧来の8フレーム台本(全画素比較の基本台本)
  */
 #include "x68.h"
 
@@ -151,6 +158,67 @@ void main(void) {
          * 全画素比較なので、GVRAM書き込み直後の1フレームだけでは映像に
          * 反映されていない可能性がある)このフレームのGVRAM内容を読めるよう、
          * 何も描かずに数回だけ垂直同期を待つ「静止区間」を設ける。 */
+        for (int s = 0; s < 3; s++) x68_vsync_wait();
+    }
+
+    HV2_DONE = HV2_DONE_MAGIC;
+    for (;;) { }
+}
+
+#elif defined(X68_L1_FRAME_BEGIN_SCRIPT)
+
+/* ============================================================
+ * x68_frame_begin()方式(追記フレーム)を狙った台本(verify/verify_l1.mts の
+ * TS側と1桁単位で一致させること)。samples/breakout/block.cと同じ使い方:
+ *   F0: x68_cls(bg)で初期化(再構築フレーム)。動かない絵(静止四角2個)を
+ *       ここで1回だけ描く。動く四角の初期位置もここで描く。
+ *   F1〜F3: x68_frame_begin()だけを使う(追記フレーム)。cls()は呼ばない。
+ *       動く四角の「前の位置」を背景色で消し、「新しい位置」に描く。
+ *       静止四角は一度も再発行しない — 差分方式の第一版はここで消えていた
+ *       (docs/L1差分描画_20260901.md「追記(2026-09-01)」節参照)。
+ * ============================================================ */
+#define FB_STATIC0_X 60
+#define FB_STATIC0_Y 60
+#define FB_STATIC1_X 400
+#define FB_STATIC1_Y 350
+#define FB_STATIC_W 30
+#define FB_STATIC_H 30
+
+#define FB_MOVE_W 20
+#define FB_MOVE_H 20
+#define FB_MOVE_Y 200
+#define FB_MOVE_X(f) (40 + (f) * 30)
+
+void main(void) {
+    HV2_PROGRESS = 0;
+    HV2_DONE = 0;
+    x68_screen_open();
+
+    int c_bg = x68_rgb(0, 0, 0);
+    int c_static0 = x68_rgb(200, 50, 50);
+    int c_static1 = x68_rgb(50, 50, 200);
+    int c_move = x68_rgb(255, 255, 0);
+
+    /* F0: 再構築フレーム。静止物・動く物の初期位置をここでまとめて描く。 */
+    x68_cls(c_bg);
+    x68_box_fill(FB_STATIC0_X, FB_STATIC0_Y, FB_STATIC_W, FB_STATIC_H, c_static0);
+    x68_box_fill(FB_STATIC1_X, FB_STATIC1_Y, FB_STATIC_W, FB_STATIC_H, c_static1);
+    x68_box_fill(FB_MOVE_X(0), FB_MOVE_Y, FB_MOVE_W, FB_MOVE_H, c_move);
+    x68_screen_flip();
+    HV2_FLIP_BYTES(0) = x68_l1_last_flip_bytes;
+    HV2_PROGRESS = 1;
+    for (int s = 0; s < 3; s++) x68_vsync_wait();
+
+    /* F1〜F3: 追記フレーム。cls()は一切呼ばない。静止物も一切再発行しない。 */
+    for (int frame = 1; frame <= 3; frame++) {
+        x68_frame_begin();
+        int oldx = FB_MOVE_X(frame - 1);
+        int newx = FB_MOVE_X(frame);
+        x68_box_fill(oldx, FB_MOVE_Y, FB_MOVE_W, FB_MOVE_H, c_bg);   /* 前の位置を背景色で消す */
+        x68_box_fill(newx, FB_MOVE_Y, FB_MOVE_W, FB_MOVE_H, c_move); /* 新しい位置に描く */
+        x68_screen_flip();
+        HV2_FLIP_BYTES(frame) = x68_l1_last_flip_bytes;
+        HV2_PROGRESS = (unsigned long)(frame + 1);
         for (int s = 0; s < 3; s++) x68_vsync_wait();
     }
 

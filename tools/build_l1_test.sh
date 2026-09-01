@@ -18,7 +18,8 @@
 #   script:     省略時は通常の8フレーム台本。"empty" を指定すると陰性対照用の
 #               「何も描かない」最小台本(1フレーム)に切り替わる。"diff" を指定すると
 #               差分転送を狙った台本(静止物+動く物、色だけ変更、命令数減、一覧溢れ)に
-#               切り替わる。
+#               切り替わる。"frame_begin" を指定すると x68_frame_begin()方式(追記
+#               フレーム)を狙った台本に切り替わる。
 #
 # ブートセクタは stage_d/boot/boot.S(track/sideをまたぐ複数セクタ読み込み
 # 対応、実測済み)を流用する。crt0/リンカスクリプトは stage_c のものを
@@ -77,6 +78,7 @@ case "$SCRIPT" in
   "") ;;
   empty) SCRIPT_DEFINE=(-DX68_L1_EMPTY_SCRIPT) ;;
   diff) SCRIPT_DEFINE=(-DX68_L1_DIFF_SCRIPT) ;;
+  frame_begin) SCRIPT_DEFINE=(-DX68_L1_FRAME_BEGIN_SCRIPT) ;;
   *) echo "ERROR: 未知のscript指定: ${SCRIPT}" >&2; exit 1 ;;
 esac
 

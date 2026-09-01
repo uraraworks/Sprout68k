@@ -252,6 +252,49 @@ function buildDiffScriptFrames(): Uint16Array[] {
   return frames;
 }
 
+/* --- x68_frame_begin()方式(追記フレーム)を狙った台本(lib_test/src/main_l1.cの
+ * X68_L1_FRAME_BEGIN_SCRIPTと1桁単位で一致させること)。既存のMainScript/
+ * DiffScriptと同じくModelは「素直に塗る」実装のままでよい(host側は矩形追跡を
+ * 再実装しない。cls()と同じ回数・同じ順でboxFillを呼べば結果は一致するはず)。
+ * F0はcls()で初期化して静止物2個+動く物の初期位置を描き、F1〜F3は
+ * x68_frame_begin()相当(=cls()を呼ばない)で「前の位置を背景色で消し、
+ * 新しい位置に描く」を繰り返す。静止物は一度も再発行しない —
+ * 差分方式の第一版はこのパターンで静止物を消していた
+ * (docs/L1差分描画_20260901.md「追記(2026-09-01)」節、および
+ * verify/verify_breakout.mtsが検出した実際の不具合)。 --- */
+const FB_STATIC0_X = 60, FB_STATIC0_Y = 60;
+const FB_STATIC1_X = 400, FB_STATIC1_Y = 350;
+const FB_STATIC_W = 30, FB_STATIC_H = 30;
+const FB_MOVE_W = 20, FB_MOVE_H = 20, FB_MOVE_Y = 200;
+const fbMoveX = (f: number) => 40 + f * 30;
+
+const FB_C_BG = xRgb(0, 0, 0);
+const FB_C_STATIC0 = xRgb(200, 50, 50);
+const FB_C_STATIC1 = xRgb(50, 50, 200);
+const FB_C_MOVE = xRgb(255, 255, 0);
+
+function buildFrameBeginScriptFrames(): Uint16Array[] {
+  const model = new Model();
+  const frames: Uint16Array[] = [];
+
+  // F0: 再構築フレーム。
+  model.cls(FB_C_BG);
+  model.boxFill(FB_STATIC0_X, FB_STATIC0_Y, FB_STATIC_W, FB_STATIC_H, FB_C_STATIC0);
+  model.boxFill(FB_STATIC1_X, FB_STATIC1_Y, FB_STATIC_W, FB_STATIC_H, FB_C_STATIC1);
+  model.boxFill(fbMoveX(0), FB_MOVE_Y, FB_MOVE_W, FB_MOVE_H, FB_C_MOVE);
+  frames.push(model.grid.slice());
+
+  // F1〜F3: 追記フレーム。cls()もstatic系の再発行も一切しない。
+  for (let frame = 1; frame <= 3; frame++) {
+    const oldx = fbMoveX(frame - 1);
+    const newx = fbMoveX(frame);
+    model.boxFill(oldx, FB_MOVE_Y, FB_MOVE_W, FB_MOVE_H, FB_C_BG);
+    model.boxFill(newx, FB_MOVE_Y, FB_MOVE_W, FB_MOVE_H, FB_C_MOVE);
+    frames.push(model.grid.slice());
+  }
+  return frames;
+}
+
 /* ============================================================
  * px68k駆動
  * ============================================================ */
@@ -532,6 +575,22 @@ async function main(): Promise<void> {
     log(`RESULT: DIFF_FAULT_${f.name.toUpperCase()} detected_fail=${detected}`);
     if (!detected) fail(`差分転送の故障注入(${f.name})を検査が検出できなかった(検査が空振りしている)`);
   }
+
+  // ==========================================================
+  // x68_frame_begin()方式(追記フレーム、2026-09-01追記)の台本。
+  // samples/breakout/block.cと同じ使い方(cls()を最初の1回だけ呼び、以後は
+  // frame_begin()だけで「前の位置を消して新しい位置に描く」)を最小構成で
+  // 再現する。差分方式の第一版はこの流儀で静止物を消していた
+  // (verify_breakout.mtsが検出。docs/L1差分描画_20260901.md参照)。
+  // ==========================================================
+  log('=== x68_frame_begin()方式台本(4フレーム) ===');
+  const fbFrames = buildFrameBeginScriptFrames();
+  const fbImg = resolve(DEV_ROOT, 'build/l1_test_frame_begin.xdf');
+  buildL1TestImage(fbImg, '', 'frame_begin');
+  const fbRun = await runScript('frame_begin', new Uint8Array(readFileSync(fbImg)), fbFrames, false, log);
+  if (!fbRun.reachedDone) fail('frame_begin台本: HV2_DONEに到達しなかった');
+  if (!fbRun.allOk) fail('frame_begin台本: 全画素比較が一致しないフレームがあった(静止物が消えた可能性)');
+  else log('RESULT: FRAME_BEGIN_SCRIPT_ALL_FRAMES_MATCH=true');
 
   log(`RESULT: L1_OVERALL_PASS=${overallOk}`);
   if (!overallOk) process.exitCode = 1;
